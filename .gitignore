@@ -1,0 +1,12 @@
+misc
+.DS_Store
+.venv
+firmware/.pio
+# Airline logos are trademarks: never commit them. Bring your own (see README).
+firmware/data/logos/*
+!firmware/data/logos/.gitkeep
+logos_input/*
+!logos_input/source_logos_go_here
+
+# Local tool output
+docs/_capture/

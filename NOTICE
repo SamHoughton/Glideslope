@@ -1,0 +1,18 @@
+Glideslope
+Copyright 2026 Sam Houghton
+
+This product is derived from TheFlightWall_OSS
+(https://github.com/AxisNimble/TheFlightWall_OSS) and its forks by biohead
+and Peter Daley (https://github.com/peterdaley/TheFlightWall_OSS), licensed
+under the Apache License, Version 2.0.
+
+Changes from that work include:
+- Huidu HD-WF2 (ESP32-S3) build target and HUB75 pin map
+- A new two-column approach card, rendered off-screen and pushed to the
+  panel as changed pixels only
+- Heathrow runway, ETA and landing-phase model; landing traffic prioritised
+- Aircraft sprites by ICAO type, fly-across transition following real
+  heading and vertical rate, landing animation and scanning screen
+- Display moved to its own task; watchdog and hang diagnostics
+- Reworked web interface, live panel mirror and status endpoint
+- Airline logos removed from the repository (bring your own)
