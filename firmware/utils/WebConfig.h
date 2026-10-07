@@ -12,6 +12,8 @@ Routes:
   POST /api/config/reset  — reset g_config to compile-time defaults
   GET  /api/log?cursor=N  — log lines since sequence number N + next cursor
   GET  /api/frame         — raw 128x64 RGB565 frame currently on the panel
+  GET  /api/status        — version, uptime, memory, weather
+  POST /api/update        — new firmware image (raw .bin body); installs and restarts
 
 Usage:
   Call g_webConfig.begin() once after WiFi connects.
@@ -25,6 +27,16 @@ Usage:
 #include <freertos/semphr.h>
 #include "models/FlightInfo.h"
 
+// The release build passes the git tag as -DGLIDESLOPE_VERSION_RAW=v1.2.0;
+// "dev" for local builds.
+#define GS_STR2(x) #x
+#define GS_STR(x) GS_STR2(x)
+#ifdef GLIDESLOPE_VERSION_RAW
+#define GLIDESLOPE_VERSION GS_STR(GLIDESLOPE_VERSION_RAW)
+#else
+#define GLIDESLOPE_VERSION "dev"
+#endif
+
 class WebConfig
 {
 public:
@@ -36,6 +48,9 @@ public:
     // flight list is empty (shows no-flight state in the browser).
     void setCurrentFlight(const FlightInfo *f);
 
+    // Latest raw METAR, reported by /api/status (main loop).
+    void setWeather(const char *metar);
+
     // Requests accepted so far (heartbeat diagnostics).
     uint32_t requestsServed() const { return _requests; }
 
@@ -45,6 +60,7 @@ private:
     // "Now showing" JSON, built on the main loop by setCurrentFlight() and read
     // by the web task; guarded by _displayMutex.
     String                  _displayJson = "{\"active\":false}";
+    String                  _metar;               // guarded by _displayMutex
     SemaphoreHandle_t       _displayMutex = nullptr;
     volatile uint32_t       _requests = 0;
 
@@ -54,6 +70,7 @@ private:
         String path;
         String query;
         String body;
+        int    contentLength = 0;
     };
 
     // Helpers
@@ -74,6 +91,7 @@ private:
     void handleGetDisplay(WiFiClient &c);
     void handleGetFrame(WiFiClient &c);
     void handleGetStatus(WiFiClient &c);
+    void handleUpdate(WiFiClient &c, int length);
 };
 
 extern WebConfig g_webConfig;

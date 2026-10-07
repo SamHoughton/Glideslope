@@ -11,6 +11,7 @@ void DailyStats::rollDay()
     {
         _day = lt.tm_yday;
         _arrivals = 0;
+        _departures = 0;
         _goArounds = 0;
         _counted.clear();
         _airlines.clear();
@@ -22,11 +23,12 @@ void DailyStats::rollDay()
 void DailyStats::note(const FlightInfo &f)
 {
     rollDay();
-    const bool toLhr = f.destination.code_icao == "EGLL" || f.destination.code_iata == "LHR";
-    if (!toLhr || f.ident.length() == 0 || _counted.count(f.ident)) return;
-    if (_counted.size() > 1500) return;   // bounded; far above a day's arrivals
+    const bool toLhr   = f.destination.code_icao == "EGLL" || f.destination.code_iata == "LHR";
+    const bool fromLhr = f.origin.code_icao == "EGLL" || f.origin.code_iata == "LHR";
+    if ((!toLhr && !fromLhr) || f.ident.length() == 0 || _counted.count(f.ident)) return;
+    if (_counted.size() > 2500) return;   // bounded; far above a day's movements
     _counted[f.ident] = true;
-    ++_arrivals;
+    if (toLhr) ++_arrivals; else ++_departures;
 
     String airline = f.ident_iata.length() >= 2 ? f.ident_iata.substring(0, 2) : f.operator_icao;
     airline.trim();

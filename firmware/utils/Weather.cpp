@@ -1,0 +1,137 @@
+#include "utils/Weather.h"
+#include "utils/TelnetLogger.h"
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <math.h>
+
+namespace
+{
+    bool allDigits(const char *s, int n)
+    {
+        for (int i = 0; i < n; ++i)
+            if (!isdigit((unsigned char)s[i])) return false;
+        return true;
+    }
+
+    // Wind group: dddffKT, dddffGggKT, VRBffKT (ff may be three digits).
+    bool parseWind(const char *t, Metar &m)
+    {
+        const size_t n = strlen(t);
+        if (n < 7 || strcmp(t + n - 2, "KT") != 0) return false;
+        if (strncmp(t, "VRB", 3) == 0) m.windDir = -1;
+        else if (allDigits(t, 3))      m.windDir = (t[0] - '0') * 100 + (t[1] - '0') * 10 + (t[2] - '0');
+        else return false;
+        const char *p = t + 3;
+        m.windKt = atoi(p);
+        const char *g = strchr(p, 'G');
+        m.gustKt = g ? atoi(g + 1) : 0;
+        if (m.windKt == 0) m.windDir = -1;   // calm
+        return true;
+    }
+
+    // Present-weather group: optional +/-/VC, then a known descriptor or phenomenon.
+    bool isWeather(const char *t)
+    {
+        static const char *const kCodes[] = {"DZ", "RA", "SN", "SG", "PL", "GR", "GS", "FG", "BR",
+                                             "HZ", "FU", "TS", "SH", "FZ", "SQ", "DS", "SS", "UP"};
+        const char *p = t;
+        if (*p == '+' || *p == '-') ++p;
+        if (strncmp(p, "VC", 2) == 0) p += 2;
+        if (strlen(p) < 2 || strlen(p) > 6) return false;
+        for (const char *c : kCodes)
+            if (strncmp(p, c, 2) == 0) return true;
+        return false;
+    }
+}
+
+bool Weather::parse(const char *raw, Metar &m)
+{
+    m = Metar();
+    strlcpy(m.raw, raw, sizeof(m.raw));
+    char buf[sizeof(m.raw)];
+    strlcpy(buf, raw, sizeof(buf));
+
+    bool haveWind = false;
+    char *save = nullptr;
+    for (char *t = strtok_r(buf, " \r\n", &save); t; t = strtok_r(nullptr, " \r\n", &save))
+    {
+        if (!haveWind) { haveWind = parseWind(t, m); continue; }
+        if (strcmp(t, "CAVOK") == 0) { m.cavok = true; m.visM = 9999; continue; }
+        if (m.visM < 0 && strlen(t) == 4 && allDigits(t, 4)) { m.visM = atoi(t); continue; }
+        if (!m.wx[0] && isWeather(t)) { strlcpy(m.wx, t, sizeof(m.wx)); continue; }
+        // Temperature/dew point: "14/12", "M01/M03".
+        const char *slash = strchr(t, '/');
+        if (slash && m.tempC == -99 && (isdigit((unsigned char)t[0]) || t[0] == 'M') &&
+            (slash - t == 2 || slash - t == 3))
+        {
+            const bool neg = t[0] == 'M';
+            m.tempC = atoi(t + (neg ? 1 : 0)) * (neg ? -1 : 1);
+        }
+        if (strncmp(t, "RMK", 3) == 0) break;
+    }
+    m.valid = haveWind;
+    return m.valid;
+}
+
+bool Weather::fetch(Metar &out)
+{
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    if (!http.begin(client, "https://aviationweather.gov/api/data/metar?ids=EGLL&format=raw"))
+        return false;
+    http.setTimeout(6000);
+    http.useHTTP10(true);
+    http.setUserAgent("Glideslope/1.0 (+https://github.com/SamHoughton/Glideslope)");
+    const int code = http.GET();
+    if (code != 200)
+    {
+        Log.printf("Weather: HTTP %d\n", code);
+        http.end();
+        return false;
+    }
+    String body = http.getString();
+    http.end();
+    body.trim();
+    if (!parse(body.c_str(), out))
+    {
+        Log.printf("Weather: could not read \"%s\"\n", body.c_str());
+        return false;
+    }
+    return true;
+}
+
+void Weather::line(const Metar &m, char *out, size_t len, int maxChars)
+{
+    if (!m.valid) { if (len) out[0] = '\0'; return; }
+    char wind[16], vis[8] = "", temp[8] = "";
+    if (m.windKt == 0)          snprintf(wind, sizeof(wind), "CALM");
+    else if (m.windDir < 0)     snprintf(wind, sizeof(wind), "VRB/%02d", m.windKt);
+    else                        snprintf(wind, sizeof(wind), "%03d/%02d", m.windDir, m.windKt);
+    if (m.gustKt) snprintf(wind + strlen(wind), sizeof(wind) - strlen(wind), "G%d", m.gustKt);
+
+    if (m.cavok)              snprintf(vis, sizeof(vis), "CAVOK");
+    else if (m.visM >= 9999)  snprintf(vis, sizeof(vis), "10KM+");
+    else if (m.visM >= 5000)  snprintf(vis, sizeof(vis), "%dKM", m.visM / 1000);
+    else if (m.visM >= 0)     snprintf(vis, sizeof(vis), "%dM", m.visM);
+    if (m.tempC != -99) snprintf(temp, sizeof(temp), "%dC", m.tempC);
+
+    // Most detail first; drop the weather group, then the temperature, to fit.
+    for (int level = 0; level < 3; ++level)
+    {
+        snprintf(out, len, "%s%s%s%s%s%s%s", wind,
+                 vis[0] ? " " : "", vis,
+                 (level == 0 && m.wx[0]) ? " " : "", level == 0 ? m.wx : "",
+                 (level < 2 && temp[0]) ? " " : "", level < 2 ? temp : "");
+        if ((int)strlen(out) <= maxChars) return;
+    }
+}
+
+void Weather::components(const Metar &m, int runwayDeg, int &crossKt, int &tailKt)
+{
+    crossKt = tailKt = 0;
+    if (!m.valid || m.windDir < 0) return;
+    const float a = (m.windDir - runwayDeg) * (float)M_PI / 180.0f;
+    crossKt = (int)lroundf(fabsf(sinf(a)) * m.windKt);
+    tailKt  = (int)lroundf(-cosf(a) * m.windKt);
+}

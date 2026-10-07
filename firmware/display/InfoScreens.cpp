@@ -50,8 +50,8 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
     char v[16];
     // Rows 11 px apart; go-arounds get a row once there has been one.
     const int rowY[4] = {15, 26, 37, 48};
-    c.text(4, rowY[0], "ARRIVALS", kLabel);
-    snprintf(v, sizeof(v), "%d", stats.arrivals());
+    c.text(4, rowY[0], "ARR / DEP", kLabel);
+    snprintf(v, sizeof(v), "%d / %d", stats.arrivals(), stats.departures());
     c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(v), rowY[0], v, kValue);
 
     int n = 0;
@@ -79,7 +79,7 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         c.set(x - i, 59, FrameCanvas::scale(kValue, 1.0f - i / 6.0f));
 }
 
-void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs)
+void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weather)
 {
     c.clear();
     struct tm lt;
@@ -96,6 +96,67 @@ void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs)
     char date[16];
     snprintf(date, sizeof(date), "%d %s", lt.tm_mday, kMonths[lt.tm_mon]);
     centred(c, 44, date, kDim);
+    if (weather && weather[0]) centred(c, 55, weather, Rgb{40, 46, 58});
+}
+
+void InfoScreens::renderArrivals(FrameCanvas &c, const Arrival *rows, int n, const char *runway,
+                                 const char *weather, unsigned long nowMs)
+{
+    c.clear();
+    char title[24];
+    if (runway && runway[0]) snprintf(title, sizeof(title), "ARRIVALS %s", runway);
+    else                     snprintf(title, sizeof(title), "ARRIVALS");
+    centred(c, 2, title, kTitle);
+    for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 11, kDim);
+
+    if (n == 0) centred(c, 28, "NONE INBOUND", kDim);
+    for (int i = 0; i < n && i < kMaxArrivals; ++i)
+    {
+        const Arrival &a = rows[i];
+        const int y = 14 + i * 10;
+        c.fillRect(2, y, 2, 7, a.accent);                       // airline colour tab
+        c.text(6, y, a.ident, Rgb{235, 240, 245});
+        c.text(54, y, a.type, kLabel);
+
+        // Count down between fetches.
+        char eta[12];
+        float left = a.etaSec - (nowMs - a.dataMs) / 1000.0f;
+        if (isnan(left)) snprintf(eta, sizeof(eta), "-");
+        else if (left < 60) snprintf(eta, sizeof(eta), a.estimate ? "~1 MIN" : "<1 MIN");
+        else snprintf(eta, sizeof(eta), "%s%d MIN", a.estimate ? "~" : "", (int)lroundf(left / 60.0f));
+        c.text(FrameCanvas::W - 3 - FrameCanvas::textWidth(eta), y, eta,
+               !a.estimate && left < 120 ? kValue : Rgb{200, 205, 215});
+    }
+
+    // Weather along the bottom: what the arrivals are landing into.
+    if (weather && weather[0])
+    {
+        for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 54, kDim);
+        centred(c, 56, weather, Rgb{120, 160, 190});
+    }
+}
+
+void InfoScreens::renderAlert(FrameCanvas &c, const char *code, const char *meaning, const char *ident,
+                              const char *detail, uint32_t tMs)
+{
+    c.clear();
+    const bool on = (tMs / 300) % 2 == 0;
+    const Rgb red{255, 40, 30};
+    // Flashing red frame, two pixels thick.
+    const Rgb frame = on ? red : Rgb{90, 10, 8};
+    for (int i = 0; i < 2; ++i)
+    {
+        for (int x = 0; x < FrameCanvas::W; ++x) { c.set(x, i, frame); c.set(x, FrameCanvas::H - 1 - i, frame); }
+        for (int y = 0; y < FrameCanvas::H; ++y) { c.set(i, y, frame); c.set(FrameCanvas::W - 1 - i, y, frame); }
+    }
+    char sq[16];
+    snprintf(sq, sizeof(sq), "SQUAWK %s", code);
+    centred(c, 5, sq, on ? Rgb{255, 255, 255} : red);
+    const int w = FrameCanvas::textWidth(meaning, 2, 11);
+    if (w <= FrameCanvas::W - 6) c.text((FrameCanvas::W - w) / 2, 16, meaning, red, 2, 11);
+    else                         centred(c, 20, meaning, red);
+    centred(c, 36, ident, kTitle);
+    centred(c, 48, detail, Rgb{200, 205, 215});
 }
 
 void InfoScreens::renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs)

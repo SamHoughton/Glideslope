@@ -11,6 +11,8 @@ WebServer library to avoid framework include-path issues.
 #include "adapters/NeoMatrixDisplay.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <Update.h>
+#include <esp_task_wdt.h>
 #include <vector>
 
 WebConfig g_webConfig;
@@ -78,11 +80,16 @@ void WebConfig::loop()
     // ── Read POST body (Content-Length driven) ─────────────────────────────
     if (r.method == "POST")
     {
-        int clIdx = raw.indexOf("Content-Length: ");
+        String lower = raw;
+        lower.toLowerCase();
+        int clIdx = lower.indexOf("content-length: ");
         if (clIdx >= 0)
         {
             int clEnd = raw.indexOf("\r\n", clIdx + 16);
             int bodyLen = raw.substring(clIdx + 16, clEnd).toInt();
+            r.contentLength = bodyLen;
+            // A firmware image is streamed straight to flash by its handler.
+            if (r.path == "/api/update") bodyLen = 0;
             if (bodyLen > 0 && bodyLen < 8192)
             {
                 r.body.reserve(bodyLen + 1);
@@ -110,6 +117,10 @@ void WebConfig::loop()
     else if (r.path == "/api/display"       && r.method == "GET")  handleGetDisplay(client);
     else if (r.path == "/api/frame"         && r.method == "GET")  handleGetFrame(client);
     else if (r.path == "/api/status"        && r.method == "GET")  handleGetStatus(client);
+    else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength);
+    else if (r.path == "/api/demo/takeoff"  && r.method == "POST") { requestTakeoffDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/squawk"   && r.method == "POST") { requestAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/arrivals" && r.method == "POST") { requestScreenPreview(3, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/sprites"  && r.method == "POST") { requestSpriteGallery(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/map"      && r.method == "POST") { requestMapPreview(30000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -140,6 +151,7 @@ void WebConfig::sendHttp(WiFiClient &c, int code,
 {
     const char *reason = (code == 200) ? "OK"
                        : (code == 400) ? "Bad Request"
+                       : (code == 500) ? "Internal Server Error"
                        :                 "Not Found";
     c.printf("HTTP/1.1 %d %s\r\n"
              "Content-Type: %s\r\n"
@@ -402,6 +414,8 @@ void WebConfig::handleGetDisplay(WiFiClient &c)
 void WebConfig::handleGetStatus(WiFiClient &c)
 {
     JsonDocument doc;
+    doc["version"]        = GLIDESLOPE_VERSION;
+    doc["built"]          = __DATE__ " " __TIME__;
     doc["uptime_s"]       = millis() / 1000;
     doc["last_reset"]     = StageTrace::lastReset();
     doc["heap_free"]      = ESP.getFreeHeap();
@@ -409,9 +423,110 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["heap_min_free"]  = ESP.getMinFreeHeap();
     doc["display_frames"] = displayFramesDrawn();
     doc["web_requests"]   = (uint32_t)_requests;
+    if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
+    doc["metar"]          = _metar;
+    if (_displayMutex) xSemaphoreGive(_displayMutex);
     String out;
     serializeJson(doc, out);
     sendHttp(c, 200, "application/json", out);
+}
+
+void WebConfig::setWeather(const char *metar)
+{
+    if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
+    _metar = metar;
+    if (_displayMutex) xSemaphoreGive(_displayMutex);
+}
+
+// Over-the-air update: the request body is a firmware .bin (the same file
+// PlatformIO builds, or firmware.bin from a GitHub release). It is written to
+// the spare app slot and the board restarts into it; anything that fails
+// leaves the running firmware untouched.
+void WebConfig::handleUpdate(WiFiClient &c, int length)
+{
+    auto fail = [&](const char *why) {
+        Log.printf("Update: failed: %s\n", why);
+        // Read (and discard) the rest of the upload first: closing with unread
+        // data resets the connection and the browser never sees the reason.
+        uint8_t sink[512];
+        const unsigned long t0 = millis();
+        while (c.connected() && millis() - t0 < 20000)
+        {
+            esp_task_wdt_reset();
+            if (c.available()) { c.read(sink, sizeof(sink)); continue; }
+            delay(5);
+            if (!c.available()) { delay(50); if (!c.available()) break; }
+        }
+        String body = String("{\"ok\":false,\"error\":\"") + why + "\"}";
+        sendHttp(c, 400, "application/json", body);
+    };
+    if (length <= 0) { fail("empty upload"); return; }
+    if ((uint32_t)length > ESP.getFreeSketchSpace()) { fail("file too large for the app slot"); return; }
+    if (!Update.begin(length, U_FLASH)) { fail(Update.errorString()); return; }
+    Log.printf("Update: receiving %d bytes\n", length);
+    requestPanelMessage("UPDATING");
+
+    uint8_t buf[1024];
+    int got = 0, lastTenth = -1;
+    unsigned long lastData = millis();
+    while (got < length)
+    {
+        esp_task_wdt_reset();
+        const int avail = c.available();
+        // The first read must hold the image header (checked below).
+        if (avail <= 0 || (got == 0 && avail < 36 && length >= 36))
+        {
+            if (!c.connected() || millis() - lastData > 10000) break;
+            delay(2);
+            continue;
+        }
+        const int n = c.read(buf, min((int)sizeof(buf), min(avail, length - got)));
+        if (n <= 0) continue;
+        if (got == 0)
+        {
+            // ESP32 image: magic 0xE9, chip id at byte 12 (9 = ESP32-S3), and an
+            // application (not a bootloader or merged image): the app
+            // description's magic word 0xABCD5432 at byte 32.
+            const uint16_t chip = buf[12] | (buf[13] << 8);
+            const uint32_t appMagic = buf[32] | (buf[33] << 8) | (buf[34] << 16) | ((uint32_t)buf[35] << 24);
+            const char *why = n < 36 || buf[0] != 0xE9 ? "not a firmware image"
+                            : chip != 9                ? "firmware is for a different chip"
+                            : appMagic != 0xABCD5432   ? "not an app image (use firmware.bin, not the full image)"
+                            : nullptr;
+            if (why)
+            {
+                Update.abort();
+                fail(why);
+                return;
+            }
+        }
+        if (Update.write(buf, n) != (size_t)n)
+        {
+            Update.abort();
+            fail(Update.errorString());
+            return;
+        }
+        got += n;
+        lastData = millis();
+        const int tenth = (int)((int64_t)got * 10 / length);
+        if (tenth != lastTenth)
+        {
+            lastTenth = tenth;
+            char msg[16];
+            snprintf(msg, sizeof(msg), "UPDATING %d%%", tenth * 10);
+            requestPanelMessage(msg);
+        }
+    }
+    if (got != length) { Update.abort(); fail("upload interrupted"); return; }
+    if (!Update.end(true)) { fail(Update.errorString()); return; }
+
+    Log.println("Update: installed, restarting");
+    requestPanelMessage("RESTARTING");
+    sendHttp(c, 200, "application/json", "{\"ok\":true}");
+    c.flush();
+    c.stop();
+    delay(500);
+    ESP.restart();
 }
 
 // Raw 128x64 RGB565 frame currently on the panel (little-endian, row-major).
@@ -530,6 +645,9 @@ const char kHtmlPage[] =
 "<button data-demo='landing'>Replay landing</button>"
 "<button data-demo='rare'>Rare spot</button>"
 "<button data-demo='goaround'>Go-around</button>"
+"<button data-demo='takeoff'>Take-off</button>"
+"<button data-demo='squawk'>Emergency squawk</button>"
+"<button data-demo='arrivals'>Arrivals board (10 s)</button>"
 "<button data-demo='sprites'>Aircraft sprites (10 s)</button>"
 "<button data-demo='splash'>Scanning screen (10 s)</button>"
 "<button data-demo='map'>London map (30 s)</button>"
@@ -620,6 +738,14 @@ const char kHtmlPage[] =
 "</details>"
 "</div>"
 
+"<div class='card'>"
+"<h2>Firmware</h2>"
+"<div id='ver' class='f'><small>&nbsp;</small></div>"
+"<div class='f'><label for='fw'>Install an update <small>(firmware.bin from a release or your own build)</small></label>"
+"<input type='file' id='fw' accept='.bin'></div>"
+"<div class='btns'><button id='upd'>Install update</button><span id='ust' style='align-self:center;color:#8b949e;font-size:13px'></span></div>"
+"</div>"
+
 "<div class='bar'><button class='go' id='save'>Save</button><span id='st' role='status'></span></div>"
 "</div>"
 "</div>"
@@ -705,6 +831,18 @@ const char kHtmlPage[] =
 "}).catch(function(){}).finally(function(){setTimeout(pollNow,3000);});"
 "}"
 
+"fetch('/api/status').then(function(r){return r.json();}).then(function(s){"
+"var v=$('ver').firstChild;v.textContent='Running '+s.version+' (built '+s.built+')'+(s.metar?' · '+s.metar:'');});"
+"$('upd').addEventListener('click',function(){var f=$('fw').files[0],u=$('ust');"
+"if(!f){u.textContent='Choose a .bin file first';return;}"
+"if(!confirm('Install '+f.name+' and restart the board?'))return;"
+"var x=new XMLHttpRequest();x.open('POST','/api/update');"
+"x.upload.onprogress=function(e){if(e.lengthComputable)u.textContent='Uploading '+Math.round(e.loaded*100/e.total)+'%';};"
+"x.onload=function(){var j={};try{j=JSON.parse(x.responseText);}catch(e){}"
+"if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}"
+"else u.textContent='Failed: '+(j.error||x.status);};"
+"x.onerror=function(){u.textContent='Upload failed (connection lost)';};"
+"x.setRequestHeader('Content-Type','application/octet-stream');x.send(f);});"
 "load();poll();pollFrame();pollNow();"
 "</script>"
 "</body>"

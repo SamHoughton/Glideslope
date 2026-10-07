@@ -31,7 +31,13 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
     const int code = http.GET();
     if (code != 200)
     {
-        Log.printf("AdsbAggregatorFetcher: %s HTTP %d\n", name, code);
+        if (code == 429)
+        {
+            _restUntil[i] = millis() + kBackoffMs;
+            Log.printf("AdsbAggregatorFetcher: %s rate-limited, resting it for 60 s\n", name);
+        }
+        else
+            Log.printf("AdsbAggregatorFetcher: %s HTTP %d\n", name, code);
         http.end();
         return false;
     }

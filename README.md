@@ -33,26 +33,39 @@ the code (`SZS`) because logos are not part of this repository; see below.
 - **Go-arounds**: an aircraft on final that climbs away instead of landing
   gets its own scene and a flashing `GO AROUND 27L` card, and is counted on
   the stats screen.
+- **Take-offs**: a Heathrow departure that has just left the ground gets the
+  same skyline scene the other way round: it rolls, rotates and climbs out
+  under `DEPARTED 27R` and `BA117 TO JFK`.
+- **Emergency squawks**: an aircraft in range squawking 7700 (emergency),
+  7600 (radio failure) or 7500 (hijack) takes over the panel for a few seconds
+  with a flashing red alert, and shows red on the map. It must be seen in two
+  fetches running, so a single garbled reply doesn't trigger it.
 - **Landing traffic first**: aircraft lined up on a Heathrow runway are picked
   ahead of everything else, closest to touchdown first, and a card on final is
   held until its landing has played.
 - **London map** between approaches: the Thames, reservoirs, M25 and
   Heathrow's runways (pre-rendered into flash), with every tracked aircraft as
-  a dot in its airline colour trailing a dotted track; the one on final
-  blinks. A home marker can be set in the web page.
+  a small plane icon pointing the way it is flying, in its airline colour; the
+  one on final blinks. A home marker can be set in the web page.
+- **Arrivals board** after the map: the next four arrivals with their type and
+  minutes to touchdown (`~` while still a rough guess, before they join
+  final), and Heathrow's weather along the bottom, e.g. `310/04 7KM RA 14C`
+  (wind, visibility, rain, temperature).
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
-- **Today's stats** between map views: arrivals, busiest airline, rarest type.
+- **Today's stats** between map views: arrivals and departures, busiest
+  airline, rarest type, go-arounds.
 - **Runway in use**, e.g. `27L UNTIL 15:00` (westerly ops alternate at 15:00).
-- **Quiet hours**: a dim clock overnight when there's no traffic.
-- **Board button** cycles Auto / Map / Stats.
+- **Quiet hours**: a dim clock (with the weather) overnight when there's no
+  traffic.
+- **Board button** cycles Auto / Map / Arrivals / Stats.
 - **Scanning screen** when nothing is being tracked.
 
   ![Scanning screen](docs/scanning.gif)
 - **Web page** on the board: a live mirror of the panel, animation previews,
   brightness, night dimming (UK time, GMT/BST automatic), location and data
-  source settings, a log and a health endpoint.
+  source settings, firmware updates over Wi-Fi, a log and a health endpoint.
 
 Nine aircraft sprites are chosen by ICAO type code: narrowbody, widebody twin,
 A380, 747, regional jet, turboprop, business jet, helicopter and light aircraft.
@@ -73,6 +86,19 @@ Other ESP32 boards with a HUB75 panel should work through the original
 `esp32dev` environment, but only the HD-WF2 is tested.
 
 ## Getting started
+
+### Without building anything
+
+1. Download `glideslope-<version>-full.bin` from the latest
+   [release](../../releases).
+2. Put the board into download mode (step 3 below) and write the file at
+   address `0x0`, either from Chrome or Edge with
+   [esptool-js](https://espressif.github.io/esptool-js/) (Connect, then
+   Program at flash address 0x0) or with
+   `esptool --chip esp32s3 write-flash 0x0 glideslope-<version>-full.bin`.
+3. Carry on from step 5 below.
+
+### Building it yourself
 
 1. Install [PlatformIO](https://platformio.org/) (`pip install platformio`).
 2. Copy the example config files and fill in what you need. All of them can
@@ -97,11 +123,28 @@ Other ESP32 boards with a HUB75 panel should work through the original
    ```
 
    After the first flash, uploads work over USB without the bridge.
+
+   If you flash `firmware.bin` with esptool by hand rather than with
+   `pio ... -t upload`, also write `boot_app0.bin` at `0xe000` (PlatformIO
+   does this for you); otherwise a board that was last updated over Wi-Fi
+   keeps booting the older copy.
 5. Join the `Glideslope-Setup` Wi-Fi network and enter your home Wi-Fi.
 6. Open the board's address in a browser. Positions come from the community
    feeds out of the box; optionally add an OpenSky API client ID and secret
    (free from [opensky-network.org](https://opensky-network.org/)) as the
    last-resort backup.
+
+## Updating
+
+Open the board's web page, choose `firmware.bin` (from a
+[release](../../releases), or `firmware/.pio/build/hd_wf2/firmware.bin` from
+your own build) under **Firmware**, and press **Install update**. It takes
+about 10 seconds and the board restarts into the new version; if anything
+goes wrong the old one keeps running. The web page has no password, so this
+is only safe on a network you trust (as is the rest of the page).
+
+Releases are built by GitHub Actions: pushing a tag such as `v1.0.0` builds
+the firmware and attaches `firmware.bin` and the full image to a release.
 
 ## Airline logos
 
@@ -141,6 +184,8 @@ Aircraft positions, first to answer wins:
 3. [OpenSky Network](https://opensky-network.org/), every 30 s.
 
 - [hexdb.io](https://hexdb.io/) for routes, registrations and aircraft types.
+- [aviationweather.gov](https://aviationweather.gov/) (NOAA) for Heathrow's
+  METAR, every 10 minutes.
 - FlightAware AeroAPI, optional and paid.
 
 ## Credits and licence

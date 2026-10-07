@@ -50,6 +50,9 @@ static constexpr float         kGoAroundClimbFpm = 500.0f;           // climbing
 static constexpr float         kGoAroundMaxFt   = 5000.0f;           // ... below this, after final
 static constexpr unsigned long kLandedSilentMs  = 15000;             // gone from the data this long at the threshold = landed
 static constexpr float         kLandedReportFt  = 200.0f;            // or reported this low near the threshold
+static constexpr unsigned long kAmbientArrivalsMs = 8000;            // ... the arrivals board ...
+static constexpr unsigned long kAlertMs         = 12000;             // emergency-squawk alert on screen
+static constexpr float         kFreshDepartureFt = 4000.0f;          // take-off scene below this
 static constexpr uint32_t      kAnimFrameMs     = 20;                // 50 fps during the fly-across
 static constexpr uint32_t      kCardFrameMs     = 50;                // 20 fps otherwise
 
@@ -86,6 +89,21 @@ static volatile uint8_t s_replayRequest = 0;
 static volatile bool s_landingReplay = false;
 static volatile bool s_rareDemo = false;
 static volatile bool s_goAroundDemo = false;
+static volatile bool s_takeoffDemo = false;
+static volatile bool s_alertDemo = false;
+
+void requestTakeoffDemo() { s_takeoffDemo = true; }
+
+void requestAlertDemo() { s_alertDemo = true; }
+
+static char          s_panelMsg[20] = "";
+static volatile bool s_panelMsgPending = false;
+
+void requestPanelMessage(const char *text)
+{
+    strlcpy(s_panelMsg, text, sizeof(s_panelMsg));
+    s_panelMsgPending = true;
+}
 
 void requestGoAroundDemo() { s_goAroundDemo = true; }
 
@@ -299,6 +317,36 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
         _nextApproach.accent = CardRenderer::accentFor(_nextApproach.flight);
 }
 
+void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
+{
+    Lock l(_lock);
+    _arrivalCount = min(n, InfoScreens::kMaxArrivals);
+    for (int i = 0; i < _arrivalCount; ++i) _arrivals[i] = rows[i];
+}
+
+void NeoMatrixDisplay::setWeather(const char *line)
+{
+    Lock l(_lock);
+    strlcpy(_weather, line ? line : "", sizeof(_weather));
+}
+
+void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail)
+{
+    Lock l(_lock);
+    strlcpy(_alertCode, code, sizeof(_alertCode));
+    strlcpy(_alertMeaning, meaning, sizeof(_alertMeaning));
+    strlcpy(_alertIdent, ident, sizeof(_alertIdent));
+    strlcpy(_alertDetail, detail, sizeof(_alertDetail));
+    _alertStartMs = millis();
+    _alertActive  = true;
+}
+
+bool NeoMatrixDisplay::isFreshDeparture(const FlightInfo &f) const
+{
+    if (isnan(f.baro_altitude) || f.baro_altitude > kFreshDepartureFt) return false;
+    return ApproachModel::evaluate(f).phase == ApproachStatus::Departed;
+}
+
 bool NeoMatrixDisplay::currentFlight(FlightInfo &out)
 {
     Lock l(_lock);
@@ -364,12 +412,41 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     }
     s_splashUntil = 0;
 
+    if (s_panelMsgPending)
+    {
+        s_panelMsgPending = false;
+        _message        = s_panelMsg;
+        _messageUntilMs = now + kMessageMs;
+    }
     if (_messageUntilMs && (long)(now - _messageUntilMs) < 0)
     {
         renderMessage(_message);
         return kCardFrameMs;
     }
     _messageUntilMs = 0;
+
+    // Emergency squawk: takes over the panel for a few seconds.
+    if (s_alertDemo)
+    {
+        s_alertDemo = false;
+        strlcpy(_alertCode, "7700", sizeof(_alertCode));
+        strlcpy(_alertMeaning, "EMERGENCY", sizeof(_alertMeaning));
+        strlcpy(_alertIdent, "BA117 DEMO", sizeof(_alertIdent));
+        strlcpy(_alertDetail, "4200FT 12KM E", sizeof(_alertDetail));
+        _alertStartMs = now;
+        _alertActive  = true;
+    }
+    if (_alertActive)
+    {
+        const uint32_t t = now - _alertStartMs;
+        if (t < kAlertMs)
+        {
+            InfoScreens::renderAlert(g_workFrame, _alertCode, _alertMeaning, _alertIdent, _alertDetail, t);
+            present();
+            return kCardFrameMs;
+        }
+        _alertActive = false;
+    }
 
     // Web demo: the rare-spot flourish, then a fly-across onto the current card.
     if (s_rareDemo && _hasCurrent && !_inTransition)
@@ -539,22 +616,33 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
 {
     // Web previews, then the button-selected mode.
     if (s_screenPreview == 1) { InfoScreens::renderStats(g_workFrame, _stats, now); return; }
-    if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now); return; }
+    if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now, _weather); return; }
+    if (s_screenPreview == 3 || _mode == Mode::Arrivals)
+    {
+        InfoScreens::renderArrivals(g_workFrame, _arrivals, _arrivalCount, _runwayInUse, _weather, now);
+        return;
+    }
     if (_mode == Mode::Stats) { InfoScreens::renderStats(g_workFrame, _stats, now); return; }
 
     if (_traffic.empty())
     {
         // Quiet hours: a dim clock overnight instead of the scanning screen.
-        if (isNightActive() && _mode == Mode::Auto) InfoScreens::renderClock(g_workFrame, now);
+        if (isNightActive() && _mode == Mode::Auto) InfoScreens::renderClock(g_workFrame, now, _weather);
         else                                        BootSplash::render(g_workFrame, now, _runwayInUse);
         return;
     }
-    // Auto: the map, with the stats screen for a few seconds in each cycle.
-    if (_mode == Mode::Auto &&
-        (now - _ambientSinceMs) % (kAmbientMapMs + kAmbientStatsMs) >= kAmbientMapMs)
+    // Auto: the map, then the arrivals board (when there are any), then the
+    // stats screen, round and round.
+    if (_mode == Mode::Auto)
     {
-        InfoScreens::renderStats(g_workFrame, _stats, now);
-        return;
+        const unsigned long arrMs = _arrivalCount ? kAmbientArrivalsMs : 0;
+        const unsigned long t = (now - _ambientSinceMs) % (kAmbientMapMs + arrMs + kAmbientStatsMs);
+        if (t >= kAmbientMapMs + arrMs) { InfoScreens::renderStats(g_workFrame, _stats, now); return; }
+        if (t >= kAmbientMapMs)
+        {
+            InfoScreens::renderArrivals(g_workFrame, _arrivals, _arrivalCount, _runwayInUse, _weather, now);
+            return;
+        }
     }
     const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
     MapRenderer::render(g_workFrame, _traffic, now,
@@ -601,6 +689,15 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
         _flourishActive  = true;
         _flourishStartMs = now;
         Log.printf("Display: rare spot %s: %s %s\n", _current.flight.ident.c_str(), _flourishLine1, _flourishLine2);
+    }
+    // A departure just off the ground gets the take-off scene instead of the
+    // fly-across (renderLanding starts it on the next frame).
+    if (!_flourishActive && isFreshDeparture(_current.flight))
+    {
+        _inTransition = false;
+        Log.printf("Display: take-off scene for %s (%u still queued)\n",
+                   _current.flight.ident.c_str(), (unsigned)_queue.size());
+        return;
     }
     Log.printf("Display: fly-across to %s, %s, %s (%u still queued)\n",
                _current.flight.ident.c_str(),
@@ -691,17 +788,23 @@ void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, 
     if (onFinal && descending) e.finalMs = now;
 }
 
+void NeoMatrixDisplay::startScene(unsigned long now, LandingScene::Kind kind, bool demo)
+{
+    _sceneKind      = kind;
+    _landingDemo    = demo;
+    _landingActive  = true;
+    _landingStartMs = now;
+}
+
 void NeoMatrixDisplay::startLanding(unsigned long now, bool demo)
 {
-    _landingDemo = demo;
     if (!demo)
     {
         _current.landingPlayed = true;
         const time_t t = time(nullptr);
         _current.landedAt = t > 1600000000 ? t : 0;   // only if the clock has synced
     }
-    _landingActive  = true;
-    _landingStartMs = now;
+    startScene(now, LandingScene::Landing, demo);
     Log.printf("Display: %s touchdown on %s\n", _current.flight.ident.c_str(),
                _current.runway[0] ? _current.runway : "runway");
 }
@@ -719,9 +822,15 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
     {
         s_goAroundDemo = false;
         if (_hasCurrent && !_inTransition && !_landingActive)
+            startScene(now, LandingScene::GoAround, true);
+    }
+    if (s_takeoffDemo)
+    {
+        s_takeoffDemo = false;
+        if (_hasCurrent && !_inTransition && !_landingActive)
         {
-            _landingDemo = true; _landingIsGoAround = true;
-            _landingActive = true; _landingStartMs = now;
+            liveStatus(now);   // picks up the departure runway if there is one
+            startScene(now, LandingScene::Takeoff, true);
         }
     }
 
@@ -729,8 +838,18 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
     if (_hasCurrent && !_inTransition && !_landingActive && _current.goAroundAnimPending)
     {
         _current.goAroundAnimPending = false;
-        _landingDemo = false; _landingIsGoAround = true;
-        _landingActive = true; _landingStartMs = now;
+        startScene(now, LandingScene::GoAround, false);
+    }
+
+    // A departure just off the ground: the take-off scene, once.
+    if (_hasCurrent && !_inTransition && !_landingActive && !_current.takeoffPlayed &&
+        isFreshDeparture(_current.flight))
+    {
+        _current.takeoffPlayed = true;
+        liveStatus(now);
+        startScene(now, LandingScene::Takeoff, false);
+        Log.printf("Display: %s take-off from %s\n", _current.flight.ident.c_str(),
+                   _current.runway[0] ? _current.runway : "runway");
     }
 
     // Touchdown, confirmed by the data rather than predicted: at the threshold
@@ -755,21 +874,27 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
     if (t >= LandingScene::DURATION_MS)
     {
         _landingActive  = false;
-        if (!_landingDemo && !_landingIsGoAround)
-        {
+        if (!_landingDemo && _sceneKind == LandingScene::Landing)
             _current.landed = true;
-            _shownSinceMs   = now;   // give the LANDED card its full hold time
-        }
-        _landingIsGoAround = false;
+        if (!_landingDemo && _sceneKind != LandingScene::GoAround)
+            _shownSinceMs = now;   // give the card that follows its full hold time
+        _sceneKind = LandingScene::Landing;
         return false;
     }
     const FlightInfo &f = _current.flight;
     bool known = false;
     const AircraftSprites::Kind kind = AircraftSprites::classify(f.aircraft_code, known);
     const bool rightward = FlyAcross::pathFor(f.heading, f.vertical_rate, g_config.screen_facing).rightward;
+    // Second caption line: the flight, plus where it is going for a departure.
+    static char caption[24];
+    const String &id = f.ident_iata.length() ? f.ident_iata : f.ident;
+    const String &dest = f.destination.code_iata.length() ? f.destination.code_iata : f.destination.code_icao;
+    if (_sceneKind == LandingScene::Takeoff && dest.length() && dest != "LHR" && dest != "EGLL")
+        snprintf(caption, sizeof(caption), "%s TO %s", id.c_str(), dest.c_str());
+    else
+        snprintf(caption, sizeof(caption), "%s", id.c_str());
     LandingScene::render(g_workFrame, t, AircraftSprites::get(kind), _current.accent, !known,
-                         rightward, f.ident_iata.length() ? f.ident_iata : f.ident, _current.runway,
-                         _landingIsGoAround);
+                         rightward, caption, _current.runway, _sceneKind);
     present();
     return true;
 }
@@ -799,15 +924,17 @@ void NeoMatrixDisplay::applyPanelSettings()
     }
 }
 
-// The board's button cycles Auto -> Map -> Stats -> Auto.
+// The board's button cycles Auto -> Map -> Arrivals -> Stats -> Auto.
 void NeoMatrixDisplay::pollButton(unsigned long now)
 {
     const bool down = digitalRead(kButtonPin) == LOW;
     if (down && !_buttonDown && now - _buttonChangeMs > 60)
     {
-        _mode = _mode == Mode::Auto ? Mode::Map : _mode == Mode::Map ? Mode::Stats : Mode::Auto;
+        _mode = _mode == Mode::Auto ? Mode::Map : _mode == Mode::Map ? Mode::Arrivals
+              : _mode == Mode::Arrivals ? Mode::Stats : Mode::Auto;
         snprintf(_caption, sizeof(_caption), "%s",
-                 _mode == Mode::Auto ? "AUTO" : _mode == Mode::Map ? "MAP" : "STATS");
+                 _mode == Mode::Auto ? "AUTO" : _mode == Mode::Map ? "MAP"
+                 : _mode == Mode::Arrivals ? "ARRIVALS" : "STATS");
         _captionUntilMs = now + kCaptionMs;
         Log.printf("Display: button -> %s mode\n", _caption);
     }

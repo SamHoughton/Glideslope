@@ -9,6 +9,10 @@
 #include "models/StateVector.h"
 #include "models/FlightInfo.h"
 
+// "BAW487E" -> "BA487E" (IATA flight number from an airline call sign);
+// empty when the airline is unknown.
+String flightNumberFromCallsign(const String &callsign);
+
 struct CachedFlightEntry
 {
     FlightInfo       info;

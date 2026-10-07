@@ -31,6 +31,8 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/TelnetLogger.h"
 #include "utils/WebConfig.h"
 #include "utils/WifiProvisioner.h"
+#include "utils/Weather.h"
+#include "utils/GeoUtils.h"
 #include "config/RuntimeConfig.h"
 
 static OpenSkyFetcher             g_openSky;
@@ -56,6 +58,55 @@ static std::vector<FlightInfo> g_flights;
 static bool   g_wasNightSuppressed = false;  // tracks night-mode suppression for wake-up flush
 static String g_wifiSsid;                   // active SSID  (NVS > compile-time)
 static String g_wifiPass;                   // active password
+static Metar  g_metar;                      // Heathrow weather, refreshed every few minutes
+static unsigned long g_lastMetarMs = 0;
+static constexpr unsigned long kMetarEveryMs = 10UL * 60 * 1000;
+
+// Emergency squawks: 7500 unlawful interference, 7600 radio failure, 7700
+// general emergency. Returns the panel wording, or nullptr for any other code.
+static const char *squawkMeaning(const String &sq)
+{
+    if (sq == "7500") return "HIJACK";
+    if (sq == "7600") return "RADIO FAIL";
+    if (sq == "7700") return "EMERGENCY";
+    return nullptr;
+}
+
+// Raise the panel alert for an emergency squawk once it has been seen in two
+// fetches running (a single garbled reply is ignored), then not again for
+// that aircraft and code for 30 minutes.
+static void checkSquawks(const std::vector<StateVector> &states)
+{
+    static std::map<String, int>           streak;    // icao24+code -> fetches in a row
+    static std::map<String, unsigned long> alerted;   // icao24+code -> when alerted
+    const unsigned long now = millis();
+    std::map<String, int> seen;
+    for (const StateVector &s : states)
+    {
+        const char *meaning = squawkMeaning(s.squawk);
+        if (!meaning) continue;
+        const String key = s.icao24 + s.squawk;
+        seen[key] = streak.count(key) ? streak[key] + 1 : 1;
+        if (seen[key] < 2) continue;
+        auto a = alerted.find(key);
+        if (a != alerted.end() && now - a->second < 30UL * 60 * 1000) continue;
+        alerted[key] = now;
+
+        // "4200FT 12KM E": altitude, distance and direction from the centre.
+        char detail[24];
+        static const char *const kDirs[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+        const int dir = isnan(s.bearing_deg) ? -1 : ((int)lround(s.bearing_deg / 45.0)) % 8;
+        snprintf(detail, sizeof(detail), "%.0fFT %.0fKM %s",
+                 isnan(s.baro_altitude) ? 0.0 : s.baro_altitude * 3.28084,
+                 isnan(s.distance_km) ? 0.0 : s.distance_km, dir >= 0 ? kDirs[dir] : "");
+        const String ident = s.callsign.length() ? s.callsign : s.icao24;
+        Log.printf("SQUAWK %s (%s): %s, %s\n", s.squawk.c_str(), meaning, ident.c_str(), detail);
+        g_display.raiseAlert(s.squawk.c_str(), meaning, ident.c_str(), detail);
+    }
+    streak.swap(seen);
+    for (auto it = alerted.begin(); it != alerted.end(); )
+        it = now - it->second > 60UL * 60 * 1000 ? alerted.erase(it) : std::next(it);
+}
 
 // Map dot colour per airline (ICAO prefix of the call sign): the logo's accent,
 // worked out once per airline. Unknown airlines and GA get a neutral white.
@@ -92,7 +143,7 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
         p.lon     = s.lon;
         p.heading = s.heading;
         p.gsKt    = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
-        p.colour  = airlineColour(s.callsign);
+        p.colour  = squawkMeaning(s.squawk) ? Rgb{255, 40, 30} : airlineColour(s.callsign);
 
         FlightInfo f;   // just enough for the approach model
         f.lat = s.lat;  f.lon = s.lon;  f.heading = s.heading;
@@ -103,6 +154,69 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
         pts.push_back(p);
     }
     return pts;
+}
+
+// Arrivals board from every aircraft in range, not just the enriched ones
+// (with "nearest only" just one flight is looked up per fetch). On final the
+// ETA comes from the approach model. Further out, an aircraft counts as
+// inbound if its route says so or, without a route, if it is below 10,000 ft,
+// descending and pointing at Heathrow; its ETA is a rough guess.
+static void updateArrivals(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
+{
+    constexpr double kLhrLat = 51.4700, kLhrLon = -0.4543;
+    InfoScreens::Arrival rows[16];
+    int n = 0;
+    for (const StateVector &s : states)
+    {
+        if (n >= 16) break;
+        const FlightInfo *known = nullptr;
+        for (const FlightInfo &f : flights)
+            if (f.ident == s.callsign) { known = &f; break; }
+
+        FlightInfo f;
+        if (known) { f.origin = known->origin; f.destination = known->destination; }
+        f.lat = s.lat;  f.lon = s.lon;  f.heading = s.heading;
+        f.baro_altitude = isnan(s.baro_altitude) ? NAN : s.baro_altitude * 3.28084;
+        f.velocity      = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
+        f.vertical_rate = isnan(s.vertical_rate) ? NAN : s.vertical_rate * 196.85;
+        const ApproachStatus st = ApproachModel::evaluate(f);
+        const bool onFinal = st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing;
+
+        bool inbound = st.phase == ApproachStatus::Inbound;
+        if (!onFinal && !inbound && !known && !isnan(f.baro_altitude) && f.baro_altitude < 10000 &&
+            !isnan(f.vertical_rate) && f.vertical_rate < -300 && !isnan(f.heading))
+        {
+            const double toLhr = computeBearingDeg(s.lat, s.lon, kLhrLat, kLhrLon);
+            const double off = fabs(fmod(f.heading - toLhr + 540.0, 360.0) - 180.0);
+            inbound = off < 60;
+        }
+        if (!onFinal && !inbound) continue;
+
+        InfoScreens::Arrival &a = rows[n];
+        a = InfoScreens::Arrival();
+        String id = known && known->ident_iata.length() ? known->ident_iata : flightNumberFromCallsign(s.callsign);
+        if (!id.length()) id = s.callsign.length() ? s.callsign : s.icao24;
+        strlcpy(a.ident, id.c_str(), sizeof(a.ident));
+        const String &type = known && known->aircraft_code.length() ? known->aircraft_code : s.aircraft_type;
+        strlcpy(a.type, type.c_str(), sizeof(a.type));
+        a.accent = airlineColour(s.callsign);
+        a.dataMs = millis();
+        if (onFinal)
+            a.etaSec = st.etaSec;
+        else
+        {
+            a.estimate = true;
+            const double km = haversineKm(s.lat, s.lon, kLhrLat, kLhrLon);
+            const float gs = isnan(f.velocity) || f.velocity < 120 ? 200.0f : (float)f.velocity;
+            a.etaSec = km * 1000.0f / (gs * 0.514444f) * 1.3f + 120.0f;
+        }
+        if (isnan(a.etaSec)) continue;
+        ++n;
+    }
+    std::sort(rows, rows + n, [](const InfoScreens::Arrival &x, const InfoScreens::Arrival &y) {
+        return x.etaSec < y.etaSec;
+    });
+    g_display.setArrivals(rows, n);
 }
 
 void setup()
@@ -326,6 +440,8 @@ void loop()
         size_t enriched = g_fetcher->fetchFlights(g_states, g_flights);
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
+        checkSquawks(g_states);
+        updateArrivals(g_states, g_flights);
 
         static String lastIdents;
         String idents;
@@ -348,6 +464,26 @@ void loop()
         }
         (void)enriched;
         } // else (ensureWiFi)
+    }
+
+    // Heathrow weather for the arrivals board and the night clock.
+    if (WiFi.status() == WL_CONNECTED && millis() > 20000 &&
+        (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= kMetarEveryMs))
+    {
+        g_lastMetarMs = millis();
+        Metar m;
+        if (Weather::fetch(m))
+        {
+            const bool changed = strcmp(m.raw, g_metar.raw) != 0;
+            g_metar = m;
+            char line[24];
+            Weather::line(g_metar, line, sizeof(line));
+            g_display.setWeather(line);
+            g_webConfig.setWeather(g_metar.raw);
+            if (changed) Log.printf("Weather: %s -> \"%s\"\n", g_metar.raw, line);
+        }
+        else
+            g_lastMetarMs = millis() - kMetarEveryMs + 60000;   // retry in a minute
     }
 
     // The display task draws the panel; keep the web preview's flight data

@@ -1,0 +1,73 @@
+name: Build
+
+# Every push and pull request is built. Pushing a version tag (v1.2.0) also
+# publishes a GitHub release with ready-to-flash files:
+#   glideslope-<tag>-full.bin  first install over USB, written at 0x0
+#   firmware.bin               updates from the board's web page
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+
+      - name: Install PlatformIO and esptool
+        run: pip install platformio esptool
+
+      # The real config files are git-ignored; the examples hold safe defaults
+      # (Wi-Fi is set up from the Glideslope-Setup hotspot, keys on the web page).
+      - name: Default config
+        working-directory: firmware/config
+        run: |
+          for f in *.h.example; do [ -f "${f%.example}" ] || cp "$f" "${f%.example}"; done
+
+      - name: Build
+        working-directory: firmware
+        env:
+          PLATFORMIO_BUILD_FLAGS: -DGLIDESLOPE_VERSION_RAW=${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'dev' }}
+        run: pio run -e hd_wf2
+
+      - name: Merge a full flash image
+        working-directory: firmware/.pio/build/hd_wf2
+        run: |
+          NAME=glideslope-${{ github.ref_name }}-full.bin
+          NAME=${NAME//\//-}
+          esptool --chip esp32s3 merge-bin -o "$NAME" --flash-mode dio --flash-size 8MB \
+            0x0 bootloader.bin 0x8000 partitions.bin \
+            0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
+            0x10000 firmware.bin
+          echo "FULL=$NAME" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glideslope-firmware
+          path: |
+            firmware/.pio/build/hd_wf2/firmware.bin
+            firmware/.pio/build/hd_wf2/${{ env.FULL }}
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            firmware/.pio/build/hd_wf2/firmware.bin
+            firmware/.pio/build/hd_wf2/${{ env.FULL }}

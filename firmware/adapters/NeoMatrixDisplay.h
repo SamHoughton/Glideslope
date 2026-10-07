@@ -12,6 +12,8 @@
 #include "display/ApproachModel.h"
 #include "display/Traffic.h"
 #include "display/DailyStats.h"
+#include "display/InfoScreens.h"
+#include "display/LandingScene.h"
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
 // Mirror of what is currently on the panel; the web preview reads this.
@@ -30,7 +32,7 @@ void requestSplashPreview(uint32_t durationMs);
 // Show the London map for durationMs (preview). Safe from the web task.
 void requestMapPreview(uint32_t durationMs);
 
-// Preview an ambient screen (1 = stats, 2 = clock) for durationMs. Safe from the web task.
+// Preview an ambient screen (1 = stats, 2 = clock, 3 = arrivals) for durationMs. Safe from the web task.
 void requestScreenPreview(uint8_t which, uint32_t durationMs);
 
 // Replay the fly-across onto the current card. forceDirection: 0 = the
@@ -45,6 +47,15 @@ void requestGoAroundDemo();
 
 // Show the rare-spot flourish on the current card (demo).
 void requestRareSpotDemo();
+
+// Play the take-off scene for the current card (demo).
+void requestTakeoffDemo();
+
+// Show a sample emergency-squawk alert (demo).
+void requestAlertDemo();
+
+// Short status text on the panel for a few seconds (e.g. update progress). Safe from the web task.
+void requestPanelMessage(const char *text);
 
 /*
 Card flow: each fetch's flight list goes through displayFlights(). A flight
@@ -80,6 +91,15 @@ public:
     // Copy of the flight on screen, without its logo; false when none (scanning screen).
     bool currentFlight(FlightInfo &out);
 
+    // Arrivals board rows, soonest first (call once per fetch).
+    void setArrivals(const InfoScreens::Arrival *rows, int n);
+
+    // Heathrow weather line for the arrivals board and night clock ("" = none).
+    void setWeather(const char *line);
+
+    // Emergency squawk: takes over the panel for a few seconds. Safe from any task.
+    void raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail);
+
 private:
     struct Entry
     {
@@ -95,6 +115,7 @@ private:
         bool          goAround = false;    // card shows GO AROUND
         unsigned long goAroundMs = 0;
         bool          goAroundAnimPending = false;
+        bool          takeoffPlayed = false;   // departure scene shown
         unsigned long altMs = 0;           // when shownAltFt was last updated
     };
 
@@ -124,7 +145,7 @@ private:
     TrafficTracker       _traffic;               // guarded by _lock
 
     // Button-selected mode (display task only)
-    enum class Mode : uint8_t { Auto, Map, Stats };
+    enum class Mode : uint8_t { Auto, Map, Arrivals, Stats };
     Mode                 _mode = Mode::Auto;
     bool                 _buttonDown = false;
     unsigned long        _buttonChangeMs = 0;
@@ -137,10 +158,18 @@ private:
     char                 _flourishLine1[20] = "", _flourishLine2[20] = "";
 
     DailyStats           _stats;                  // guarded by _lock
+    InfoScreens::Arrival _arrivals[InfoScreens::kMaxArrivals];   // guarded by _lock
+    int                  _arrivalCount = 0;
+    char                 _weather[24] = "";       // guarded by _lock
+
+    // Emergency-squawk alert (guarded by _lock)
+    char                 _alertCode[6] = "", _alertMeaning[12] = "", _alertIdent[12] = "", _alertDetail[24] = "";
+    unsigned long        _alertStartMs = 0;
+    bool                 _alertActive = false;
 
     bool                 _landingActive  = false;
     bool                 _landingDemo    = false;
-    bool                 _landingIsGoAround = false;
+    LandingScene::Kind   _sceneKind = LandingScene::Landing;
     unsigned long        _landingStartMs = 0;
 
     // Message override (guarded by _lock)
@@ -164,6 +193,8 @@ private:
     void noteApproachProgress(Entry &e, const ApproachStatus &st, double prevAlt, unsigned long now);
     void startLanding(unsigned long now, bool demo);   // demo: replay only, card state unchanged
     bool renderLanding(unsigned long now);
+    void startScene(unsigned long now, LandingScene::Kind kind, bool demo);
+    bool isFreshDeparture(const FlightInfo &f) const;
     void renderMessage(const String &message);
     void applyPanelSettings();
     bool renderSpriteGallery();

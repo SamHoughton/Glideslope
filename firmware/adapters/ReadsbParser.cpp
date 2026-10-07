@@ -6,7 +6,7 @@ void ReadsbParser::buildFilter(JsonDocument &filter, const char *arrayKey)
 {
     JsonObject f = filter[arrayKey][0].to<JsonObject>();
     for (const char *k : {"hex", "flight", "r", "t", "lat", "lon", "alt_baro", "gs",
-                          "track", "baro_rate", "seen_pos"})
+                          "track", "baro_rate", "seen_pos", "squawk"})
         f[k] = true;
 }
 
@@ -47,6 +47,7 @@ int ReadsbParser::parse(JsonArray aircraft, double centerLat, double centerLon, 
         String typ = a["t"] | "";
         typ.trim();
         s.aircraft_type = typ;
+        s.squawk = a["squawk"] | "";
         s.lat = lat;
         s.lon = lon;
 

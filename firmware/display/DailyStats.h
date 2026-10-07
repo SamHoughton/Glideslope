@@ -1,7 +1,7 @@
 #pragma once
 /*
-Purpose: Today's tally for the stats screen: arrivals seen (aircraft heading
-for Heathrow), the busiest airline and the rarest type. Resets at local
+Purpose: Today's tally for the stats screen: arrivals and departures seen,
+the busiest airline and the rarest type (across both). Resets at local
 midnight. Kept in RAM, so a reboot starts the day's count again.
 */
 #include <Arduino.h>
@@ -15,6 +15,7 @@ public:
     void note(const FlightInfo &f);
 
     int  arrivals() const { return _arrivals; }
+    int  departures() const { return _departures; }
     void noteGoAround() { rollDay(); ++_goArounds; }
     int  goArounds() const { return _goArounds; }
     // Busiest airline as an IATA/ICAO code plus count; empty if none yet.
@@ -25,6 +26,7 @@ public:
 private:
     int                    _day = -1;     // local day of year the counts belong to
     int                    _arrivals = 0;
+    int                    _departures = 0;
     int                    _goArounds = 0;
     std::map<String, bool> _counted;      // idents counted today
     std::map<String, int>  _airlines;

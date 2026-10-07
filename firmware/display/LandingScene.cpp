@@ -8,6 +8,7 @@ namespace
     constexpr uint32_t kStoppedMs   = 2900;   // end of the rollout
     constexpr uint32_t kSmokeMs     = 750;    // tyre smoke lifetime
     constexpr uint32_t kGoAroundAtMs = 950;   // go-around: when it pitches up
+    constexpr uint32_t kLiftOffMs   = 1700;   // take-off: end of the ground roll
 
     // Geometry (right-to-left; mirrored for the other direction)
     constexpr int kSurfaceY   = 58;           // runway surface rows 58-61
@@ -96,8 +97,9 @@ namespace
 
 void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::Sprite &sp,
                           Rgb accent, bool greySprite, bool rightward,
-                          const String &ident, const char *runway, bool goAround)
+                          const char *ident, const char *runway, Kind kind)
 {
+    const bool goAround = kind == GoAround, takeoff = kind == Takeoff;
     c.clear();
     drawSkyline(c, tMs, rightward);
 
@@ -118,7 +120,7 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     for (int j = 0; j < nLights; ++j)
     {
         const int x = FrameCanvas::W - 4 - j * 4;
-        const Rgb col = j == head ? kLightHead : kLightDim;
+        const Rgb col = (j == head && !takeoff) ? kLightHead : kLightDim;
         c.set(x, kSurfaceY + 2, col);
         c.set(x + 1, kSurfaceY + 2, col);
     }
@@ -126,7 +128,40 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     // Aircraft position: approach + flare, then rollout.
     const int groundTop = kSurfaceY - 1 - sp.h;          // sprite resting just above the surface
     float cx, top;
-    if (goAround)
+    if (takeoff)
+    {
+        // Lined up just past the piano keys, accelerating along the runway,
+        // rotating and climbing out over the skyline.
+        const float startCx = kKeysX - 4 - sp.w / 2.0f;
+        const float liftCx  = 46;
+        if (tMs < kLiftOffMs)
+        {
+            const float u = (float)tMs / kLiftOffMs;
+            cx  = startCx - u * u * (startCx - liftCx);                   // speeding up
+            top = groundTop;
+        }
+        else
+        {
+            const float u    = (float)(tMs - kLiftOffMs) / (DURATION_MS - kLiftOffMs);
+            const float pace = 2.0f * (startCx - liftCx) / kLiftOffMs;    // px per ms at lift-off
+            cx  = liftCx - pace * (tMs - kLiftOffMs);
+            top = groundTop - u * u * (groundTop + sp.h + 4) - u * 6;     // climbing, steepening
+        }
+
+        // Spray of dust and heat behind the engines during the roll.
+        if (tMs < kLiftOffMs + 300)
+        {
+            const float k = tMs < kLiftOffMs ? (float)tMs / kLiftOffMs : 1.0f - (tMs - kLiftOffMs) / 300.0f;
+            const int tail = (int)lroundf(cx + sp.w / 2.0f);
+            for (int i = 0; i < 6; ++i)
+            {
+                const int px = tail + 2 + i * 3 + (int)((tMs / 40 + i) % 3);
+                const int py = kSurfaceY - 2 - (i % 2);
+                c.set(px, py, FrameCanvas::scale(Rgb{170, 170, 175}, k * (1.0f - i / 6.0f) * 0.7f));
+            }
+        }
+    }
+    else if (goAround)
     {
         // Comes down towards the threshold, then pitches up and climbs away
         // over the skyline, never touching the runway.
@@ -161,7 +196,7 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     }
 
     // Tyre smoke where the wheels touched, drifting slightly and fading.
-    if (!goAround && tMs >= kTouchdownMs && tMs < kTouchdownMs + kSmokeMs)
+    if (kind == Landing && tMs >= kTouchdownMs && tMs < kTouchdownMs + kSmokeMs)
     {
         const float age  = (float)(tMs - kTouchdownMs) / kSmokeMs;
         const float fade = 1.0f - age;
@@ -194,8 +229,19 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         return;
     }
 
+    // Take-off caption once airborne.
+    if (takeoff && tMs >= kLiftOffMs)
+    {
+        const float k = min(1.0f, (float)(tMs - kLiftOffMs) / 250.0f);
+        char line1[16];
+        snprintf(line1, sizeof(line1), runway && runway[0] ? "DEPARTED %s" : "DEPARTED", runway);
+        c.text((FrameCanvas::W - FrameCanvas::textWidth(line1)) / 2, 6, line1, FrameCanvas::scale(accent, k));
+        c.text((FrameCanvas::W - FrameCanvas::textWidth(ident)) / 2, 17, ident, FrameCanvas::scale(kText, k));
+        return;
+    }
+
     // Caption once the wheels are down.
-    if (!goAround && tMs >= kTouchdownMs)
+    if (kind == Landing && tMs >= kTouchdownMs)
     {
         const float k = min(1.0f, (float)(tMs - kTouchdownMs) / 250.0f);
         char line1[16];
