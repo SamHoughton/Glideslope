@@ -549,9 +549,10 @@ void loop()
         {
             lastBeatMs = beatNow;
             const uint32_t frames = g_display.framesDrawn(), reqs = g_webConfig.requestsServed();
-            Log.printf("Heartbeat: up %lus, display +%u frames, web +%u requests, heap %u (max block %u)\n",
+            Log.printf("Heartbeat: up %lus, display +%u frames, web +%u requests, heap %u (max block %u, low %u), %u routes cached\n",
                        beatNow / 1000, (unsigned)(frames - lastFrames), (unsigned)(reqs - lastReqs),
-                       (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+                       (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
+                       (unsigned)ESP.getMinFreeHeap(), (unsigned)(g_fetcher ? g_fetcher->cachedFlights() : 0));
             lastFrames = frames;
             lastReqs   = reqs;
         }

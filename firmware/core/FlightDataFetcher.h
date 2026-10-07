@@ -41,4 +41,8 @@ private:
 
     // Keyed by trimmed callsign; stores enriched static data between fetch cycles
     std::map<String, CachedFlightEntry> _flightCache;
+    static constexpr size_t kMaxCachedFlights = 24;
+
+public:
+    size_t cachedFlights() const { return _flightCache.size(); }
 };

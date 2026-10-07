@@ -829,7 +829,7 @@ const char kHtmlPage[] =
 "post('/api/wifi/reset').catch(function(){});status('Wi-Fi cleared: join Glideslope-Setup');});"
 "document.querySelectorAll('[data-demo]').forEach(function(b){b.addEventListener('click',function(){post('/api/demo/'+b.dataset.demo);});});"
 
-"function poll(){"
+"function poll(){if(document.hidden){setTimeout(poll,3000);return;}"
 "fetch('/api/log?cursor='+cur).then(function(r){return r.json();}).then(function(d){"
 "if(d.lines&&d.lines.length){var atEnd=lb.scrollHeight-lb.scrollTop<=lb.clientHeight+8;"
 "d.lines.forEach(function(l){var v=document.createElement('div');v.textContent=l;lb.appendChild(v);"
@@ -837,8 +837,9 @@ const char kHtmlPage[] =
 "}).catch(function(){}).finally(function(){setTimeout(poll,1500);});"
 "}"
 
-// Exact panel frame (GET /api/frame, RGB565) drawn as LED dots.
-"function pollFrame(){"
+// Exact panel frame (GET /api/frame, RGB565) drawn as LED dots. All polling
+// is gentle (every request costs the board heap) and stops in a hidden tab.
+"function pollFrame(){if(document.hidden){setTimeout(pollFrame,3000);return;}"
 "fetch('/api/frame',{cache:'no-store'}).then(function(r){return r.arrayBuffer();}).then(function(ab){"
 "var px=new Uint16Array(ab),g=$('dmp').getContext('2d');if(px.length<8192)return;"
 "g.fillStyle='#050608';g.fillRect(0,0,512,256);"
@@ -846,10 +847,10 @@ const char kHtmlPage[] =
 "if(!v){g.fillStyle='#14171d';g.fillRect(x+1,y+1,2,2);continue;}"
 "var r=(v>>11)&31,gg=(v>>5)&63,b=v&31;"
 "g.fillStyle='rgb('+((r<<3)|(r>>2))+','+((gg<<2)|(gg>>4))+','+((b<<3)|(b>>2))+')';g.fillRect(x,y,3,3);}"
-"}).catch(function(){}).finally(function(){setTimeout(pollFrame,400);});"
+"}).catch(function(){}).finally(function(){setTimeout(pollFrame,800);});"
 "}"
 
-"function pollNow(){"
+"function pollNow(){if(document.hidden){setTimeout(pollNow,3000);return;}"
 "fetch('/api/display').then(function(r){return r.json();}).then(function(d){"
 "var n=$('now');if(!d.active){n.textContent='Scanning for traffic';return;}"
 "n.innerHTML='';var b=document.createElement('b');b.textContent=d.flight+(d.flight!==d.ident?' ('+d.ident+')':'');n.appendChild(b);"

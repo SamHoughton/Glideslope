@@ -207,6 +207,16 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                 CachedFlightEntry entry;
                 entry.info     = info;       // airline_logo_rgb565 is empty here — good
                 entry.expiryMs = nowMs + ttlMs;
+                // Bounded: each entry is ~1 KB of heap (twenty-odd Strings), and
+                // over a busy half hour an unbounded cache ate the headroom TLS
+                // handshakes need. Full: drop the entry closest to expiry.
+                if (_flightCache.size() >= kMaxCachedFlights && !_flightCache.count(s.callsign))
+                {
+                    auto oldest = _flightCache.begin();
+                    for (auto c = _flightCache.begin(); c != _flightCache.end(); ++c)
+                        if (c->second.expiryMs < oldest->second.expiryMs) oldest = c;
+                    _flightCache.erase(oldest);
+                }
                 _flightCache[s.callsign] = entry;
             }
             else
