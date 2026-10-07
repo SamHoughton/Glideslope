@@ -88,10 +88,21 @@ void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weath
         centred(c, 28, "--:--", kDim, 2);
         return;
     }
-    char hm[6];
-    const bool colon = (animMs / 1000) % 2 == 0;
-    snprintf(hm, sizeof(hm), colon ? "%02d:%02d" : "%02d %02d", lt.tm_hour, lt.tm_min);
-    centred(c, 16, hm, Rgb{120, 130, 150}, 3, 17);
+    // HH:MM at triple size with a narrow colon (the font's colon is a full
+    // character wide); the colon pulses gently with the seconds.
+    const Rgb digits{120, 130, 150};
+    char hh[3], mm[3];
+    snprintf(hh, sizeof(hh), "%02d", lt.tm_hour);
+    snprintf(mm, sizeof(mm), "%02d", lt.tm_min);
+    constexpr int kPitch = 17, kDigitW = 15, kGap = 4, kColonW = 3, kTop = 16;
+    const int total = 2 * (kPitch + kDigitW) + 2 * kGap + kColonW;
+    const int x0 = (FrameCanvas::W - total) / 2;
+    c.text(x0, kTop, hh, digits, 3, kPitch);
+    const int cx = x0 + kPitch + kDigitW + kGap;
+    const float pulse = 0.35f + 0.65f * (0.5f + 0.5f * cosf((animMs % 2000) * (float)M_PI / 1000.0f));
+    c.fillRect(cx, kTop + 5, kColonW, kColonW, FrameCanvas::scale(digits, pulse));
+    c.fillRect(cx, kTop + 13, kColonW, kColonW, FrameCanvas::scale(digits, pulse));
+    c.text(cx + kColonW + kGap, kTop, mm, digits, 3, kPitch);
     static const char *const kMonths[] = {"JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"};
     char date[16];
     snprintf(date, sizeof(date), "%d %s", lt.tm_mday, kMonths[lt.tm_mon]);

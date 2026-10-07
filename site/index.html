@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glideslope installer</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0d1117; color: #c9d1d9;
+         font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { color: #f0f6fc; font-size: 28px; margin: 0 0 4px; }
+  .sub { color: #8b949e; margin: 0 0 28px; }
+  img { width: 100%; height: auto; border-radius: 6px; image-rendering: pixelated; }
+  ol { padding-left: 20px; }
+  li { margin-bottom: 10px; }
+  code { background: #161b22; border: 1px solid #30363d; border-radius: 4px; padding: 1px 5px; font-size: 14px; }
+  .box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin: 24px 0; text-align: center; }
+  .note { color: #8b949e; font-size: 14px; }
+  a { color: #58a6ff; }
+  esp-web-install-button button[slot] { font: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>&#9992; Glideslope</h1>
+  <p class="sub">Install the firmware on a Huidu HD-WF2 from your browser. Version <span id="ver">…</span>.</p>
+
+  <img src="card.png" alt="Glideslope approach card on a 128 by 64 LED panel">
+
+  <ol>
+    <li>Use Chrome or Edge on a computer (Web Serial is needed; Safari and Firefox don't have it).</li>
+    <li><b>First install only:</b> put the board in download mode. With the 5&nbsp;V supply unplugged and
+        USB connected, bridge the round (GND) and square (GPIO0) holes on the left edge of the module, then
+        plug in the 5&nbsp;V. The board's USB port does not power it.</li>
+    <li>Press <b>Install</b>, pick the board's serial port, and wait about a minute.</li>
+    <li>Unplug the 5&nbsp;V and plug it back in. Join the <code>Glideslope-Setup</code> Wi-Fi network and
+        enter your home Wi-Fi. The panel then shows its address: <code>http://glideslope.local/</code>.</li>
+  </ol>
+
+  <div class="box">
+    <esp-web-install-button manifest="manifest.json">
+      <span slot="unsupported">This browser can't talk to USB devices. Use Chrome or Edge on a computer.</span>
+      <span slot="not-allowed">The installer needs a secure (https) page.</span>
+    </esp-web-install-button>
+  </div>
+
+  <p class="note">Already running Glideslope? Update from the board's own web page instead, with
+     <code>firmware.bin</code> from the <a href="https://github.com/SamHoughton/Glideslope/releases/latest">latest release</a>;
+     your settings are kept. Airline logos are not included (see the
+     <a href="https://github.com/SamHoughton/Glideslope#airline-logos">README</a>).</p>
+</main>
+<script>
+  fetch('manifest.json').then(r => r.json()).then(m => { document.getElementById('ver').textContent = m.version; })
+    .catch(() => { document.getElementById('ver').textContent = 'unknown'; });
+</script>
+</body>
+</html>

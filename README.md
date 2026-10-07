@@ -10,6 +10,14 @@ runway threshold and plays a touchdown animation when it lands.
 | --- | --- |
 | ![Fly-across](docs/flyacross.gif) | ![Landing](docs/landing.gif) |
 
+| Take-off | Arrivals board |
+| --- | --- |
+| ![Take-off](docs/takeoff.gif) | ![Arrivals board](docs/arrivals.png) |
+
+| Heathrow weather | Emergency squawk |
+| --- | --- |
+| ![Weather](docs/weather.png) | ![Squawk alert](docs/squawk.png) |
+
 All images are recorded from the board's own frames. The airline logo tile shows
 the code (`SZS`) because logos are not part of this repository; see below.
 
@@ -96,6 +104,12 @@ Other ESP32 boards with a HUB75 panel should work through the original
 ## Getting started
 
 ### Without building anything
+
+The easiest way is the browser installer at
+<https://samhoughton.github.io/Glideslope/> (Chrome or Edge): put the board
+in download mode (step 3 below), press Install, then carry on from step 5.
+
+Or by hand:
 
 1. Download `glideslope-<version>-full.bin` from the latest
    [release](../../releases).

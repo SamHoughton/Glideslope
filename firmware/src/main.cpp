@@ -11,6 +11,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include "config/WiFiConfiguration.h"
@@ -311,6 +312,13 @@ void setup()
 
             g_webConfig.begin(80);  // start HTTP config + log UI
 
+            // http://glideslope.local/ as well as the IP address.
+            if (MDNS.begin("glideslope"))
+            {
+                MDNS.addService("http", "tcp", 80);
+                Log.println("mDNS: http://glideslope.local/");
+            }
+
             // Run the web server on a dedicated FreeRTOS task pinned to the
             // application core (core 1, same as loop()).  Single-core scheduling
             // means no true parallelism — no data-race risk — but the web task
@@ -331,7 +339,7 @@ void setup()
 
             g_display.displayMessage(String("WiFi OK ") + WiFi.localIP().toString());
             delay(1000);
-            g_display.displayMessage(String("Web: ") + WiFi.localIP().toString());
+            g_display.displayMessage("glideslope.local");
             delay(1500);
             g_display.showLoading();
         }
