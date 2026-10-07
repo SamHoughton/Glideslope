@@ -10,6 +10,7 @@
 #include "display/FrameCanvas.h"
 #include "display/FlyAcross.h"
 #include "display/ApproachModel.h"
+#include "display/Traffic.h"
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
 // Mirror of what is currently on the panel; the web preview reads this.
@@ -24,6 +25,9 @@ void requestSpriteGallery(uint32_t durationMs);
 
 // Show the boot / scanning screen for durationMs (preview). Safe from the web task.
 void requestSplashPreview(uint32_t durationMs);
+
+// Show the London map for durationMs (preview). Safe from the web task.
+void requestMapPreview(uint32_t durationMs);
 
 // Replay the fly-across onto the current card. forceDirection: 0 = the
 // flight's real direction, +1 = left-to-right, -1 = right-to-left (testing).
@@ -52,6 +56,8 @@ public:
     void clear() override;
     // Hand over the latest fetch results (call once per fetch).
     void displayFlights(const std::vector<FlightInfo> &flights) override;
+    // Every tracked aircraft, for the map (call once per fetch).
+    void updateTraffic(const std::vector<TrafficPoint> &points);
     // Short status message (shown for a few seconds once the task is running).
     void displayMessage(const String &message);
     void showLoading();
@@ -97,6 +103,12 @@ private:
     bool                 _inTransition = false;
     unsigned long        _transStartMs = 0;
     FlyAcross::Path      _path;            // from the incoming flight's track + vertical rate
+    // Ambient screen (map / scanning) state (display task only)
+    bool                 _ambientActive  = false;
+    unsigned long        _ambientSinceMs = 0;
+    unsigned long        _ambientUntilMs = 0;
+    TrafficTracker       _traffic;               // guarded by _lock
+
     bool                 _landingActive  = false;
     bool                 _landingDemo    = false;
     unsigned long        _landingStartMs = 0;
@@ -115,6 +127,8 @@ private:
     uint32_t renderFrame(unsigned long now);
     void beginNextCard(unsigned long now);
     void renderCurrentCard(unsigned long now);
+    void renderAmbient(unsigned long now);
+    void crossFade(const FrameCanvas &from, float k);
     ApproachStatus liveStatus(unsigned long now);   // dead-reckoned status of the current card
     void startLanding(unsigned long now, bool demo);   // demo: replay only, card state unchanged
     bool renderLanding(unsigned long now);

@@ -15,6 +15,7 @@ Responsibilities:
 #include "display/FlyAcross.h"
 #include "display/BootSplash.h"
 #include "display/LandingScene.h"
+#include "display/MapRenderer.h"
 #include "utils/TelnetLogger.h"
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
@@ -33,6 +34,10 @@ static constexpr unsigned long kIdleAfterMs     = 5UL * 60 * 1000;   // card -> 
 static constexpr float         kHoldForLandingSec = 300.0f;          // keep an approach card if ETA below this
 static constexpr unsigned long kLandedHoldMs    = 10000;             // LANDED card, then the next approach
 static constexpr float         kAltEaseSec      = 0.8f;              // altitude smoothing time constant
+static constexpr unsigned long kCardBeforeMapMs = 75000;             // card up this long with nothing due -> map
+static constexpr unsigned long kMapShowMs       = 30000;             // then the map for this long
+static constexpr uint32_t      kAmbientFadeMs   = 700;               // card -> map cross-fade
+static constexpr float         kBackForLandingSec = 90.0f;           // leave the map for a landing this close
 static constexpr uint32_t      kAnimFrameMs     = 20;                // 50 fps during the fly-across
 static constexpr uint32_t      kCardFrameMs     = 50;                // 20 fps otherwise
 
@@ -45,6 +50,11 @@ static volatile uint32_t s_splashRequestMs  = 0;   // set by the web task
 static unsigned long     s_splashUntil      = 0;
 
 void requestSplashPreview(uint32_t durationMs) { s_splashRequestMs = durationMs ? durationMs : 1; }
+
+static volatile uint32_t s_mapRequestMs  = 0;   // set by the web task
+static unsigned long     s_mapPreviewUntil = 0;
+
+void requestMapPreview(uint32_t durationMs) { s_mapRequestMs = durationMs ? durationMs : 1; }
 
 void requestSpriteGallery(uint32_t durationMs) { s_galleryRequestMs = durationMs ? durationMs : 1; }
 
@@ -357,12 +367,13 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
 
     // A plane on final approach keeps the card until it has landed, so new
     // contacts wait rather than cutting off the landing.
-    bool awaitingLanding = false;
+    bool awaitingLanding = false, landingSoon = false;
     if (_hasCurrent && !_current.landingPlayed)
     {
         const ApproachStatus s = liveStatus(now);
         awaitingLanding = s.phase == ApproachStatus::Approach &&
                           !isnan(s.etaSec) && s.etaSec <= kHoldForLandingSec;
+        landingSoon = awaitingLanding && s.etaSec <= kBackForLandingSec;
     }
 
     // Landed: after ~10 s move on to the next aircraft on approach, even one
@@ -386,21 +397,107 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     // A card whose flight has stopped appearing in fetches has left range.
     if (_hasCurrent && now - _current.dataMs > kIdleAfterMs)
     {
-        Log.printf("Display: %s out of range, back to scanning\n", _current.flight.ident.c_str());
+        Log.printf("Display: %s out of range\n", _current.flight.ident.c_str());
         _hasCurrent = false;
     }
 
-    if (_hasCurrent)
-        renderCurrentCard(now);
+    // Ambient screen (the map) when no card is due: nothing on the card, a
+    // card that has been up a while with nothing else queued, or a landed
+    // card past its hold. Back to the card for its landing.
+    if (s_mapRequestMs)
+    {
+        s_mapPreviewUntil = now + s_mapRequestMs;
+        s_mapRequestMs    = 0;
+    }
+    const bool mapPreview = s_mapPreviewUntil && (long)(now - s_mapPreviewUntil) < 0;
+    if (!mapPreview) s_mapPreviewUntil = 0;
+
+    bool showAmbient;
+    if (!_hasCurrent || mapPreview)
+        showAmbient = true;
+    else if (_ambientActive)
+        showAmbient = !landingSoon && (_current.landed || (long)(now - _ambientUntilMs) < 0);
     else
-        BootSplash::render(g_workFrame, now, _runwayInUse);
+        showAmbient = !awaitingLanding && _queue.empty() &&
+                      now - _shownSinceMs >= (_current.landed ? kLandedHoldMs : kCardBeforeMapMs);
+
+    if (showAmbient && !_ambientActive)
+    {
+        g_oldFrame.copyFrom(g_shownFrame);   // cross-fade from whatever is showing
+        _ambientActive  = true;
+        _ambientSinceMs = now;
+        _ambientUntilMs = now + kMapShowMs;
+    }
+    else if (!showAmbient && _ambientActive)
+    {
+        // Back to the card with the usual fly-across.
+        _ambientActive = false;
+        g_oldFrame.copyFrom(g_shownFrame);
+        _inTransition = true;
+        _transStartMs = now;
+        _path = FlyAcross::pathFor(_current.flight.heading, _current.flight.vertical_rate,
+                                   g_config.screen_facing);
+        return 0;
+    }
+
+    if (_ambientActive)
+    {
+        renderAmbient(now);
+        const uint32_t t = now - _ambientSinceMs;
+        if (t < kAmbientFadeMs)
+        {
+            crossFade(g_oldFrame, (float)t / kAmbientFadeMs);
+            present();
+            return kAnimFrameMs;
+        }
+        present();
+        return kCardFrameMs;
+    }
+
+    renderCurrentCard(now);
     present();
     return kCardFrameMs;
 }
 
+// The screen shown when no card is due: the map while aircraft are being
+// tracked, otherwise the scanning screen.
+void NeoMatrixDisplay::renderAmbient(unsigned long now)
+{
+    if (_traffic.empty())
+    {
+        BootSplash::render(g_workFrame, now, _runwayInUse);
+        return;
+    }
+    const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
+    MapRenderer::render(g_workFrame, _traffic, now,
+                        homeSet ? g_config.home_lat : g_config.center_lat,
+                        homeSet ? g_config.home_lon : g_config.center_lon, _runwayInUse);
+}
+
+// Blend the work frame with `from`: k = 0 shows `from`, 1 shows the work frame.
+void NeoMatrixDisplay::crossFade(const FrameCanvas &from, float k)
+{
+    uint16_t       *px  = g_workFrame.pixels();
+    const uint16_t *old = from.pixels();
+    for (int i = 0; i < FrameCanvas::W * FrameCanvas::H; ++i)
+    {
+        if (px[i] == old[i]) continue;
+        const Rgb a = FrameCanvas::unpack(old[i]), b = FrameCanvas::unpack(px[i]);
+        px[i] = FrameCanvas::pack(Rgb{ (uint8_t)(a.r + (b.r - a.r) * k), (uint8_t)(a.g + (b.g - a.g) * k),
+                                       (uint8_t)(a.b + (b.b - a.b) * k) });
+    }
+}
+
+void NeoMatrixDisplay::updateTraffic(const std::vector<TrafficPoint> &points)
+{
+    Lock l(_lock);
+    _traffic.update(points, millis());
+}
+
 void NeoMatrixDisplay::beginNextCard(unsigned long now)
 {
-    g_oldFrame.copyFrom(g_shownFrame);   // exactly what is on the panel now
+    g_oldFrame.copyFrom(g_shownFrame);   // exactly what is on the panel now (card or map)
+    _ambientActive = false;
     _current    = _queue.front();
     _queue.pop_front();
     _hasCurrent = true;

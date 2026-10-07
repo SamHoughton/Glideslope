@@ -22,6 +22,9 @@ struct RuntimeConfig
     double   center_lat;
     double   center_lon;
     double   radius_km;
+    // Home marker on the map. 0/0 = use the search centre.
+    double   home_lat;
+    double   home_lon;
 
     // Display
     uint8_t  display_brightness;

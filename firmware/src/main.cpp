@@ -7,6 +7,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
                WiFiConfiguration (SSID/password), HardwareConfiguration (display specs).
 */
 #include <vector>
+#include <map>
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
 #include <WiFi.h>
@@ -23,6 +24,8 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "adapters/LocalLogoStore.h"
 #include "core/FlightDataFetcher.h"
 #include "adapters/NeoMatrixDisplay.h"
+#include "display/CardRenderer.h"
+#include "display/ApproachModel.h"
 #include "utils/TelnetLogger.h"
 #include "utils/WebConfig.h"
 #include "utils/WifiProvisioner.h"
@@ -48,6 +51,54 @@ static std::vector<FlightInfo> g_flights;
 static bool   g_wasNightSuppressed = false;  // tracks night-mode suppression for wake-up flush
 static String g_wifiSsid;                   // active SSID  (NVS > compile-time)
 static String g_wifiPass;                   // active password
+
+// Map dot colour per airline (ICAO prefix of the call sign): the logo's accent,
+// worked out once per airline. Unknown airlines and GA get a neutral white.
+static Rgb airlineColour(const String &callsign)
+{
+    static std::map<String, Rgb> cache;
+    const Rgb kNeutral{200, 205, 215};
+    if (callsign.length() < 4 || !isalpha((unsigned char)callsign[0]) ||
+        !isalpha((unsigned char)callsign[1]) || !isalpha((unsigned char)callsign[2]) ||
+        !isdigit((unsigned char)callsign[3]))
+        return kNeutral;
+    String icao = callsign.substring(0, 3);
+    icao.toUpperCase();
+    auto it = cache.find(icao);
+    if (it != cache.end()) return it->second;
+    FlightInfo tmp;
+    const Rgb c = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565)
+                      ? CardRenderer::accentFor(tmp) : kNeutral;
+    if (cache.size() < 200) cache[icao] = c;
+    return c;
+}
+
+// Every aircraft in range as a map point: position, track, speed, airline
+// colour, and whether it is lined up on final for a Heathrow runway.
+static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector> &states)
+{
+    std::vector<TrafficPoint> pts;
+    pts.reserve(states.size());
+    for (const StateVector &s : states)
+    {
+        TrafficPoint p;
+        p.id      = (uint32_t)strtoul(s.icao24.c_str(), nullptr, 16);
+        p.lat     = s.lat;
+        p.lon     = s.lon;
+        p.heading = s.heading;
+        p.gsKt    = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
+        p.colour  = airlineColour(s.callsign);
+
+        FlightInfo f;   // just enough for the approach model
+        f.lat = s.lat;  f.lon = s.lon;  f.heading = s.heading;
+        f.baro_altitude = isnan(s.baro_altitude) ? NAN : s.baro_altitude * 3.28084;
+        f.velocity      = p.gsKt;
+        f.vertical_rate = isnan(s.vertical_rate) ? NAN : s.vertical_rate * 196.85;
+        p.onFinal = ApproachModel::evaluate(f).phase == ApproachStatus::Approach;
+        pts.push_back(p);
+    }
+    return pts;
+}
 
 void setup()
 {
@@ -267,6 +318,7 @@ void loop()
         {
         size_t enriched = g_fetcher->fetchFlights(g_states, g_flights);
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
+        g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
 
         Log.printf("OpenSky state vectors: %d\n", (int)g_states.size());
         Log.printf("Flights to display: %d\n", (int)enriched);

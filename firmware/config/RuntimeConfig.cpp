@@ -19,6 +19,8 @@ static void applyDefaults(RuntimeConfig &c)
 {
     c.center_lat                    = UserConfiguration::CENTER_LAT;
     c.center_lon                    = UserConfiguration::CENTER_LON;
+    c.home_lat                      = 0;
+    c.home_lon                      = 0;
     c.radius_km                     = UserConfiguration::RADIUS_KM;
     c.display_brightness            = UserConfiguration::DISPLAY_BRIGHTNESS;
     c.text_color_r                  = UserConfiguration::TEXT_COLOR_R;
@@ -74,6 +76,8 @@ void loadConfig()
 
     g_config.center_lat   = p.getDouble("lat",   g_config.center_lat);
     g_config.center_lon   = p.getDouble("lon",   g_config.center_lon);
+    g_config.home_lat     = p.getDouble("home_lat", g_config.home_lat);
+    g_config.home_lon     = p.getDouble("home_lon", g_config.home_lon);
     g_config.radius_km    = p.getDouble("radius", g_config.radius_km);
 
     g_config.display_brightness = (uint8_t)p.getUInt("bright",  g_config.display_brightness);
@@ -140,6 +144,8 @@ void saveConfig()
 
     p.putDouble("lat",    g_config.center_lat);
     p.putDouble("lon",    g_config.center_lon);
+    p.putDouble("home_lat", g_config.home_lat);
+    p.putDouble("home_lon", g_config.home_lon);
     p.putDouble("radius", g_config.radius_km);
 
     p.putUInt("bright",  g_config.display_brightness);

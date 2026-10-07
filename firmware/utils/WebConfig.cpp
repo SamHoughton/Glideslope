@@ -112,6 +112,7 @@ void WebConfig::loop()
     else if (r.path == "/api/status"        && r.method == "GET")  handleGetStatus(client);
     else if (r.path == "/api/demo/sprites"  && r.method == "POST") { requestSpriteGallery(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/map"      && r.method == "POST") { requestMapPreview(30000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/landing"  && r.method == "POST") { requestLandingReplay(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/flyacross" && r.method == "POST")
     {
@@ -196,6 +197,8 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["tar1090_host"]                  = String(g_config.tar1090_host);
     doc["center_lat"]                    = g_config.center_lat;
     doc["center_lon"]                    = g_config.center_lon;
+    doc["home_lat"]                      = g_config.home_lat;
+    doc["home_lon"]                      = g_config.home_lon;
     doc["radius_km"]                     = g_config.radius_km;
     doc["min_altitude_ft"]               = g_config.min_altitude_ft;
     doc["display_brightness"]            = g_config.display_brightness;
@@ -256,6 +259,8 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
     }
     g_config.center_lat   = doc["center_lat"]   | g_config.center_lat;
     g_config.center_lon   = doc["center_lon"]   | g_config.center_lon;
+    g_config.home_lat     = doc["home_lat"]     | g_config.home_lat;
+    g_config.home_lon     = doc["home_lon"]     | g_config.home_lon;
     g_config.radius_km    = doc["radius_km"]    | g_config.radius_km;
     g_config.min_altitude_ft = doc["min_altitude_ft"] | g_config.min_altitude_ft;
 
@@ -519,6 +524,7 @@ const char kHtmlPage[] =
 "<button data-demo='landing'>Replay landing</button>"
 "<button data-demo='sprites'>Aircraft sprites (10 s)</button>"
 "<button data-demo='splash'>Scanning screen (10 s)</button>"
+"<button data-demo='map'>London map (30 s)</button>"
 "</div>"
 "</div>"
 "<div class='card'>"
@@ -552,6 +558,10 @@ const char kHtmlPage[] =
 "<div class='row'>"
 "<div class='f'><label for='center_lat'>Latitude</label><input type='number' step='any' id='center_lat'></div>"
 "<div class='f'><label for='center_lon'>Longitude</label><input type='number' step='any' id='center_lon'></div>"
+"</div>"
+"<div class='row'>"
+"<div class='f'><label for='home_lat'>Home marker lat <small>(map; 0 = centre)</small></label><input type='number' step='any' id='home_lat'></div>"
+"<div class='f'><label for='home_lon'>Home marker lon</label><input type='number' step='any' id='home_lon'></div>"
 "</div>"
 "<div class='row'>"
 "<div class='f'><label for='radius_km'>Radius (km)</label><input type='number' step='1' min='1' id='radius_km'></div>"
@@ -625,7 +635,7 @@ const char kHtmlPage[] =
 
 "function save(){"
 "var d={};"
-"['center_lat','center_lon','radius_km'].forEach(function(k){d[k]=parseFloat($(k).value);});"
+"['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});"
 "['display_brightness','display_cycle_seconds','night_brightness','fetch_interval_seconds',"
 "'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});"
 "['display_nearest_only','display_border','display_flip','night_mode_enabled','opensky_priority'].forEach(function(k){d[k]=$(k).checked;});"
