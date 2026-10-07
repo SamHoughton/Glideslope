@@ -7,6 +7,7 @@ Responsibilities:
 Input: flight ident (e.g., callsign).
 Output: Populates FlightInfo on success and returns true.
 */
+#include "utils/HeapWatch.h"
 #include "adapters/AeroAPIFetcher.h"
 #include "config/RuntimeConfig.h"
 #include "config/TimingConfiguration.h"
@@ -62,6 +63,9 @@ bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent,
             _client.setInsecure();
         _configured = true;
     }
+
+    if (!tlsAffordable("AeroAPI"))
+        return false;
 
     HTTPClient http;
     String url = String(APIConfiguration::AEROAPI_BASE_URL) + "/flights/" + flightIdent;
