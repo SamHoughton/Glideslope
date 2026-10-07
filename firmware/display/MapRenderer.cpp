@@ -9,7 +9,7 @@ namespace
     constexpr uint32_t kBlinkMs       = 450;   // on-final blink half-period
 
     const Rgb kHome  {255, 200,  90};
-    const Rgb kLabel { 90, 110, 140};
+    const Rgb kLabel { 55,  68,  88};   // kept dim: the map is the subject
 
     // Plot with additive-style "max" blending, so trails don't erase each other.
     void plot(FrameCanvas &c, int x, int y, Rgb col)
@@ -19,15 +19,31 @@ namespace
         c.set(x, y, Rgb{ max(cur.r, col.r), max(cur.g, col.g), max(cur.b, col.b) });
     }
 
-    // Dotted, so a trail never reads as a solid map feature like the Thames.
-    void segment(FrameCanvas &c, float x0, float y0, float x1, float y1, Rgb col)
+    // Solid trail segment, fading from colA (newer end) to colB (older end).
+    void segment(FrameCanvas &c, float x0, float y0, float x1, float y1, Rgb colA, Rgb colB)
     {
-        const int n = (int)ceilf(max(fabsf(x1 - x0), fabsf(y1 - y0)));
-        for (int i = 0; i <= n; i += 2)
+        const int n = (int)ceilf(max(fabsf(x1 - x0), fabsf(y1 - y0))) * 2 + 1;
+        for (int i = 0; i <= n; ++i)
         {
-            const float t = n ? (float)i / n : 0.0f;
+            const float t = (float)i / n;
+            const Rgb col{ (uint8_t)(colA.r + (colB.r - colA.r) * t), (uint8_t)(colA.g + (colB.g - colA.g) * t),
+                           (uint8_t)(colA.b + (colB.b - colA.b) * t) };
             plot(c, (int)lroundf(x0 + (x1 - x0) * t), (int)lroundf(y0 + (y1 - y0) * t), col);
         }
+    }
+
+    // Aircraft head: a small arrow along the track, so direction reads at a glance.
+    void arrowHead(FrameCanvas &c, float x, float y, float headingDeg, Rgb col)
+    {
+        if (isnan(headingDeg)) { plot(c, (int)lroundf(x), (int)lroundf(y), col); return; }
+        const float h = headingDeg * (float)M_PI / 180.0f;
+        const float dx = sinf(h), dy = -cosf(h);     // screen: x east, y south
+        const float nx = -dy, ny = dx;
+        plot(c, (int)lroundf(x + dx), (int)lroundf(y + dy), col);                  // nose
+        plot(c, (int)lroundf(x), (int)lroundf(y), col);
+        const Rgb wing = FrameCanvas::scale(col, 0.6f);
+        plot(c, (int)lroundf(x - dx * 1.6f + nx * 1.2f), (int)lroundf(y - dy * 1.6f + ny * 1.2f), wing);
+        plot(c, (int)lroundf(x - dx * 1.6f - nx * 1.2f), (int)lroundf(y - dy * 1.6f - ny * 1.2f), wing);
     }
 }
 
@@ -80,31 +96,27 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
             project(lat, lon, x, y);
         }
 
+        // Trail: solid, fading from 50% at the aircraft to nothing at the oldest point.
         float px = x, py = y;
         for (int i = 0; i < t.trailN; ++i)
         {
             float tx, ty;
             project(t.trailLat[i], t.trailLon[i], tx, ty);
-            const float k = 0.45f * (1.0f - (float)i / TrafficTracker::kTrail);
-            segment(c, px, py, tx, ty, FrameCanvas::scale(p.colour, k));
+            const float kNew = 0.5f * (1.0f - (float)i / TrafficTracker::kTrail);
+            const float kOld = 0.5f * (1.0f - (float)(i + 1) / TrafficTracker::kTrail);
+            segment(c, px, py, tx, ty, FrameCanvas::scale(p.colour, kNew), FrameCanvas::scale(p.colour, kOld));
             px = tx; py = ty;
         }
 
-        const bool lit = !p.onFinal || (now / kBlinkMs) % 2 == 0;
-        if (lit)
-        {
-            const int dx = (int)lroundf(x), dy = (int)lroundf(y);
-            plot(c, dx, dy, p.colour);
-            // On final: a slightly larger dot so it stands out.
-            if (p.onFinal) { plot(c, dx + 1, dy, p.colour); plot(c, dx, dy + 1, p.colour); plot(c, dx + 1, dy + 1, p.colour); }
-        }
+        // Head: an arrow along the track; the aircraft on final blinks.
+        if (!p.onFinal || (now / kBlinkMs) % 2 == 0)
+            arrowHead(c, x, y, p.heading, p.colour);
     }
 
     // Runway in use, top left (open country to the north-west).
     if (runwayInUse && runwayInUse[0])
     {
-        char label[20];
-        InfoScreens::runwaySummary(runwayInUse, label, sizeof(label), true);
-        c.text(1, 1, label, kLabel);
+        // Just the runway: the full summary is too wide for the map.
+        c.text(1, 1, runwayInUse, kLabel);
     }
 }

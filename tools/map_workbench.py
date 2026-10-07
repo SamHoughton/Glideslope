@@ -28,6 +28,8 @@ PAL = [
     (95, 100, 112),   # 3 runways
     (24, 26, 32),     # 4 Heathrow apron
     (30, 30, 38),     # 5 M25 (dotted)
+    (12, 40, 18),     # 6 parks
+    (34, 34, 46),     # 7 approach lanes (dotted)
 ]
 grid = [[0] * W for _ in range(H)]
 
@@ -49,6 +51,14 @@ def blob(lat, lon, rx, ry, c):
         for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
             if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0:
                 put(x, y, c)
+
+# Parks (approximate centres and extents, in pixels at ~350 m/px).
+blob(51.4430, -0.2750, 3.7, 3.1, 6)   # Richmond Park
+blob(51.4120, -0.3350, 2.6, 2.0, 6)   # Bushy Park
+blob(51.4790, -0.2950, 1.4, 1.1, 6)   # Kew Gardens
+blob(51.5070, -0.1650, 2.3, 1.1, 6)   # Hyde Park
+blob(51.4130, -0.3850, 1.4, 1.1, 6)   # Kempton Park
+blob(51.4420, -0.5700, 2.9, 2.6, 6)   # Windsor Great Park
 
 # Reservoirs west of Heathrow (approximate centres and extents).
 blob(51.4835, -0.5330, 1.4, 1.0, 2)   # Queen Mother
@@ -90,6 +100,17 @@ for p, q in zip(m25, m25[1:]):
         if 0 <= x < W and 0 <= y < H and grid[y][x] == 0:
             grid[y][x] = 5
 
+# Approach lanes: faint dotted extended centrelines, 25 km east of the 27L/27R
+# thresholds (westerly arrivals) and west to the map edge for 09L/09R.
+for lat, lon_thr, direction in ((51.4777, -0.4332, +1), (51.4649, -0.4340, +1),
+                                (51.4775, -0.4850, -1), (51.4647, -0.4826, -1)):
+    x0, y0 = xy(lat, lon_thr)
+    length_px = (25.0 / 0.348) if direction > 0 else x0
+    for i in range(2, int(length_px), 3):
+        x = int(round(x0 + direction * i))
+        if 0 <= x < W and 0 <= int(round(y0)) < H and grid[int(round(y0))][x] in (0, 5):
+            grid[int(round(y0))][x] = 7
+
 # Heathrow: a faint apron block, then the two runways on top, to scale.
 for y in range(int(xy(51.4775, 0)[1]) + 1, int(xy(51.4650, 0)[1])):
     for x in range(int(xy(0, -0.480)[0]), int(xy(0, -0.437)[0]) + 1):
@@ -126,7 +147,8 @@ namespace MapBase
     constexpr double LAT_N = {LAT_N}, LAT_S = {LAT_S};
     constexpr double LON_W = {LON_W}, LON_E = {LON_E};
 
-    // 0 empty, 1 Thames, 2 reservoirs, 3 runways, 4 Heathrow apron, 5 M25
+    // 0 empty, 1 Thames, 2 reservoirs, 3 runways, 4 Heathrow apron, 5 M25,
+    // 6 parks, 7 approach lanes
     static const uint8_t kPalette[][3] = {{
 {pal}
     }};
