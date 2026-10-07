@@ -54,6 +54,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.aeroapi_key[sizeof(c.aeroapi_key) - 1] = '\0';
 
     c.opensky_priority               = false;
+    c.use_community_feeds            = true;
     c.min_altitude_ft                = 100;
 
     c.fetch_interval_seconds        = TimingConfiguration::FETCH_INTERVAL_SECONDS;
@@ -104,6 +105,7 @@ void loadConfig()
     g_config.utc_offset_minutes     = p.getInt("utc_off",  g_config.utc_offset_minutes);
 
     g_config.opensky_priority              = p.getBool("osky_pri",  g_config.opensky_priority);
+    g_config.use_community_feeds           = p.getBool("community", g_config.use_community_feeds);
     g_config.min_altitude_ft               = p.getInt("min_alt",   g_config.min_altitude_ft);
 
     g_config.fetch_interval_seconds        = p.getUInt("fetch_iv",   g_config.fetch_interval_seconds);
@@ -170,6 +172,7 @@ void saveConfig()
     p.putInt("utc_off",   g_config.utc_offset_minutes);
 
     p.putBool("osky_pri",  g_config.opensky_priority);
+    p.putBool("community", g_config.use_community_feeds);
     p.putInt("min_alt",    g_config.min_altitude_ft);
 
     p.putUInt("fetch_iv",  g_config.fetch_interval_seconds);

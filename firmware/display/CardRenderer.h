@@ -31,6 +31,7 @@ namespace CardRenderer
         bool     landed       = false;  // after the landing animation
         time_t   landedAt     = 0;      // touchdown time (Unix), 0 if the clock wasn't set
         double   altFt        = NAN;    // smoothed altitude to show; NAN = dead-reckon here
+        bool     goAround     = false;  // flashing "GO AROUND 27L" instead of the status
     };
 
     void render(FrameCanvas &c, const FlightInfo &f, const ApproachStatus &s,

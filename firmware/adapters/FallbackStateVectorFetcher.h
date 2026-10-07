@@ -33,12 +33,18 @@ public:
     {
         if (_primary->fetchStateVectors(centerLat, centerLon, radiusKm, outStateVectors))
         {
+            if (_usedFallback && _logged) Log.println("FallbackStateVectorFetcher: primary source back");
             _usedFallback = false;
             return true;
         }
 
         // Primary unavailable (host not configured, network error, parse failure).
-        Log.println("FallbackStateVectorFetcher: primary unavailable — falling back to OpenSky");
+        // Logged once per switch, not on every fetch.
+        if (!_usedFallback || !_logged)
+        {
+            Log.println("FallbackStateVectorFetcher: primary unavailable, using the fallback source");
+            _logged = true;
+        }
         outStateVectors.clear();    // discard any partial results
         _usedFallback = true;
         return _secondary->fetchStateVectors(centerLat, centerLon, radiusKm, outStateVectors);
@@ -52,4 +58,5 @@ private:
     BaseStateVectorFetcher *_primary;
     BaseStateVectorFetcher *_secondary;
     bool _usedFallback = true;  // start conservative — assume API until first local success
+    bool _logged = false;       // a fallback switch has been logged
 };

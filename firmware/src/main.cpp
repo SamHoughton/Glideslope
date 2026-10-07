@@ -17,6 +17,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "adapters/OpenSkyFetcher.h"
 #include "adapters/Tar1090Fetcher.h"
 #include "adapters/FallbackStateVectorFetcher.h"
+#include "adapters/AdsbAggregatorFetcher.h"
 #include "adapters/AeroAPIFetcher.h"
 #include "adapters/HexDbFetcher.h"
 #include "adapters/OpenSkyRouteFetcher.h"
@@ -34,7 +35,10 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 
 static OpenSkyFetcher             g_openSky;
 static Tar1090Fetcher             g_tar1090;
-static FallbackStateVectorFetcher g_stateFetcher(&g_tar1090, &g_openSky);
+static AdsbAggregatorFetcher      g_feeds;
+// Positions: local receiver -> adsb.lol / adsb.fi -> OpenSky.
+static FallbackStateVectorFetcher g_feedChain(&g_feeds, &g_openSky);
+static FallbackStateVectorFetcher g_stateFetcher(&g_tar1090, &g_feedChain);
 static HexDbFetcher               g_hexDb;
 static AeroAPIFetcher             g_aeroApi;
 static OpenSkyRouteFetcher        g_openSkyRoute(g_openSky);
@@ -279,9 +283,10 @@ static bool ensureWiFi()
 
 void loop()
 {
-    // Use the local interval when tar1090 was the active source last cycle,
-    // and the (slower) API interval when OpenSky was used as fallback.
-    const unsigned long intervalMs = g_stateFetcher.usedFallback()
+    // Fast interval while a live source answers (local receiver or the
+    // community feeds); the slower, quota-limited one when it fell to OpenSky.
+    const bool onOpenSky = g_stateFetcher.usedFallback() && g_feedChain.usedFallback();
+    const unsigned long intervalMs = onOpenSky
         ? g_config.fetch_interval_seconds       * 1000UL
         : g_config.local_fetch_interval_seconds * 1000UL;
     const unsigned long now = millis();
@@ -322,43 +327,26 @@ void loop()
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
 
-        Log.printf("OpenSky state vectors: %d\n", (int)g_states.size());
-        Log.printf("Flights to display: %d\n", (int)enriched);
-
-        for (const auto &s : g_states)
-            Log.printf("  %s @ %.1fkm bearing %.1f\n",
-                       s.callsign.c_str(), s.distance_km, s.bearing_deg);
-
-        for (const auto &f : g_flights)
+        static String lastIdents;
+        String idents;
+        for (const auto &f : g_flights) idents += f.ident + " ";
+        const char *source = !g_stateFetcher.usedFallback() ? "local receiver"
+                           : !g_feedChain.usedFallback()    ? g_feeds.lastSource()
+                                                            : "OpenSky";
+        if (idents != lastIdents)
         {
-            Log.println("=== FLIGHT INFO ===");
-            Log.printf("Ident: %s\n", f.ident.c_str());
-            Log.printf("Ident ICAO: %s\n", f.ident_icao.c_str());
-            Log.printf("Ident IATA: %s\n", f.ident_iata.c_str());
-            Log.printf("Airline: %s\n", f.airline_display_name_full.c_str());
-            Log.printf("Aircraft: %s\n",
-                       (f.aircraft_display_name_short.length()
-                           ? f.aircraft_display_name_short
-                           : f.aircraft_code).c_str());
-            Log.printf("Operator Code: %s\n", f.operator_code.c_str());
-            Log.printf("Operator ICAO: %s\n", f.operator_icao.c_str());
-            Log.printf("Operator IATA: %s\n", f.operator_iata.c_str());
-
-            String org = f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao;
-            if (f.origin.code_iata.length() && f.origin.code_icao.length())
-                org += " (" + f.origin.code_icao + ")";
-            Log.printf("Origin: %s\n", org.c_str());
-
-            String dst = f.destination.code_iata.length() ? f.destination.code_iata : f.destination.code_icao;
-            if (f.destination.code_iata.length() && f.destination.code_icao.length())
-                dst += " (" + f.destination.code_icao + ")";
-            Log.printf("Destination: %s\n", dst.c_str());
-
-            Log.println("===================");
-            Log.printf("Altitude: %.0f\n", f.baro_altitude);
-            Log.printf("Speed: %.0f\n", f.velocity);
-            Log.printf("Heading: %.0f\n", f.heading);
+            lastIdents = idents;
+            Log.printf("Fetch (%s): %d aircraft in range, showing: %s\n",
+                       source, (int)g_states.size(), idents.length() ? idents.c_str() : "-");
+            for (const auto &f : g_flights)
+                Log.printf("  %s (%s) %s>%s %s, %.0f ft, %.0f kt, hdg %.0f\n",
+                           f.ident_iata.c_str(), f.ident.c_str(),
+                           (f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao).c_str(),
+                           (f.destination.code_iata.length() ? f.destination.code_iata : f.destination.code_icao).c_str(),
+                           (f.aircraft_display_name_short.length() ? f.aircraft_display_name_short : f.aircraft_code).c_str(),
+                           f.baro_altitude, f.velocity, f.heading);
         }
+        (void)enriched;
         } // else (ensureWiFi)
     }
 

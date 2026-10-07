@@ -117,6 +117,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/clock"    && r.method == "POST") { requestScreenPreview(2, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/landing"  && r.method == "POST") { requestLandingReplay(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/rare"     && r.method == "POST") { requestRareSpotDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/goaround" && r.method == "POST") { requestGoAroundDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/flyacross" && r.method == "POST")
     {
         const String dir = qparam(r.query, "dir");
@@ -232,6 +233,7 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["opensky_client_id"]     = String(g_config.opensky_client_id);
     doc["opensky_client_secret"] = (strlen(g_config.opensky_client_secret) > 0) ? "***" : "";
     doc["opensky_priority"]      = g_config.opensky_priority;
+    doc["use_community_feeds"]   = g_config.use_community_feeds;
     doc["aeroapi_key"]           = (strlen(g_config.aeroapi_key)           > 0) ? "***" : "";
 
     String out;
@@ -291,6 +293,7 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
     g_config.utc_offset_minutes    = doc["utc_offset_minutes"]    | g_config.utc_offset_minutes;
 
     g_config.opensky_priority              = doc["opensky_priority"]              | g_config.opensky_priority;
+    g_config.use_community_feeds           = doc["use_community_feeds"]           | g_config.use_community_feeds;
 
     g_config.fetch_interval_seconds        = doc["fetch_interval_seconds"]        | g_config.fetch_interval_seconds;
     g_config.local_fetch_interval_seconds  = doc["local_fetch_interval_seconds"]  | g_config.local_fetch_interval_seconds;
@@ -526,6 +529,7 @@ const char kHtmlPage[] =
 "<button data-demo='flyacross'>Replay fly-across</button>"
 "<button data-demo='landing'>Replay landing</button>"
 "<button data-demo='rare'>Rare spot</button>"
+"<button data-demo='goaround'>Go-around</button>"
 "<button data-demo='sprites'>Aircraft sprites (10 s)</button>"
 "<button data-demo='splash'>Scanning screen (10 s)</button>"
 "<button data-demo='map'>London map (30 s)</button>"
@@ -590,6 +594,7 @@ const char kHtmlPage[] =
 "<div class='card'>"
 "<details>"
 "<summary>Data sources &amp; advanced</summary>"
+"<label class='ck'><input type='checkbox' id='use_community_feeds'><span>Live positions from adsb.lol / adsb.fi <small>(free, ~1 s fresh; OpenSky is the fallback)</small></span></label>"
 "<div class='f'><label for='opensky_client_id'>OpenSky client ID</label>"
 "<input id='opensky_client_id' autocomplete='off' spellcheck='false'></div>"
 "<div class='f'><label for='opensky_client_secret'>OpenSky client secret</label>"
@@ -601,7 +606,7 @@ const char kHtmlPage[] =
 "<label class='ck'><input type='checkbox' id='opensky_priority'>Use OpenSky first for routes <small>(after restart)</small></label>"
 "<div class='row'>"
 "<div class='f'><label for='fetch_interval_seconds'>OpenSky fetch (s)</label><input type='number' min='30' id='fetch_interval_seconds'></div>"
-"<div class='f'><label for='local_fetch_interval_seconds'>Local receiver fetch (s)</label><input type='number' min='1' id='local_fetch_interval_seconds'></div>"
+"<div class='f'><label for='local_fetch_interval_seconds'>Live feed / receiver fetch (s)</label><input type='number' min='1' id='local_fetch_interval_seconds'></div>"
 "</div>"
 "<div class='row'>"
 "<div class='f'><label for='aeroapi_cache_ttl_seconds'>Route cache (s)</label><input type='number' min='60' id='aeroapi_cache_ttl_seconds'></div>"
@@ -644,7 +649,7 @@ const char kHtmlPage[] =
 "['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});"
 "['display_brightness','display_cycle_seconds','night_brightness','fetch_interval_seconds',"
 "'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});"
-"['display_nearest_only','display_border','display_flip','night_mode_enabled','opensky_priority'].forEach(function(k){d[k]=$(k).checked;});"
+"['display_nearest_only','display_border','display_flip','night_mode_enabled','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});"
 "d.screen_facing=$('screen_facing').value;"
 "d.tar1090_host=$('tar1090_host').value;"
 "var ma=$('min_altitude_ft').value;d.min_altitude_ft=ma===''?-1:parseInt(ma);"

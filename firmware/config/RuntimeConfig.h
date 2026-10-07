@@ -62,6 +62,8 @@ struct RuntimeConfig
     // false (default): hexdb → AeroAPI → OpenSky
     // true:            OpenSky → AeroAPI → hexdb  (useful when hexdb is rate-limited)
     bool     opensky_priority;
+    // Live positions from the adsb.lol / adsb.fi community feeds (before OpenSky).
+    bool     use_community_feeds;
 
     // Filtering
     int      min_altitude_ft;               // ignore aircraft below this altitude; -1 = disabled

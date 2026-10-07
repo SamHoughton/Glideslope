@@ -135,6 +135,9 @@ ApproachStatus ApproachModel::advance(const ApproachStatus &s, double gsKt, uint
     out.progress = clamp01(1.0f - out.distKm / kStripRangeKm);
     if (!isnan(s.etaSec))
         out.etaSec = max(0.0f, s.etaSec - ageMs / 1000.0f);
+    // Over the threshold by dead reckoning: "LANDING", until a report confirms it.
+    if (out.distKm < 0.3f)
+        out.phase = ApproachStatus::Landing;
     return out;
 }
 

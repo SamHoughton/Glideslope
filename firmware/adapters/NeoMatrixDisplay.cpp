@@ -45,6 +45,11 @@ static constexpr unsigned long kAmbientMapMs    = 30000;             // ambient 
 static constexpr unsigned long kAmbientStatsMs  = 8000;              // ... then stats
 static constexpr unsigned long kCaptionMs       = 1200;              // mode-change caption
 static constexpr int           kButtonPin       = 17;                // HD-WF2 test key (0 = pressed)
+static constexpr unsigned long kFinalMemoryMs   = 180000;            // "was on final" lasts this long
+static constexpr float         kGoAroundClimbFpm = 500.0f;           // climbing faster than this ...
+static constexpr float         kGoAroundMaxFt   = 5000.0f;           // ... below this, after final
+static constexpr unsigned long kLandedSilentMs  = 15000;             // gone from the data this long at the threshold = landed
+static constexpr float         kLandedReportFt  = 200.0f;            // or reported this low near the threshold
 static constexpr uint32_t      kAnimFrameMs     = 20;                // 50 fps during the fly-across
 static constexpr uint32_t      kCardFrameMs     = 50;                // 20 fps otherwise
 
@@ -80,6 +85,9 @@ static volatile uint8_t s_replayRequest = 0;
 
 static volatile bool s_landingReplay = false;
 static volatile bool s_rareDemo = false;
+static volatile bool s_goAroundDemo = false;
+
+void requestGoAroundDemo() { s_goAroundDemo = true; }
 
 void requestRareSpotDemo() { s_rareDemo = true; }
 
@@ -236,8 +244,10 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
 
         if (_hasCurrent && f.ident == _current.flight.ident)
         {
+            const double prevAlt = _current.flight.baro_altitude;
             _current.flight = f;
             _current.dataMs = now;
+            noteApproachProgress(_current, st, prevAlt, now);
         }
         else
         {
@@ -433,8 +443,8 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     if (_hasCurrent && !_current.landingPlayed)
     {
         const ApproachStatus s = liveStatus(now);
-        awaitingLanding = s.phase == ApproachStatus::Approach &&
-                          !isnan(s.etaSec) && s.etaSec <= kHoldForLandingSec;
+        awaitingLanding = (s.phase == ApproachStatus::Approach || s.phase == ApproachStatus::Landing) &&
+                          !isnan(s.etaSec) && s.etaSec <= kHoldForLandingSec && !_current.goAround;
         landingSoon = awaitingLanding && s.etaSec <= kBackForLandingSec;
     }
 
@@ -639,7 +649,46 @@ void NeoMatrixDisplay::renderCurrentCard(unsigned long now)
     o.landed      = _current.landed;
     o.landedAt    = _current.landedAt;
     o.altFt       = _current.shownAltFt;
+    o.goAround    = _current.goAround;
     CardRenderer::render(g_workFrame, f, liveStatus(now), _current.accent, o);
+}
+
+// Called with each new report for the card's flight: remembers when it was
+// on final, spots a go-around (climbing away after being on final), and
+// clears the go-around once it is back on approach and descending.
+void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, double prevAlt,
+                                            unsigned long now)
+{
+    const FlightInfo &f = e.flight;
+    const bool onFinal = st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing;
+    const bool descending = !isnan(f.vertical_rate) && f.vertical_rate < -200;
+
+    if (e.goAround)
+    {
+        if (onFinal && descending && now - e.goAroundMs > 60000)
+        {
+            e.goAround = false;
+            e.finalMs = now;
+            Log.printf("Display: %s back on approach after its go-around\n", f.ident.c_str());
+        }
+        return;
+    }
+    const bool recentlyFinal = e.finalMs && now - e.finalMs < kFinalMemoryMs;
+    const bool climbingAway = !isnan(f.vertical_rate) && f.vertical_rate > kGoAroundClimbFpm &&
+                              !isnan(f.baro_altitude) && !isnan(prevAlt) &&
+                              f.baro_altitude > prevAlt + 50 && f.baro_altitude < kGoAroundMaxFt;
+    if (recentlyFinal && !e.landingPlayed && climbingAway)
+    {
+        e.goAround = true;
+        e.goAroundMs = now;
+        e.goAroundAnimPending = true;
+        e.finalMs = 0;
+        _stats.noteGoAround();
+        Log.printf("Display: %s GO-AROUND (%.0f ft, +%.0f fpm)\n", f.ident.c_str(),
+                   f.baro_altitude, f.vertical_rate);
+        return;
+    }
+    if (onFinal && descending) e.finalMs = now;
 }
 
 void NeoMatrixDisplay::startLanding(unsigned long now, bool demo)
@@ -666,12 +715,38 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
         if (_hasCurrent && !_inTransition) startLanding(now, true);
     }
 
-    // Trigger once, when the dead-reckoned approach reaches the threshold.
-    if (_hasCurrent && !_inTransition && !_landingActive && !_current.landingPlayed)
+    if (s_goAroundDemo)
+    {
+        s_goAroundDemo = false;
+        if (_hasCurrent && !_inTransition && !_landingActive)
+        {
+            _landingDemo = true; _landingIsGoAround = true;
+            _landingActive = true; _landingStartMs = now;
+        }
+    }
+
+    // A go-around just detected: play its animation once.
+    if (_hasCurrent && !_inTransition && !_landingActive && _current.goAroundAnimPending)
+    {
+        _current.goAroundAnimPending = false;
+        _landingDemo = false; _landingIsGoAround = true;
+        _landingActive = true; _landingStartMs = now;
+    }
+
+    // Touchdown, confirmed by the data rather than predicted: at the threshold
+    // by dead reckoning, and either reported low (< 200 ft) near it, or gone
+    // from the data for a while (on the ground, under the altitude filter).
+    if (_hasCurrent && !_inTransition && !_landingActive && !_current.landingPlayed && !_current.goAround)
     {
         const ApproachStatus s = liveStatus(now);
-        if (s.phase == ApproachStatus::Landing ||
-            (s.phase == ApproachStatus::Approach && !isnan(s.distKm) && s.distKm <= 0.05f))
+        const FlightInfo &f = _current.flight;
+        const bool atThreshold = s.phase == ApproachStatus::Landing ||
+                                 (s.phase == ApproachStatus::Approach && !isnan(s.distKm) && s.distKm <= 0.05f);
+        const bool reportedLow = !isnan(f.baro_altitude) && f.baro_altitude < kLandedReportFt &&
+                                 (isnan(f.vertical_rate) || f.vertical_rate < 100) &&
+                                 !isnan(s.distKm) && s.distKm < 1.5f;
+        const bool silent = now - _current.dataMs > kLandedSilentMs;
+        if (atThreshold && (reportedLow || silent))
             startLanding(now, false);
     }
 
@@ -680,11 +755,12 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
     if (t >= LandingScene::DURATION_MS)
     {
         _landingActive  = false;
-        if (!_landingDemo)
+        if (!_landingDemo && !_landingIsGoAround)
         {
             _current.landed = true;
             _shownSinceMs   = now;   // give the LANDED card its full hold time
         }
+        _landingIsGoAround = false;
         return false;
     }
     const FlightInfo &f = _current.flight;
@@ -692,7 +768,8 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
     const AircraftSprites::Kind kind = AircraftSprites::classify(f.aircraft_code, known);
     const bool rightward = FlyAcross::pathFor(f.heading, f.vertical_rate, g_config.screen_facing).rightward;
     LandingScene::render(g_workFrame, t, AircraftSprites::get(kind), _current.accent, !known,
-                         rightward, f.ident, _current.runway);
+                         rightward, f.ident_iata.length() ? f.ident_iata : f.ident, _current.runway,
+                         _landingIsGoAround);
     present();
     return true;
 }

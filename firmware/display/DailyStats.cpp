@@ -11,6 +11,7 @@ void DailyStats::rollDay()
     {
         _day = lt.tm_yday;
         _arrivals = 0;
+        _goArounds = 0;
         _counted.clear();
         _airlines.clear();
         _types.clear();

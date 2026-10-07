@@ -28,7 +28,11 @@ the code (`SZS`) because logos are not part of this repository; see below.
   behind it.
 - **Landing**: when the aircraft reaches the threshold it flares, touches down
   with tyre smoke and rolls out in front of a London skyline (with the Shard's
-  warning light blinking); the card then reads `LANDED 27L`.
+  warning light blinking); the card then reads `LANDED 27L`. It only plays
+  once the aircraft is really down: low, level and at the threshold.
+- **Go-arounds**: an aircraft on final that climbs away instead of landing
+  gets its own scene and a flashing `GO AROUND 27L` card, and is counted on
+  the stats screen.
 - **Landing traffic first**: aircraft lined up on a Heathrow runway are picked
   ahead of everything else, closest to touchdown first, and a card on final is
   held until its landing has played.
@@ -94,9 +98,10 @@ Other ESP32 boards with a HUB75 panel should work through the original
 
    After the first flash, uploads work over USB without the bridge.
 5. Join the `Glideslope-Setup` Wi-Fi network and enter your home Wi-Fi.
-6. Open the board's address in a browser and enter your OpenSky API client ID
-   and secret (free from your account page at
-   [opensky-network.org](https://opensky-network.org/)).
+6. Open the board's address in a browser. Positions come from the community
+   feeds out of the box; optionally add an OpenSky API client ID and secret
+   (free from [opensky-network.org](https://opensky-network.org/)) as the
+   last-resort backup.
 
 ## Airline logos
 
@@ -126,8 +131,15 @@ The landing scene's London skyline is generated the same way by
 
 ## Data sources
 
-- [OpenSky Network](https://opensky-network.org/) for aircraft positions
-  (or a local [tar1090](https://github.com/wiedehopf/tar1090) receiver).
+Aircraft positions, first to answer wins:
+
+1. A local [tar1090](https://github.com/wiedehopf/tar1090) receiver, if set.
+2. The open community feeds [adsb.lol](https://adsb.lol/) (ODbL) and
+   [adsb.fi](https://adsb.fi/), polled every 5 s and alternated; positions
+   are usually under a second old. A service that rate-limits is rested for
+   a minute. Can be switched off in the settings.
+3. [OpenSky Network](https://opensky-network.org/), every 30 s.
+
 - [hexdb.io](https://hexdb.io/) for routes, registrations and aircraft types.
 - FlightAware AeroAPI, optional and paid.
 

@@ -371,7 +371,12 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
         case ApproachStatus::Outbound: statusCol = kCyan;  break;
         default: break;
     }
-    if (opt.landed)
+    if (opt.goAround)
+    {
+        snprintf(label, sizeof(label), s.runway[0] ? "GO AROUND %s" : "GO AROUND", s.runway);
+        statusCol = (opt.animMs / 300) % 2 ? kLate : Rgb{255, 255, 255};
+    }
+    else if (opt.landed)
     {
         if (opt.landedAt && f.scheduled_on)
         {

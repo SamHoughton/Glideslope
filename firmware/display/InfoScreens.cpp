@@ -48,26 +48,35 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
     for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 11, kDim);
 
     char v[16];
-    c.text(4, 16, "ARRIVALS", kLabel);
+    // Rows 11 px apart; go-arounds get a row once there has been one.
+    const int rowY[4] = {15, 26, 37, 48};
+    c.text(4, rowY[0], "ARRIVALS", kLabel);
     snprintf(v, sizeof(v), "%d", stats.arrivals());
-    c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(v), 16, v, kValue);
+    c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(v), rowY[0], v, kValue);
 
     int n = 0;
     const String airline = stats.busiestAirline(n);
-    c.text(4, 29, "BUSIEST", kLabel);
+    c.text(4, rowY[1], "BUSIEST", kLabel);
     if (airline.length()) snprintf(v, sizeof(v), "%s %d", airline.c_str(), n);
     else                  snprintf(v, sizeof(v), "-");
-    c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(v), 29, v, kValue);
+    c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(v), rowY[1], v, kValue);
 
     const String rare = stats.rarestType();
-    c.text(4, 42, "RAREST", kLabel);
+    c.text(4, rowY[2], "RAREST", kLabel);
     snprintf(v, sizeof(v), "%s", rare.length() ? rare.c_str() : "-");
-    c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(v), 42, v, kValue);
+    c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(v), rowY[2], v, kValue);
+
+    if (stats.goArounds() > 0)
+    {
+        c.text(4, rowY[3], "GO-AROUNDS", kLabel);
+        snprintf(v, sizeof(v), "%d", stats.goArounds());
+        c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(v), rowY[3], v, Rgb{255, 95, 80});
+    }
 
     // A slow light running along the bottom, so the screen is visibly alive.
     const int x = 4 + (int)((animMs / 40) % (FrameCanvas::W - 8));
     for (int i = 0; i < 6; ++i)
-        c.set(x - i, 56, FrameCanvas::scale(kValue, 1.0f - i / 6.0f));
+        c.set(x - i, 59, FrameCanvas::scale(kValue, 1.0f - i / 6.0f));
 }
 
 void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs)

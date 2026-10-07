@@ -7,6 +7,7 @@ namespace
     constexpr uint32_t kTouchdownMs = 1100;   // end of the approach and flare
     constexpr uint32_t kStoppedMs   = 2900;   // end of the rollout
     constexpr uint32_t kSmokeMs     = 750;    // tyre smoke lifetime
+    constexpr uint32_t kGoAroundAtMs = 950;   // go-around: when it pitches up
 
     // Geometry (right-to-left; mirrored for the other direction)
     constexpr int kSurfaceY   = 58;           // runway surface rows 58-61
@@ -95,7 +96,7 @@ namespace
 
 void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::Sprite &sp,
                           Rgb accent, bool greySprite, bool rightward,
-                          const String &ident, const char *runway)
+                          const String &ident, const char *runway, bool goAround)
 {
     c.clear();
     drawSkyline(c, tMs, rightward);
@@ -125,7 +126,27 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     // Aircraft position: approach + flare, then rollout.
     const int groundTop = kSurfaceY - 1 - sp.h;          // sprite resting just above the surface
     float cx, top;
-    if (tMs < kTouchdownMs)
+    if (goAround)
+    {
+        // Comes down towards the threshold, then pitches up and climbs away
+        // over the skyline, never touching the runway.
+        const float startCx = FrameCanvas::W + sp.w / 2.0f + 2;
+        const float lowest  = groundTop - 7;
+        const float pace    = (kTouchdownX - startCx) / kTouchdownMs;     // px per ms on the approach
+        if (tMs < kGoAroundAtMs)
+        {
+            const float u = (float)tMs / kGoAroundAtMs;
+            cx  = startCx + pace * tMs;
+            top = kEntryY + easeOut(u) * (lowest - kEntryY);
+        }
+        else
+        {
+            const float u = (float)(tMs - kGoAroundAtMs) / (DURATION_MS - kGoAroundAtMs);
+            cx  = startCx + pace * tMs;                                    // keeps flying along
+            top = lowest - u * u * (lowest + sp.h + 4);                    // climb, steepening
+        }
+    }
+    else if (tMs < kTouchdownMs)
     {
         const float u = (float)tMs / kTouchdownMs;
         const float startCx = FrameCanvas::W + sp.w / 2.0f + 2;
@@ -140,7 +161,7 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     }
 
     // Tyre smoke where the wheels touched, drifting slightly and fading.
-    if (tMs >= kTouchdownMs && tMs < kTouchdownMs + kSmokeMs)
+    if (!goAround && tMs >= kTouchdownMs && tMs < kTouchdownMs + kSmokeMs)
     {
         const float age  = (float)(tMs - kTouchdownMs) / kSmokeMs;
         const float fade = 1.0f - age;
@@ -162,8 +183,19 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
 
     if (rightward) mirror(c);
 
+    // Go-around caption: flashing red once it starts to climb.
+    if (goAround && tMs >= kGoAroundAtMs)
+    {
+        char line1[16];
+        snprintf(line1, sizeof(line1), "GO AROUND");
+        const Rgb red = (tMs / 250) % 2 ? Rgb{255, 70, 60} : Rgb{255, 255, 255};
+        c.text((FrameCanvas::W - FrameCanvas::textWidth(line1)) / 2, 6, line1, red);
+        c.text((FrameCanvas::W - FrameCanvas::textWidth(ident)) / 2, 17, ident, kText);
+        return;
+    }
+
     // Caption once the wheels are down.
-    if (tMs >= kTouchdownMs)
+    if (!goAround && tMs >= kTouchdownMs)
     {
         const float k = min(1.0f, (float)(tMs - kTouchdownMs) / 250.0f);
         char line1[16];

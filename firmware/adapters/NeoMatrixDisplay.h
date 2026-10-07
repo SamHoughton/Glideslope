@@ -40,6 +40,9 @@ void requestFlyAcrossReplay(int forceDirection = 0);
 // Replay the landing animation for the current card (testing / demo).
 void requestLandingReplay();
 
+// Play the go-around animation on the current card (demo).
+void requestGoAroundDemo();
+
 // Show the rare-spot flourish on the current card (demo).
 void requestRareSpotDemo();
 
@@ -88,6 +91,10 @@ private:
         bool          landed = false;      // card shows LANDED after the animation
         time_t        landedAt = 0;        // touchdown (Unix time), 0 if clock unsynced
         float         shownAltFt = NAN;    // smoothed altitude on the card
+        unsigned long finalMs = 0;         // last report that had it on final
+        bool          goAround = false;    // card shows GO AROUND
+        unsigned long goAroundMs = 0;
+        bool          goAroundAnimPending = false;
         unsigned long altMs = 0;           // when shownAltFt was last updated
     };
 
@@ -133,6 +140,7 @@ private:
 
     bool                 _landingActive  = false;
     bool                 _landingDemo    = false;
+    bool                 _landingIsGoAround = false;
     unsigned long        _landingStartMs = 0;
 
     // Message override (guarded by _lock)
@@ -153,6 +161,7 @@ private:
     void pollButton(unsigned long now);
     void crossFade(const FrameCanvas &from, float k);
     ApproachStatus liveStatus(unsigned long now);   // dead-reckoned status of the current card
+    void noteApproachProgress(Entry &e, const ApproachStatus &st, double prevAlt, unsigned long now);
     void startLanding(unsigned long now, bool demo);   // demo: replay only, card state unchanged
     bool renderLanding(unsigned long now);
     void renderMessage(const String &message);

@@ -15,6 +15,8 @@ public:
     void note(const FlightInfo &f);
 
     int  arrivals() const { return _arrivals; }
+    void noteGoAround() { rollDay(); ++_goArounds; }
+    int  goArounds() const { return _goArounds; }
     // Busiest airline as an IATA/ICAO code plus count; empty if none yet.
     String busiestAirline(int &count) const;
     // Type seen least often today (latest wins a tie); empty if none yet.
@@ -23,6 +25,7 @@ public:
 private:
     int                    _day = -1;     // local day of year the counts belong to
     int                    _arrivals = 0;
+    int                    _goArounds = 0;
     std::map<String, bool> _counted;      // idents counted today
     std::map<String, int>  _airlines;
     std::map<String, int>  _types;

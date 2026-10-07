@@ -117,8 +117,6 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
     const unsigned long cacheTtlMs =
         (unsigned long)g_config.aeroapi_cache_ttl_seconds * 1000UL;
 
-    Log.printf("FlightDataFetcher: free heap: %u B  max block: %u B\n",
-               (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 
     // Aircraft on final approach first (closest to touchdown first), then the
     // rest by distance, so the hexdb budget — and "nearest only" — goes to the
