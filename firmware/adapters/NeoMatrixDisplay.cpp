@@ -171,6 +171,8 @@ bool NeoMatrixDisplay::initialize()
     mxconfig.driver    = HUB75_I2S_CFG::ICN2038S;
     mxconfig.clkphase  = false;
     mxconfig.latch_blanking = 1;
+    // Colour depth stays at the default 8 bits: 7 saves 8 KB of DMA buffer but
+    // changes the refresh timing, and this panel then flickers green.
 
     pinMode(kButtonPin, INPUT_PULLUP);
 

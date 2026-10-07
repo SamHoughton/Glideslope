@@ -54,8 +54,8 @@ bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent,
         return false;
     }
 
-    // Configure TLS once; the client object persists across calls so the
-    // ESP32 HTTP stack can reuse the established TLS connection (keep-alive).
+    // Configure TLS once. The connection itself is closed after each request:
+    // a kept-alive TLS session holds ~40 KB of heap the other fetches need.
     if (!_configured)
     {
         if (APIConfiguration::AEROAPI_INSECURE_TLS)
@@ -75,11 +75,13 @@ bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent,
     {
         Log.printf("AeroAPIFetcher: HTTP request failed with code %d for flight %s\n", code, flightIdent.c_str());
         http.end();
+        _client.stop();   // close the TLS session now: kept alive it holds ~40 KB of heap
         return false;
     }
 
     String payload = http.getString();
     http.end();
+    _client.stop();   // close the TLS session now: kept alive it holds ~40 KB of heap
 
     // Filter to only the fields we use — avoids holding the full response in the parsed doc
     JsonDocument filter;

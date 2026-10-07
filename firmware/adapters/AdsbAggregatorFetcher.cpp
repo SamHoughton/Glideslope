@@ -10,6 +10,7 @@ namespace
 {
     constexpr uint32_t kTimeoutMs = 6000;
     constexpr uint32_t kBackoffMs = 60000;   // rest a service for a minute after HTTP 429
+    constexpr uint32_t kErrorRestMs = 30000; // and half a minute after a timeout or other error
 }
 
 bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name, double centerLat,
@@ -19,10 +20,14 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
         return false;
     _restUntil[i] = 0;
 
-    WiFiClientSecure client;
-    client.setInsecure();   // public open data; matches the project's other HTTPS clients
+    // adsb.lol is fetched over plain HTTP: no TLS handshake (40-50 KB of heap
+    // at its peak) every few seconds. adsb.fi only answers over HTTPS.
+    const bool tls = url.startsWith("https://");
+    WiFiClient       plain;
+    WiFiClientSecure secure;
+    if (tls) secure.setInsecure();   // public open data; matches the project's other HTTPS clients
     HTTPClient http;
-    if (!http.begin(client, url))
+    if (!http.begin(tls ? static_cast<WiFiClient &>(secure) : plain, url))
         return false;
     http.setTimeout(kTimeoutMs);
     http.setUserAgent("Glideslope/1.0 (+https://github.com/SamHoughton/Glideslope)");
@@ -37,7 +42,12 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
             Log.printf("AdsbAggregatorFetcher: %s rate-limited, resting it for 60 s\n", name);
         }
         else
-            Log.printf("AdsbAggregatorFetcher: %s HTTP %d\n", name, code);
+        {
+            // Timeouts and errors too: a short rest, so each fetch doesn't
+            // wait out the 6 s timeout before trying the other service.
+            _restUntil[i] = millis() + kErrorRestMs;
+            Log.printf("AdsbAggregatorFetcher: %s HTTP %d, resting it for 30 s\n", name, code);
+        }
         http.end();
         return false;
     }
@@ -80,17 +90,15 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
     snprintf(lat, sizeof(lat), "%.4f", centerLat);
     snprintf(lon, sizeof(lon), "%.4f", centerLon);
     const String urls[2] = {
-        String("https://api.adsb.lol/v2/point/") + lat + "/" + lon + "/" + nm,
+        String("http://api.adsb.lol/v2/point/") + lat + "/" + lon + "/" + nm,
         String("https://opendata.adsb.fi/api/v2/lat/") + lat + "/lon/" + lon + "/dist/" + nm,
     };
     static const char *const kNames[2] = { "adsb.lol", "adsb.fi" };
 
-    // Alternate which service goes first, so each is asked half as often (and
-    // stays well inside its rate limit); the other is the immediate backup.
-    _turn ^= 1;
-    for (int k = 0; k < 2; ++k)
+    // adsb.lol first (plain HTTP, light on memory); adsb.fi (HTTPS) when it
+    // fails or is resting after a rate-limit reply.
+    for (int i = 0; i < 2; ++i)
     {
-        const int i = (_turn + k) % 2;
         outStateVectors.clear();
         if (fetchFrom(i, urls[i], kNames[i], centerLat, centerLon, radiusKm, outStateVectors))
             return true;

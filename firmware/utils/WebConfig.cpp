@@ -13,6 +13,7 @@ WebServer library to avoid framework include-path issues.
 #include <WiFi.h>
 #include <Update.h>
 #include <esp_task_wdt.h>
+#include "utils/HeapWatch.h"
 #include <vector>
 
 WebConfig g_webConfig;
@@ -140,6 +141,7 @@ void WebConfig::loop()
 
     client.flush();
     client.stop();
+    heapCheckpoint("web request");
     StageTrace::mark(StageTrace::Web, StageTrace::WebIdle);
 }
 

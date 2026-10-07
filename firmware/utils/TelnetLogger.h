@@ -20,7 +20,7 @@ public:
     TelnetLogger();
 
     // Number of completed log lines retained in the ring-buffer.
-    static constexpr size_t MAX_LINES = 150;
+    static constexpr size_t MAX_LINES = 100;   // ~15 KB of heap; the web page shows the last 80
 
     // Print overrides — write to Serial AND the ring-buffer.
     size_t write(uint8_t c) override;

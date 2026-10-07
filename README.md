@@ -200,9 +200,11 @@ Aircraft positions, first to answer wins:
 
 1. A local [tar1090](https://github.com/wiedehopf/tar1090) receiver, if set.
 2. The open community feeds [adsb.lol](https://adsb.lol/) (ODbL) and
-   [adsb.fi](https://adsb.fi/), polled every 5 s and alternated; positions
-   are usually under a second old. A service that rate-limits is rested for
-   a minute. Can be switched off in the settings.
+   [adsb.fi](https://adsb.fi/), polled every 5 s; positions are usually
+   under a second old. adsb.lol is asked first, over plain HTTP (it is open
+   data, and skipping a TLS handshake every few seconds leaves the board
+   more memory); adsb.fi takes over while adsb.lol rests for a minute after
+   a rate-limit reply. Can be switched off in the settings.
 3. [OpenSky Network](https://opensky-network.org/), every 30 s.
 
 - [hexdb.io](https://hexdb.io/) for routes, registrations and aircraft types.

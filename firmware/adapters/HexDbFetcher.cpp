@@ -45,6 +45,7 @@ bool HexDbFetcher::httpGet(const String &url, String &outPayload)
     if (code == -1)
     {
         http.end();
+        _client.stop();   // close the TLS session now: kept alive it holds ~40 KB of heap
         _client.stop();
         _configured = false;
 
@@ -60,6 +61,7 @@ bool HexDbFetcher::httpGet(const String &url, String &outPayload)
     {
         Log.printf("HexDbFetcher: HTTP %d for %s\n", code, url.c_str());
         http.end();
+        _client.stop();   // close the TLS session now: kept alive it holds ~40 KB of heap
         _consecutiveFails++;
         if (_consecutiveFails >= kFailThreshold)
         {
@@ -76,6 +78,7 @@ bool HexDbFetcher::httpGet(const String &url, String &outPayload)
     _consecutiveFails = 0;
     outPayload = http.getString();
     http.end();
+    _client.stop();   // close the TLS session now: kept alive it holds ~40 KB of heap
     return true;
 }
 

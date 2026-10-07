@@ -34,6 +34,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/WifiProvisioner.h"
 #include "utils/Weather.h"
 #include "utils/GeoUtils.h"
+#include "utils/HeapWatch.h"
 #include "config/RuntimeConfig.h"
 
 static OpenSkyFetcher             g_openSky;
@@ -475,6 +476,7 @@ void loop()
         }
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
+        heapCheckpoint("fetch cycle");
         checkSquawks(g_states);
         updateArrivals(g_states, g_flights);
 
@@ -507,7 +509,9 @@ void loop()
     {
         g_lastMetarMs = millis();
         Metar m;
-        if (Weather::fetch(m))
+        const bool gotWeather = Weather::fetch(m);
+        heapCheckpoint("weather fetch");
+        if (gotWeather)
         {
             const bool changed = strcmp(m.raw, g_metar.raw) != 0;
             g_metar = m;

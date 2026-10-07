@@ -15,6 +15,7 @@ Output: Returns displayable flight count; fills outStates/outFlights.
 #include "utils/TelnetLogger.h"
 #include "display/ApproachModel.h"
 #include "config/AirlineCodes.h"
+#include "utils/HeapWatch.h"
 
 namespace
 {
@@ -107,6 +108,7 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         g_config.radius_km,
         outStates);
     _lastFetchOk = ok;
+    heapCheckpoint("position fetch");
     if (!ok)
         return 0;
 
@@ -174,6 +176,7 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             Log.printf("FlightDataFetcher: [%u/%u] fetching %s\n",
                        stateIdx, totalStates, s.callsign.c_str());
             const bool fetchOk = _flightFetcher->fetchFlightInfo(s.callsign, s.icao24, info);
+            heapCheckpoint("route lookup");
 
             if (info.ident.length() == 0)
                 info.ident = s.callsign;
@@ -183,7 +186,9 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             if (info.aircraft_code.length())
             {
                 String aircraftShort, aircraftFull;
-                if (fw.getAircraftName(info.aircraft_code, aircraftShort, aircraftFull))
+                const bool named = fw.getAircraftName(info.aircraft_code, aircraftShort, aircraftFull);
+                heapCheckpoint("aircraft name lookup");
+                if (named)
                     if (aircraftShort.length())
                         info.aircraft_display_name_short = aircraftShort;
             }
