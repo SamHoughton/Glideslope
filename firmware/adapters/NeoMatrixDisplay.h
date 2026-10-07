@@ -73,6 +73,9 @@ private:
         char          runway[4] = "";      // last runway seen for this flight
         bool          landingPlayed = false;
         bool          landed = false;      // card shows LANDED after the animation
+        time_t        landedAt = 0;        // touchdown (Unix time), 0 if clock unsynced
+        float         shownAltFt = NAN;    // smoothed altitude on the card
+        unsigned long altMs = 0;           // when shownAltFt was last updated
     };
 
     MatrixPanel_I2S_DMA *_matrix = nullptr;
@@ -87,6 +90,8 @@ private:
     std::deque<Entry>    _queue;
     std::map<String, unsigned long> _seenMs;   // ident -> last time in a fetch
     char                 _runwayInUse[4] = "";  // last arrival runway seen, e.g. "27L"
+    Entry                _nextApproach;          // closest-to-touchdown aircraft not on the card
+    bool                 _hasNextApproach = false;
 
     // Transition state (display task only)
     bool                 _inTransition = false;

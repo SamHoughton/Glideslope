@@ -14,6 +14,7 @@ Output: Returns displayable flight count; fills outStates/outFlights.
 #include "adapters/FlightWallFetcher.h"
 #include "utils/TelnetLogger.h"
 #include "display/ApproachModel.h"
+#include "config/AirlineCodes.h"
 
 namespace
 {
@@ -53,6 +54,23 @@ namespace
         f.velocity      = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
         f.vertical_rate = isnan(s.vertical_rate) ? NAN : s.vertical_rate * 196.85;
         return flightPriority(f);
+    }
+
+    // "BAW487E" -> "BA487E"; "EZY73CA" -> "U2 73CA" (space when the IATA code
+    // ends in a digit, so it doesn't run into the number). Empty if the
+    // airline is unknown, leaving the card on the raw call sign.
+    String flightNumberFromCallsign(const String &callsign)
+    {
+        const String icao = callsignAirline(callsign);
+        if (icao.length() == 0) return String();
+        const char *iata = airlineIata(icao.c_str());
+        if (!iata) return String();
+        String suffix = callsign.substring(3);
+        suffix.trim();
+        while (suffix.length() > 1 && suffix[0] == '0' && isdigit((unsigned char)suffix[1]))
+            suffix.remove(0, 1);                         // BAW0123 -> BA123
+        const bool gap = isdigit((unsigned char)iata[1]) && suffix.length() && isdigit((unsigned char)suffix[0]);
+        return String(iata) + (gap ? " " : "") + suffix;
     }
 
     // Sub-fleets that fly in a parent airline's livery and have no logo file of their own.
@@ -210,6 +228,12 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                 if (code.length() && _logoStore->getAirlineLogo(code, info.airline_logo_rgb565))
                     break;
         }
+
+        // Flight-number style ident for the card: the API's IATA flight number
+        // when it has one (AeroAPI), else the call sign with its ICAO airline
+        // prefix swapped for the IATA code (BAW487E -> BA487E), else the call sign.
+        if (info.ident_iata.length() == 0)
+            info.ident_iata = flightNumberFromCallsign(s.callsign);
 
         // Always apply live telemetry from the current StateVector
         if (!isnan(s.baro_altitude)) info.baro_altitude  = s.baro_altitude * 3.28084;

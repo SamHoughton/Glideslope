@@ -357,6 +357,7 @@ void WebConfig::setCurrentFlight(const FlightInfo *f)
     {
         const String ident = f->ident.length() ? f->ident : f->ident_icao;
         doc["ident"]         = ident;
+        doc["flight"]        = f->ident_iata.length() ? f->ident_iata : ident;
         doc["airline_name"]  = f->airline_display_name_full.length() ? f->airline_display_name_full
                              : f->operator_icao.length()             ? f->operator_icao
                              : f->operator_code;
@@ -677,7 +678,7 @@ const char kHtmlPage[] =
 "function pollNow(){"
 "fetch('/api/display').then(function(r){return r.json();}).then(function(d){"
 "var n=$('now');if(!d.active){n.textContent='Scanning for traffic';return;}"
-"n.innerHTML='';var b=document.createElement('b');b.textContent=d.ident;n.appendChild(b);"
+"n.innerHTML='';var b=document.createElement('b');b.textContent=d.flight+(d.flight!==d.ident?' ('+d.ident+')':'');n.appendChild(b);"
 "n.appendChild(document.createTextNode('  '+(d.origin||'?')+' → '+(d.dest||'?')+'  ·  '+(d.aircraft_name||'')+"
 "'  ·  '+d.altitude_ft+' ft'+(d.registration?'  ·  '+d.registration:'')));"
 "}).catch(function(){}).finally(function(){setTimeout(pollNow,3000);});"

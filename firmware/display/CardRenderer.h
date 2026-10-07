@@ -28,7 +28,9 @@ namespace CardRenderer
         uint32_t dataAgeMs    = 0;      // time since telemetry arrived (altitude dead-reckoning)
         bool     border       = true;   // 1px panel border in the accent colour
         bool     spriteRight  = false;  // sprite faces right (aircraft moving rightward)
-        bool     landed       = false;  // after the landing animation: "LANDED 27L"
+        bool     landed       = false;  // after the landing animation
+        time_t   landedAt     = 0;      // touchdown time (Unix), 0 if the clock wasn't set
+        double   altFt        = NAN;    // smoothed altitude to show; NAN = dead-reckon here
     };
 
     void render(FrameCanvas &c, const FlightInfo &f, const ApproachStatus &s,

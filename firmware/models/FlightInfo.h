@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <time.h>
 #include <vector>
 #include "AirportInfo.h"
 
@@ -40,6 +41,10 @@ struct FlightInfo
     double bearing_deg = NAN;
     double lat = NAN;
     double lon = NAN;
+
+    // Scheduled runway arrival (Unix time, UTC); 0 when unknown. Only AeroAPI
+    // provides it — used for "4 MIN EARLY" on the landed card.
+    time_t scheduled_on = 0;
 };
 
 namespace AirlineLogo

@@ -28,6 +28,22 @@ static String safeGetString(JsonVariant v, const char *key)
     return String(v[key].as<const char *>());
 }
 
+// "2026-10-07T05:55:00Z" -> Unix time (UTC); 0 if absent or malformed.
+static time_t parseIsoUtc(const String &s)
+{
+    int Y, M, D, h, m, sec;
+    if (sscanf(s.c_str(), "%d-%d-%dT%d:%d:%d", &Y, &M, &D, &h, &m, &sec) != 6)
+        return 0;
+    // Days since 1970-01-01 (proleptic Gregorian), Howard Hinnant's algorithm.
+    Y -= M <= 2;
+    const int era = (Y >= 0 ? Y : Y - 399) / 400;
+    const unsigned yoe = (unsigned)(Y - era * 400);
+    const unsigned doy = (153 * (M + (M > 2 ? -3 : 9)) + 2) / 5 + D - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    const long days = era * 146097L + (long)doe - 719468L;
+    return (time_t)(days * 86400L + h * 3600L + m * 60L + sec);
+}
+
 bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent,
                                      const String & /*icao24*/,
                                      FlightInfo   &outInfo)
@@ -83,6 +99,7 @@ bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent,
     filter["flights"][0]["last_position"]["groundspeed"] = true;
     filter["flights"][0]["last_position"]["heading"] = true;
     filter["flights"][0]["last_position"]["vertical_rate"] = true;
+    filter["flights"][0]["scheduled_on"] = true;   // scheduled runway arrival (early/late on the card)
 
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
@@ -108,6 +125,7 @@ bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent,
     outInfo.operator_iata = safeGetString(f, "operator_iata");
     outInfo.aircraft_code = safeGetString(f, "aircraft_type");
     outInfo.registration  = safeGetString(f, "registration");
+    outInfo.scheduled_on  = parseIsoUtc(safeGetString(f, "scheduled_on"));
 
     // The last_position object contains live position data
     if (f["last_position"].is<JsonObject>())

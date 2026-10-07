@@ -285,17 +285,24 @@ void AircraftSprites::draw(FrameCanvas &c, const Sprite &s, int x, int y, Rgb ta
         return s.rows[r][flipX ? s.w - 1 - col : col];
     };
 
+    // Outline: a solid black backing so whatever the sprite passes over can't
+    // show through it. Each row is cleared from the leftmost to the rightmost
+    // pixel of the sprite in that row and its neighbours (1px halo all round),
+    // which also fills the gaps between engines, wings and tail.
     if (outline)
         for (int r = -1; r <= s.h; ++r)
-            for (int col = -1; col <= s.w; ++col)
-            {
-                if (at(r, col) != '.') continue;
-                bool near = false;
-                for (int dy = -1; dy <= 1 && !near; ++dy)
-                    for (int dx = -1; dx <= 1 && !near; ++dx)
-                        near = at(r + dy, col + dx) != '.';
-                if (near) c.set(x + col, y + r, (uint16_t)0);
-            }
+        {
+            int first = s.w, last = -1;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int col = 0; col < s.w; ++col)
+                    if (at(r + dy, col) != '.')
+                    {
+                        first = min(first, col);
+                        last  = max(last, col);
+                    }
+            for (int col = first - 1; col <= last + 1; ++col)
+                c.set(x + col, y + r, (uint16_t)0);
+        }
 
     for (int r = 0; r < s.h; ++r)
         for (int col = 0; col < s.w; ++col)

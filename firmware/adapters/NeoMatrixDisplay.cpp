@@ -31,6 +31,8 @@ static constexpr unsigned long kStaleEntryMs    = 3UL * 60 * 1000;   // drop que
 static constexpr unsigned long kMessageMs       = 4000;
 static constexpr unsigned long kIdleAfterMs     = 5UL * 60 * 1000;   // card -> scanning screen
 static constexpr float         kHoldForLandingSec = 300.0f;          // keep an approach card if ETA below this
+static constexpr unsigned long kLandedHoldMs    = 10000;             // LANDED card, then the next approach
+static constexpr float         kAltEaseSec      = 0.8f;              // altitude smoothing time constant
 static constexpr uint32_t      kAnimFrameMs     = 20;                // 50 fps during the fly-across
 static constexpr uint32_t      kCardFrameMs     = 50;                // 20 fps otherwise
 
@@ -176,6 +178,11 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
     Lock l(_lock);
     const unsigned long now = millis();
 
+    // The aircraft closest to touchdown that isn't on the card: what the
+    // landed card moves on to, even if it has been shown before.
+    _hasNextApproach = false;
+    float bestDist = 1e9f;
+
     for (const FlightInfo &f : flights)
     {
         if (f.ident.length() == 0) continue;
@@ -184,6 +191,14 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
         const ApproachStatus st = ApproachModel::evaluate(f);
         if (st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing)
             strlcpy(_runwayInUse, st.runway, sizeof(_runwayInUse));
+        if (st.phase == ApproachStatus::Approach && !isnan(st.distKm) && st.distKm < bestDist &&
+            !(_hasCurrent && f.ident == _current.flight.ident))
+        {
+            bestDist = st.distKm;
+            _nextApproach.flight = f;
+            _nextApproach.dataMs = now;
+            _hasNextApproach = true;
+        }
 
         if (_hasCurrent && f.ident == _current.flight.ident)
         {
@@ -235,6 +250,9 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
 
     for (auto it = _seenMs.begin(); it != _seenMs.end(); )
         it = (now - it->second > 2 * kSeenCooldownMs) ? _seenMs.erase(it) : std::next(it);
+
+    if (_hasNextApproach)
+        _nextApproach.accent = CardRenderer::accentFor(_nextApproach.flight);
 }
 
 bool NeoMatrixDisplay::currentFlight(FlightInfo &out)
@@ -347,7 +365,18 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
                           !isnan(s.etaSec) && s.etaSec <= kHoldForLandingSec;
     }
 
-    const unsigned long holdMs = (unsigned long)g_config.display_cycle_seconds * 1000UL;
+    // Landed: after ~10 s move on to the next aircraft on approach, even one
+    // that has been on the card before.
+    if (_hasCurrent && _current.landed && _queue.empty() && _hasNextApproach &&
+        _nextApproach.flight.ident != _current.flight.ident)
+    {
+        _queue.push_back(_nextApproach);
+        _hasNextApproach = false;
+    }
+
+    const unsigned long holdMs = _hasCurrent && _current.landed
+        ? kLandedHoldMs
+        : (unsigned long)g_config.display_cycle_seconds * 1000UL;
     if (!_queue.empty() && (!_hasCurrent || (now - _shownSinceMs >= holdMs && !awaitingLanding)))
     {
         beginNextCard(now);
@@ -400,19 +429,44 @@ ApproachStatus NeoMatrixDisplay::liveStatus(unsigned long now)
 void NeoMatrixDisplay::renderCurrentCard(unsigned long now)
 {
     const FlightInfo &f = _current.flight;
+
+    // Smoothed altitude: dead-reckon with the vertical rate, then ease the
+    // shown value towards it, so new readings glide in instead of jumping.
+    if (!isnan(f.baro_altitude))
+    {
+        double target = f.baro_altitude;
+        if (!isnan(f.vertical_rate))
+            target += f.vertical_rate * min(now - _current.dataMs, 60000UL) / 60000.0;
+        if (isnan(_current.shownAltFt) || _current.altMs == 0)
+            _current.shownAltFt = target;
+        else
+        {
+            const float dt = (now - _current.altMs) / 1000.0f;
+            _current.shownAltFt += (target - _current.shownAltFt) * (1.0f - expf(-dt / kAltEaseSec));
+        }
+        _current.altMs = now;
+    }
+
     CardRenderer::Options o;
     o.animMs      = now;
     o.dataAgeMs   = now - _current.dataMs;
     o.border      = g_config.display_border;
     o.spriteRight = FlyAcross::pathFor(f.heading, f.vertical_rate, g_config.screen_facing).rightward;
     o.landed      = _current.landed;
+    o.landedAt    = _current.landedAt;
+    o.altFt       = _current.shownAltFt;
     CardRenderer::render(g_workFrame, f, liveStatus(now), _current.accent, o);
 }
 
 void NeoMatrixDisplay::startLanding(unsigned long now, bool demo)
 {
     _landingDemo = demo;
-    if (!demo) _current.landingPlayed = true;
+    if (!demo)
+    {
+        _current.landingPlayed = true;
+        const time_t t = time(nullptr);
+        _current.landedAt = t > 1600000000 ? t : 0;   // only if the clock has synced
+    }
     _landingActive  = true;
     _landingStartMs = now;
     Log.printf("Display: %s touchdown on %s\n", _current.flight.ident.c_str(),

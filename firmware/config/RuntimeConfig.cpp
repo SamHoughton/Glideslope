@@ -34,10 +34,10 @@ static void applyDefaults(RuntimeConfig &c)
             sizeof(c.screen_facing) - 1);
     c.screen_facing[sizeof(c.screen_facing) - 1] = '\0';
     c.display_flip               = false;
-    c.night_mode_enabled         = false;
+    c.night_mode_enabled         = true;      // dim overnight by default
     c.night_start_minutes        = 22 * 60;   // 22:00
     c.night_end_minutes          =  7 * 60;   // 07:00
-    c.night_brightness           = 0;
+    c.night_brightness           = 38;        // ~15%
     c.utc_offset_minutes         = 0;
     // Local ADS-B — seed from compile-time constant (empty = OpenSky only)
     strncpy(c.tar1090_host, APIConfiguration::TAR1090_HOST, sizeof(c.tar1090_host) - 1);

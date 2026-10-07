@@ -11,6 +11,7 @@ namespace
     const Rgb kAltGreen  {110, 220, 140};
     const Rgb kAmber     {255, 185,  60};
     const Rgb kCyan      { 90, 200, 210};
+    const Rgb kLate      {255,  95,  80};
     const Rgb kGrey      {150, 155, 165};
     const Rgb kDimGrey   { 70,  75,  85};
     const Rgb kBarGrey   {200, 200, 205};
@@ -32,6 +33,7 @@ namespace
 
     constexpr uint32_t kRouteShowMs = 5000;   // route, before switching to the airline name
     constexpr uint32_t kNameShowMs  = 3000;   // airline name
+    constexpr uint32_t kFadeMs      = 350;    // cross-fade between the two
 
     constexpr uint32_t kGlintEveryMs = 7000;   // logo glint cadence
     constexpr uint32_t kGlintMs      = 650;    // glint sweep duration
@@ -73,34 +75,50 @@ namespace
         buf[o] = '\0';
     }
 
-    // Word-wrap text into at most two lines of maxChars; words that don't fit
-    // on the second line are dropped, an over-long single word is cut.
-    void wrapTwoLines(const char *text, int maxChars, char *line1, char *line2)
+    // Airline name short enough for one line: drop generic trailing words
+    // ("BRITISH AIRWAYS SHUTTLE" -> "BRITISH"). Returns false if it still
+    // doesn't fit, in which case the card just keeps the route.
+    bool shortAirlineName(const char *name, int maxChars, char *out, size_t outLen)
     {
-        char *lines[2] = { line1, line2 };
-        int li = 0, len = 0;
-        line1[0] = line2[0] = '\0';
-        const char *p = text;
-        while (*p && li < 2)
+        static const char *const kGeneric[] = {
+            "AIRWAYS", "AIRLINES", "AIRLINE", "AIR LINES", "INTERNATIONAL", "CONNECT",
+            "SHUTTLE", "DOMESTIC", "EXPRESS", "AVIATION", "GROUP", "REGIONAL", "CARGO",
+        };
+        char buf[48];
+        size_t n = 0;
+        for (const char *p = name; *p && n + 1 < sizeof(buf); ++p)
+            buf[n++] = (char)toupper((unsigned char)*p);
+        buf[n] = '\0';
+        while (n && buf[n - 1] == ' ') buf[--n] = '\0';
+
+        bool trimmed = true;
+        while (FrameCanvas::textWidth(buf) > maxChars * 6 - 1 && trimmed)
         {
-            while (*p == ' ') ++p;
-            const char *w = p;
-            while (*p && *p != ' ') ++p;
-            int wl = (int)(p - w);
-            if (wl == 0) break;
-            const int need = (len ? 1 : 0) + wl;
-            if (len + need > maxChars)
+            trimmed = false;
+            for (const char *g : kGeneric)
             {
-                if (len == 0) wl = maxChars;               // word longer than a line: cut it
-                else if (++li == 2) break;                  // next line
-                else { len = 0; if (wl > maxChars) wl = maxChars; }
+                const size_t gl = strlen(g);
+                if (n > gl + 1 && strcmp(buf + n - gl, g) == 0 && buf[n - gl - 1] == ' ')
+                {
+                    n -= gl + 1;
+                    buf[n] = '\0';
+                    trimmed = true;
+                    break;
+                }
             }
-            char *dst = lines[li] + len;
-            if (len) { *dst++ = ' '; ++len; }
-            memcpy(dst, w, wl);
-            len += wl;
-            lines[li][len] = '\0';
         }
+        if (n == 0 || FrameCanvas::textWidth(buf) > maxChars * 6 - 1) return false;
+        snprintf(out, outLen, "%s", buf);
+        return true;
+    }
+
+    // 0..1 brightness for a phase of length len at time t: fades in over the
+    // first kFadeMs and out over the last kFadeMs.
+    float phaseFade(uint32_t t, uint32_t len, uint32_t fadeMs)
+    {
+        if (t < fadeMs) return (float)t / fadeMs;
+        if (t + fadeMs > len) return (float)(len - t) / fadeMs;
+        return 1.0f;
     }
 
     const char *firstNonEmpty(const String &a, const String &b)
@@ -155,7 +173,9 @@ namespace
     void drawStrip(FrameCanvas &c, const ApproachStatus &s, Rgb accent, uint32_t animMs, bool landed)
     {
         // Runway threshold "piano keys", then the approach strip.
-        const int barsX = 52, left = 64, right = 124, y = kBandY + 3;
+        // right = 121: the marker (mx-1..mx+3) and its 1px black halo stay at
+        // least 1px clear of the border at x 127.
+        const int barsX = 52, left = 64, right = 121, y = kBandY + 3;
         for (int x = barsX; x <= barsX + 8; x += 2)
             for (int yy = kBandY + 1; yy <= kBandY + 5; ++yy)
                 c.set(x, yy, kBarGrey);
@@ -265,67 +285,78 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
     else
         c.text(kTextX, 6, ident, accent, 1, 0, kCols);
 
-    // Route line, alternating with the airline name (in the accent colour).
-    // A name too wide for one line wraps by word onto the type row, e.g.
-    // BRITISH / AIRWAYS; the type returns with the route.
+    // Route line, cross-fading with the shortened airline name on the same
+    // line (accent colour). The type row below is never touched.
     const char *org = firstNonEmpty(f.origin.code_iata, f.origin.code_icao);
     const char *dst = firstNonEmpty(f.destination.code_iata, f.destination.code_icao);
-    const char *airline = f.airline_display_name_full.c_str();
     const bool hasRoute = org[0] && dst[0];
-    const bool showAirline = airline[0] &&
-        (!hasRoute || opt.animMs % (kRouteShowMs + kNameShowMs) >= kRouteShowMs);
+    char route[24] = "", airline[kCols + 1] = "";
+    if (hasRoute) snprintf(route, sizeof(route), "%s > %s", org, dst);
+    const bool hasAirline = shortAirlineName(f.airline_display_name_full.c_str(), kCols, airline, sizeof(airline));
 
-    bool typeRowFree = true;
-    if (showAirline)
+    if (hasRoute && hasAirline)
     {
-        char line1[kCols + 1], line2[kCols + 1];
-        wrapTwoLines(airline, kCols, line1, line2);
-        c.text(kTextX, 18, line1, accent);
-        if (line2[0])
-        {
-            c.text(kTextX, 27, line2, accent);
-            typeRowFree = false;
-        }
+        const uint32_t t = opt.animMs % (kRouteShowMs + kNameShowMs);
+        if (t < kRouteShowMs)
+            c.text(kTextX, 18, route, FrameCanvas::scale(kWhite, phaseFade(t, kRouteShowMs, kFadeMs)), 1, 0, kCols);
+        else
+            c.text(kTextX, 18, airline, FrameCanvas::scale(accent, phaseFade(t - kRouteShowMs, kNameShowMs, kFadeMs)));
     }
     else if (hasRoute)
-    {
-        char route[24];
-        snprintf(route, sizeof(route), "%s > %s", org, dst);
         c.text(kTextX, 18, route, kWhite, 1, 0, kCols);
-    }
+    else if (hasAirline)
+        c.text(kTextX, 18, airline, accent);
 
-    if (typeRowFree)
-        c.text(kTextX, 27, firstNonEmpty(f.aircraft_display_name_short, f.aircraft_code), kTypeBlue, 1, 0, kCols);
+    c.text(kTextX, 27, firstNonEmpty(f.aircraft_display_name_short, f.aircraft_code), kTypeBlue, 1, 0, kCols);
 
-    // Altitude (dead-reckoned with the vertical rate between fetches) + speed,
-    // with a climb/descent arrow when there is room.
+    // Altitude + speed (or, once landed, the touchdown time), with a
+    // climb/descent arrow when there is room. The altitude comes in already
+    // smoothed (opt.altFt); without it, dead-reckon from the vertical rate.
     char alt[16] = "", spd[12] = "";
-    if (!opt.landed && !isnan(f.baro_altitude))
+    if (opt.landed)
     {
-        double a = f.baro_altitude;
-        if (!isnan(f.vertical_rate))
-            a += f.vertical_rate * min((float)opt.dataAgeMs, kMaxAltDeadReckonMs) / 60000.0;
-        if (a < 0) a = 0;
-        char num[12];
-        withThousands((int)lround(a / 25.0) * 25, num, sizeof(num));
-        snprintf(alt, sizeof(alt), "%sFT", num);
+        if (opt.landedAt)
+        {
+            struct tm lt;
+            localtime_r(&opt.landedAt, &lt);
+            snprintf(alt, sizeof(alt), "LANDED %02d:%02d", lt.tm_hour, lt.tm_min);
+        }
+        c.text(kTextX, 36, alt[0] ? alt : "LANDED", kAmber);
     }
-    if (!opt.landed && !isnan(f.velocity))
-        snprintf(spd, sizeof(spd), "%dKT", (int)lround(f.velocity));
-    const bool arrow = alt[0] && !isnan(f.vertical_rate) && fabs(f.vertical_rate) >= 200;
-    int x = kTextX;
-    c.text(x, 36, alt, kAltGreen);
-    x += FrameCanvas::textWidth(alt);
-    const int spdW = FrameCanvas::textWidth(spd);
-    if (arrow && x + 2 + 5 + 3 + spdW <= kRightX + 1)
+    else
     {
-        drawBits(c, f.vertical_rate < 0 ? kArrowDown : kArrowUp, 3, x + 2, 38, kAltGreen);
-        x += 2 + 5;
+        double a = opt.altFt;
+        if (isnan(a) && !isnan(f.baro_altitude))
+        {
+            a = f.baro_altitude;
+            if (!isnan(f.vertical_rate))
+                a += f.vertical_rate * min((float)opt.dataAgeMs, kMaxAltDeadReckonMs) / 60000.0;
+        }
+        if (!isnan(a))
+        {
+            if (a < 0) a = 0;
+            char num[12];
+            withThousands((int)lround(a / 5.0) * 5, num, sizeof(num));   // 5 ft steps: reads as a smooth count
+            snprintf(alt, sizeof(alt), "%sFT", num);
+        }
+        if (!isnan(f.velocity))
+            snprintf(spd, sizeof(spd), "%dKT", (int)lround(f.velocity));
+        const bool arrow = alt[0] && !isnan(f.vertical_rate) && fabs(f.vertical_rate) >= 200;
+        int x = kTextX;
+        c.text(x, 36, alt, kAltGreen);
+        x += FrameCanvas::textWidth(alt);
+        const int spdW = FrameCanvas::textWidth(spd);
+        if (arrow && x + 2 + 5 + 3 + spdW <= kRightX + 1)
+        {
+            drawBits(c, f.vertical_rate < 0 ? kArrowDown : kArrowUp, 3, x + 2, 38, kAltGreen);
+            x += 2 + 5;
+        }
+        if (spd[0] && x + (alt[0] ? 4 : 0) + spdW <= kRightX + 1)
+            c.text(x + (alt[0] ? 4 : 0), 36, spd, kAltGreen);
     }
-    if (spd[0])
-        c.text(x + (alt[0] ? 4 : 0), 36, spd, kAltGreen);
 
-    // Status line.
+    // Status line. Once landed: early/late against the schedule when known
+    // (AeroAPI), otherwise the runway.
     char label[24];
     ApproachModel::label(s, label, sizeof(label));
     Rgb statusCol = kGrey;
@@ -342,8 +373,18 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
     }
     if (opt.landed)
     {
-        snprintf(label, sizeof(label), "LANDED %s", s.runway);
-        statusCol = kAmber;
+        if (opt.landedAt && f.scheduled_on)
+        {
+            const long mins = lround((double)(opt.landedAt - f.scheduled_on) / 60.0);
+            if (mins <= -1)     { snprintf(label, sizeof(label), "%ld MIN EARLY", -mins); statusCol = kAltGreen; }
+            else if (mins >= 1) { snprintf(label, sizeof(label), "%ld MIN LATE", mins);   statusCol = kLate; }
+            else                { snprintf(label, sizeof(label), "ON TIME");               statusCol = kAltGreen; }
+        }
+        else
+        {
+            snprintf(label, sizeof(label), s.runway[0] ? "RUNWAY %s" : "HEATHROW", s.runway);
+            statusCol = kCyan;
+        }
     }
     c.text(kTextX, 45, label, statusCol, 1, 0, kCols);
 
