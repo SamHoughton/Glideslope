@@ -3,6 +3,7 @@
 #include "config/RuntimeConfig.h"
 #include "utils/TelnetLogger.h"
 #include "utils/GeoUtils.h"
+#include "utils/HeapWatch.h"
 #include <math.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -152,9 +153,9 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
         return true;
     }
 
-    // adsb.lol down for a while: adsb.fi (HTTPS).
+    // adsb.lol down for a while: adsb.fi (HTTPS), if there is room for TLS.
     outStateVectors.clear();
-    if (fetchFrom(1, urls[1], kNames[1], centerLat, centerLon, radiusKm, outStateVectors))
+    if (tlsAffordable("adsb.fi") && fetchFrom(1, urls[1], kNames[1], centerLat, centerLon, radiusKm, outStateVectors))
         return true;
     outStateVectors.clear();
     return false;

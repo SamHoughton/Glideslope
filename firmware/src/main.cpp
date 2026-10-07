@@ -127,7 +127,7 @@ static Rgb airlineColour(const String &callsign)
     FlightInfo tmp;
     const Rgb c = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565)
                       ? CardRenderer::accentFor(tmp) : kNeutral;
-    if (cache.size() < 200) cache[icao] = c;
+    if (cache.size() < 64) cache[icao] = c;
     return c;
 }
 
@@ -461,7 +461,11 @@ void loop()
         }
         else
         {
-        size_t enriched = g_fetcher->fetchFlights(g_states, g_flights);
+        size_t enriched;
+        {
+            NetBusy busy;
+            enriched = g_fetcher->fetchFlights(g_states, g_flights);
+        }
 
         // Dead-link watchdog: the ESP32 can stay "connected" to Wi-Fi with a
         // link that passes nothing (every DNS lookup fails). After a run of
@@ -469,7 +473,10 @@ void loop()
         // either, restart.
         {
             static int failStreak = 0;
-            failStreak = g_fetcher->lastFetchOk() ? 0 : failStreak + 1;
+            // A fetch skipped for lack of heap (tlsAffordable) is not a dead link.
+            const bool memoryShort = ESP.getFreeHeap() < 75000;
+            if (g_fetcher->lastFetchOk()) failStreak = 0;
+            else if (!memoryShort)        ++failStreak;
             if (failStreak == 6 || failStreak == 12)
             {
                 Log.printf("WiFi: %d fetches in a row failed, reconnecting\n", failStreak);
@@ -520,7 +527,11 @@ void loop()
     {
         g_lastMetarMs = millis();
         Metar m;
-        const bool gotWeather = Weather::fetch(m);
+        bool gotWeather;
+        {
+            NetBusy busy;
+            gotWeather = tlsAffordable("weather") && Weather::fetch(m);
+        }
         heapCheckpoint("weather fetch");
         if (gotWeather)
         {
@@ -560,7 +571,7 @@ void loop()
         {
             lastBeatMs = beatNow;
             const uint32_t frames = g_display.framesDrawn(), reqs = g_webConfig.requestsServed();
-            Log.printf("Heartbeat: up %lus, display +%u frames, web +%u requests, heap %u (max block %u, low %u), %u routes cached\n",
+            Log.printf("Beat %lus: +%u frames, +%u web, heap %u blk %u low %u, %u routes\n",
                        beatNow / 1000, (unsigned)(frames - lastFrames), (unsigned)(reqs - lastReqs),
                        (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
                        (unsigned)ESP.getMinFreeHeap(), (unsigned)(g_fetcher ? g_fetcher->cachedFlights() : 0));

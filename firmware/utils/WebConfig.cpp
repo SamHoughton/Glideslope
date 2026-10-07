@@ -36,7 +36,7 @@ void WebConfig::loop()
     // While the main loop is in a TLS handshake the heap briefly drops by
     // 60-70 KB; serving a request then (its buffers, the reply) could leave
     // the handshake short. New requests wait in the backlog until it passes.
-    if (ESP.getFreeHeap() < kMinHeapToServe) { delay(20); return; }
+    if (g_netBusy || ESP.getFreeHeap() < kMinHeapToServe) { delay(20); return; }
     WiFiClient client = _server.accept();
     if (!client) { StageTrace::mark(StageTrace::Web, StageTrace::WebIdle); return; }
     ++_requests;

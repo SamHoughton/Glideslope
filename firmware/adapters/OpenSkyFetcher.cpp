@@ -12,6 +12,7 @@ Outputs: Populates outStateVectors with filtered results (distance_km, bearing_d
 #include "config/RuntimeConfig.h"
 #include "config/TimingConfiguration.h"
 #include "utils/TelnetLogger.h"
+#include "utils/HeapWatch.h"
 
 // Runtime credential helpers — NVS values override compile-time constants.
 static const char *oskyId()
@@ -166,6 +167,9 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
                                        double radiusKm,
                                        std::vector<StateVector> &outStateVectors)
 {
+    if (!tlsAffordable("OpenSky"))
+        return false;
+
     // Ensure OAuth token if configured
     if (!ensureAccessToken(false))
     {
