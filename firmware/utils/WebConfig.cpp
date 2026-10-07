@@ -560,7 +560,21 @@ void WebConfig::handleAirport(WiFiClient &c, int length)
                          : String("{\"ok\":false,\"error\":\"") + msg + "\"}";
         sendHttp(c, ok ? 200 : 400, "application/json", body);
     };
-    if (length <= (int)AirportPack::kMapBytes || length > 8192) { reply(false, "not an airport pack (wrong size)"); return; }
+    if (length <= (int)AirportPack::kMapBytes || length > 8192)
+    {
+        // Read the upload first: replying with unread data resets the
+        // connection and the browser never sees the reason.
+        uint8_t sink[256];
+        int left = length;
+        const unsigned long t0 = millis();
+        while (left > 0 && c.connected() && millis() - t0 < 10000)
+        {
+            const int n = c.read(sink, min((int)sizeof(sink), left));
+            if (n > 0) left -= n; else delay(2);
+        }
+        reply(false, "not an airport pack (wrong size)");
+        return;
+    }
 
     const char *tmp = "/airport.tmp";
     File f = LittleFS.open(tmp, "w");
