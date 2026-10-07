@@ -8,6 +8,8 @@ WebServer library to avoid framework include-path issues.
 #include "utils/WifiProvisioner.h"
 #include "utils/StageTrace.h"
 #include "config/RuntimeConfig.h"
+#include "config/Airport.h"
+#include <LittleFS.h>
 #include "adapters/NeoMatrixDisplay.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -94,7 +96,7 @@ void WebConfig::loop()
             int bodyLen = raw.substring(clIdx + 16, clEnd).toInt();
             r.contentLength = bodyLen;
             // A firmware image is streamed straight to flash by its handler.
-            if (r.path == "/api/update") bodyLen = 0;
+            if (r.path == "/api/update" || r.path == "/api/airport") bodyLen = 0;
             if (bodyLen > 0 && bodyLen < 8192)
             {
                 r.body.reserve(bodyLen + 1);
@@ -123,6 +125,8 @@ void WebConfig::loop()
     else if (r.path == "/api/frame"         && r.method == "GET")  handleGetFrame(client);
     else if (r.path == "/api/status"        && r.method == "GET")  handleGetStatus(client);
     else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength);
+    else if (r.path == "/api/airport"       && r.method == "POST") handleAirport(client, r.contentLength);
+    else if (r.path == "/api/airport/reset" && r.method == "POST") handleAirportReset(client);
     else if (r.path == "/api/demo/takeoff"  && r.method == "POST") { requestTakeoffDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/squawk"   && r.method == "POST") { requestAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/weather"  && r.method == "POST") { requestScreenPreview(4, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -438,6 +442,11 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["web_requests"]   = (uint32_t)_requests;
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
     doc["metar"]          = _metar;
+    doc["airport"]        = g_airport.icao;
+    doc["airport_name"]   = g_airport.name;
+    doc["airport_lat"]    = g_airport.lat;
+    doc["airport_lon"]    = g_airport.lon;
+    doc["airport_pack"]   = !g_airport.builtIn;
     if (_displayMutex) xSemaphoreGive(_displayMutex);
     String out;
     serializeJson(doc, out);
@@ -535,6 +544,68 @@ void WebConfig::handleUpdate(WiFiClient &c, int length)
 
     Log.println("Update: installed, restarting");
     requestPanelMessage("RESTARTING");
+    sendHttp(c, 200, "application/json", "{\"ok\":true}");
+    c.flush();
+    c.stop();
+    delay(500);
+    ESP.restart();
+}
+
+// Airport pack: streamed to a temporary file, checked (header parses, map is
+// the right size), then swapped in; the board restarts to load it.
+void WebConfig::handleAirport(WiFiClient &c, int length)
+{
+    auto reply = [&](bool ok, const String &msg) {
+        String body = ok ? String("{\"ok\":true,\"airport\":\"") + msg + "\"}"
+                         : String("{\"ok\":false,\"error\":\"") + msg + "\"}";
+        sendHttp(c, ok ? 200 : 400, "application/json", body);
+    };
+    if (length <= (int)AirportPack::kMapBytes || length > 8192) { reply(false, "not an airport pack (wrong size)"); return; }
+
+    const char *tmp = "/airport.tmp";
+    File f = LittleFS.open(tmp, "w");
+    if (!f) { reply(false, "cannot write to the file system"); return; }
+    uint8_t buf[512];
+    int got = 0;
+    unsigned long lastData = millis();
+    while (got < length && c.connected() && millis() - lastData < 10000)
+    {
+        const int n = c.read(buf, min((int)sizeof(buf), length - got));
+        if (n <= 0) { delay(2); continue; }
+        f.write(buf, n);
+        got += n;
+        lastData = millis();
+    }
+    f.close();
+    if (got != length) { LittleFS.remove(tmp); reply(false, "upload interrupted"); return; }
+
+    // Check it before replacing the current pack.
+    f = LittleFS.open(tmp, "r");
+    const String header = f.readStringUntil((char)10);   // newline ends the header
+    const size_t rest = f.size() - f.position();
+    f.close();
+    Airport a;
+    String error;
+    if (!AirportPack::parseHeader(header.c_str(), a, error) || rest != AirportPack::kMapBytes)
+    {
+        LittleFS.remove(tmp);
+        reply(false, error.length() ? error : String("map is the wrong size"));
+        return;
+    }
+    LittleFS.remove(AirportPack::kPath);
+    LittleFS.rename(tmp, AirportPack::kPath);
+    Log.printf("WebConfig: airport pack %s (%s) installed, restarting\n", a.name, a.icao);
+    reply(true, a.icao);
+    c.flush();
+    c.stop();
+    delay(500);
+    ESP.restart();
+}
+
+void WebConfig::handleAirportReset(WiFiClient &c)
+{
+    LittleFS.remove(AirportPack::kPath);
+    Log.println("WebConfig: airport pack removed, back to Heathrow; restarting");
     sendHttp(c, 200, "application/json", "{\"ok\":true}");
     c.flush();
     c.stop();
@@ -644,7 +715,7 @@ const char kHtmlPage[] =
 "<button data-demo='weather'>Weather (10 s)</button>"
 "<button data-demo='sprites'>Aircraft sprites (10 s)</button>"
 "<button data-demo='splash'>Scanning screen (10 s)</button>"
-"<button data-demo='map'>London map (30 s)</button>"
+"<button data-demo='map'>Map (30 s)</button>"
 "<button data-demo='stats'>Today's stats (10 s)</button>"
 "<button data-demo='clock'>Night clock (10 s)</button>"
 "</div>"
@@ -747,6 +818,14 @@ const char kHtmlPage[] =
 "</details>"
 "</div>"
 
+"<div class='card'>"
+"<h2>Airport</h2>"
+"<div id='apt' class='f'><small>&nbsp;</small></div>"
+"<div class='f'><label for='apf'>Watch another airport <small>(an airport pack from tools/airport_pack.py)</small></label>"
+"<input type='file' id='apf' accept='.airport'></div>"
+"<div class='btns'><button id='apu'>Install airport</button><button id='apc'>Centre search on airport</button>"
+"<button id='apr'>Back to Heathrow</button><span id='ast' style='align-self:center;color:#8b949e;font-size:13px'></span></div>"
+"</div>"
 "<div class='card'>"
 "<h2>Firmware</h2>"
 "<div id='ver' class='f'><small>&nbsp;</small></div>"
@@ -863,6 +942,19 @@ const char kHtmlPage[] =
 "var d;try{d=JSON.parse(t);}catch(x){status('Not a settings file',4000);return;}"
 "if(!confirm('Restore settings from '+f.name+'?'))return;"
 "post('/api/config',d).then(function(r){return r.json();}).then(function(j){status(j.ok?'Restored':'Error',3000);load();});});e.target.value='';});"
+"var st={};fetch('/api/status').then(function(r){return r.json();}).then(function(s){st=s;"
+"$('apt').firstChild.textContent='Watching '+s.airport_name+' ('+s.airport+')'+(s.airport_pack?' from an airport pack':', built in');});"
+"$('apu').addEventListener('click',function(){var f=$('apf').files[0],u=$('ast');"
+"if(!f){u.textContent='Choose a .airport file first';return;}"
+"if(!confirm('Install '+f.name+' and restart the board?'))return;"
+"fetch('/api/airport',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f}).then(function(r){return r.json();})"
+".then(function(j){if(j.ok){u.textContent='Installed '+j.airport+', restarting…';setTimeout(function(){location.reload();},9000);}"
+"else u.textContent='Failed: '+j.error;}).catch(function(){u.textContent='Upload failed';});});"
+"$('apr').addEventListener('click',function(){if(!confirm('Go back to the built-in Heathrow and restart?'))return;"
+"post('/api/airport/reset').catch(function(){});$('ast').textContent='Restarting…';setTimeout(function(){location.reload();},9000);});"
+"$('apc').addEventListener('click',function(){if(!st.airport_lat)return;"
+"if(!confirm('Set the search centre to '+st.airport_name+' ('+st.airport_lat.toFixed(4)+', '+st.airport_lon.toFixed(4)+')?'))return;"
+"post('/api/config',{center_lat:st.airport_lat,center_lon:st.airport_lon}).then(function(){load();$('ast').textContent='Search centred on '+st.airport_name;});});"
 "load();poll();pollFrame();pollNow();"
 "</script>"
 "</body>"

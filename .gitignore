@@ -10,3 +10,8 @@ logos_input/*
 
 # Local tool output
 docs/_capture/
+
+# airport_pack.py downloads
+tools/.cache/
+*.airport
+*-preview.png

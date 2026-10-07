@@ -183,9 +183,34 @@ Without a logo, the card shows a tile in a default colour with the airline code.
 
 ## Other airports
 
-The approach logic is Heathrow-specific: runway thresholds live in
-`firmware/display/ApproachModel.cpp`. Replace them with your airport's thresholds
-and courses, and change `LHR` in the labels.
+Heathrow is built in. For any other airport, make an **airport pack** and
+install it from the board's web page:
+
+```bash
+python tools/airport_pack.py EGKK --tz Europe/London
+```
+
+This writes `EGKK.airport` (and a preview PNG). On the web page, under
+**Airport**, choose the file and press **Install airport**; the board
+restarts watching Gatwick. **Centre search on airport** moves the search
+area there too, and **Back to Heathrow** removes the pack.
+
+The pack holds the airport's position, IATA code, short name, local time
+zone, every runway end (threshold, landing direction, displaced thresholds)
+and a 128×64 map: the main river or two, large lakes and parks, motorways,
+runways, aprons and approach lanes. Runways come from
+[OurAirports](https://ourairports.com/data/) (public domain) and the map from
+[OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL) via the
+Overpass API. Options: `--name` sets the panel name (12 characters),
+`--center lat,lon` centres the map elsewhere (your home, say), and `--tz` can
+be left out if the `timezonefinder` package is installed.
+
+Everything follows the pack: approach and departure runway detection, the
+arrivals board, the weather station (the airport's own METAR), the map, local
+time and the labels. Outside London the landing and take-off scenes use a
+generic skyline (hills, hangars, a terminal and a control tower with a
+flashing beacon); Heathrow's 15:00 runway alternation applies only to
+Heathrow.
 
 ## Editing sprites
 

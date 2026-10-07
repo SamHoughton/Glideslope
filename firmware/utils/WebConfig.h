@@ -14,6 +14,8 @@ Routes:
   GET  /api/frame         — raw 128x64 RGB565 frame currently on the panel
   GET  /api/status        — version, uptime, memory, weather
   POST /api/update        — new firmware image (raw .bin body); installs and restarts
+  POST /api/airport       — airport pack (tools/airport_pack.py); installs and restarts
+  POST /api/airport/reset — back to the built-in Heathrow; restarts
 
 Usage:
   Call g_webConfig.begin() once after WiFi connects.
@@ -93,6 +95,8 @@ private:
     void handleGetFrame(WiFiClient &c);
     void handleGetStatus(WiFiClient &c);
     void handleUpdate(WiFiClient &c, int length);
+    void handleAirport(WiFiClient &c, int length);
+    void handleAirportReset(WiFiClient &c);
 };
 
 extern WebConfig g_webConfig;

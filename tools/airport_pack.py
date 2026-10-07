@@ -176,6 +176,33 @@ def classify(tags):
     return None
 
 
+def km_xy(lat, lon, lat0):
+    return lon * 111.32 * math.cos(math.radians(lat0)), lat * 110.574
+
+
+def ring_area_km2(g):
+    """Shoelace area of a lat/lon ring, in km^2."""
+    if len(g) < 3:
+        return 0.0
+    lat0 = g[0]['lat']
+    pts = [km_xy(p['lat'], p['lon'], lat0) for p in g]
+    return abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]))) / 2
+
+
+def line_km(g):
+    lat0 = g[0]['lat'] if g else 0
+    pts = [km_xy(p['lat'], p['lon'], lat0) for p in g]
+    return sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
+
+
+# Only what reads at 128x64 (about 350 m a pixel): the main river or two,
+# sizeable lakes and reservoirs, big parks.
+MIN_LAKE_KM2 = 0.15
+MIN_PARK_KM2 = 0.5
+MIN_RIVER_AREA_KM2 = 0.05
+MAX_RIVERS = 2
+
+
 def render_map(elements, bbox, ends):
     n, s, w, e = bbox
     layers = {k: Image.new('1', (W * SS, H * SS), 0) for k in (RIVER, LAKE, RUNWAY, APRON, MOTORWAY, PARK)}
@@ -183,8 +210,19 @@ def render_map(elements, bbox, ends):
     def xy(lat, lon):
         return ((lon - w) / (e - w) * W * SS, (n - lat) / (n - s) * H * SS)
 
+    # Rivers drawn as lines: keep the longest named ones only.
+    river_len = {}
     for el in elements:
-        cls = classify(el.get('tags', {}))
+        t = el.get('tags', {})
+        if el['type'] == 'way' and t.get('waterway') == 'river' and 'geometry' in el:
+            river_len[t.get('name', '')] = river_len.get(t.get('name', ''), 0) + line_km(el['geometry'])
+    river_len.pop('', None)
+    main_rivers = {k for k, _ in sorted(river_len.items(), key=lambda kv: -kv[1])[:MAX_RIVERS]
+                   if river_len[k] >= 0.4 * max(river_len.values())} if river_len else set()
+
+    for el in elements:
+        tags = el.get('tags', {})
+        cls = classify(tags)
         if cls is None:
             continue
         rings = []
@@ -192,21 +230,26 @@ def render_map(elements, bbox, ends):
             rings.append(el['geometry'])
         elif el['type'] == 'relation':
             rings += [m['geometry'] for m in el.get('members', []) if m.get('role') == 'outer' and 'geometry' in m]
+        is_line = cls in (RUNWAY, MOTORWAY) or (cls == RIVER and tags.get('waterway') == 'river')
+        if cls == RIVER and is_line and tags.get('name') not in main_rivers:
+            continue
         d = ImageDraw.Draw(layers[cls])
         for g in rings:
             pts = [xy(p['lat'], p['lon']) for p in g]
             if len(pts) < 2:
                 continue
-            closed = len(pts) > 3 and pts[0] == pts[-1]
-            if cls in (LAKE, PARK, APRON) or (cls == RIVER and closed and el['type'] != 'way') or \
-               (cls == RIVER and closed and el.get('tags', {}).get('natural') == 'water'):
-                d.polygon(pts, fill=1)
-            else:
-                width = {RUNWAY: SS + 2, MOTORWAY: SS, RIVER: SS + 1}.get(cls, SS)
+            if is_line:
+                width = {RUNWAY: SS + 2, MOTORWAY: SS, RIVER: SS}[cls]
                 d.line(pts, fill=1, width=width)
+                continue
+            area = ring_area_km2(g)
+            if (cls == LAKE and area < MIN_LAKE_KM2) or (cls == PARK and area < MIN_PARK_KM2) or \
+               (cls == RIVER and area < MIN_RIVER_AREA_KM2):
+                continue
+            d.polygon(pts, fill=1)
 
     # Each map pixel: the highest-priority feature covering enough of it.
-    need = {RUNWAY: 2, APRON: 6, MOTORWAY: 3, RIVER: 3, LAKE: 7, PARK: 8}
+    need = {RUNWAY: 2, APRON: 6, MOTORWAY: 3, RIVER: 4, LAKE: 7, PARK: 8}
     order = [RUNWAY, APRON, RIVER, LAKE, MOTORWAY, PARK]
     px = {k: layers[k].load() for k in layers}
     grid = [[EMPTY] * W for _ in range(H)]
