@@ -14,7 +14,8 @@ void DailyStats::rollDay()
         _arrivals = 0;
         _departures = 0;
         _goArounds = 0;
-        _counted.clear();
+        memset(_seen, 0, sizeof(_seen));
+        _seenCount = 0;
         _airlines.clear();
         _types.clear();
         _typeLastMs.clear();
@@ -26,9 +27,7 @@ void DailyStats::note(const FlightInfo &f)
     rollDay();
     const bool toHome   = AirportPack::isHome(f.destination);
     const bool fromHome = AirportPack::isHome(f.origin);
-    if ((!toHome && !fromHome) || f.ident.length() == 0 || _counted.count(f.ident)) return;
-    if (_counted.size() > 2500) return;   // bounded; far above a day's movements
-    _counted[f.ident] = true;
+    if ((!toHome && !fromHome) || f.ident.length() == 0 || !markSeen(f.ident)) return;
     if (toHome) ++_arrivals; else ++_departures;
 
     String airline = f.ident_iata.length() >= 2 ? f.ident_iata.substring(0, 2) : f.operator_icao;
@@ -40,6 +39,20 @@ void DailyStats::note(const FlightInfo &f)
     {
         ++_types[type];
         _typeLastMs[type] = millis();
+    }
+}
+
+bool DailyStats::markSeen(const String &ident)
+{
+    // FNV-1a; 0 is reserved for empty slots.
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < ident.length(); ++i) { h ^= (uint8_t)ident[i]; h *= 16777619u; }
+    if (h == 0) h = 1;
+    if (_seenCount >= kSeenSlots * 3 / 4) return false;   // full for today: stop counting
+    for (size_t i = h % kSeenSlots;; i = (i + 1) % kSeenSlots)
+    {
+        if (_seen[i] == h) return false;
+        if (_seen[i] == 0) { _seen[i] = h; ++_seenCount; return true; }
     }
 }
 

@@ -128,7 +128,7 @@ static Rgb airlineColour(const String &callsign)
     FlightInfo tmp;
     const Rgb c = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565)
                       ? CardRenderer::accentFor(tmp) : kNeutral;
-    if (cache.size() < 200) cache[icao] = c;
+    if (cache.size() < 64) cache[icao] = c;
     return c;
 }
 
@@ -415,7 +415,10 @@ void loop()
     // Fast interval while a live source answers (local receiver or the
     // community feeds); the slower, quota-limited one when it fell to OpenSky.
     const bool onOpenSky = g_stateFetcher.usedFallback() && g_feedChain.usedFallback();
-    const unsigned long intervalMs = onOpenSky
+    const bool onFeeds   = g_stateFetcher.usedFallback() && !g_feedChain.usedFallback();
+    const unsigned long intervalMs = onFeeds
+        ? max(g_config.local_fetch_interval_seconds * 1000UL, g_feeds.minIntervalMs())
+        : onOpenSky
         ? g_config.fetch_interval_seconds       * 1000UL
         : g_config.local_fetch_interval_seconds * 1000UL;
     const unsigned long now = millis();
@@ -438,6 +441,14 @@ void loop()
         g_lastFetchMs = now - intervalMs;
     }
 
+    // adsb.lol resting after a refusal: wait it out (the display dead-reckons)
+    // rather than switch to adsb.fi and its 65 KB TLS handshake.
+    if (onFeeds && now - g_lastFetchMs >= intervalMs && g_config.use_community_feeds)
+    {
+        const unsigned long hold = g_feeds.holdOffMs();
+        if (hold) g_lastFetchMs = now - intervalMs + min(hold, 30000UL);
+    }
+
     if (now - g_lastFetchMs >= intervalMs)
     {
         g_lastFetchMs = now;
@@ -452,7 +463,11 @@ void loop()
         }
         else
         {
-        size_t enriched = g_fetcher->fetchFlights(g_states, g_flights);
+        size_t enriched;
+        {
+            NetBusy busy;
+            enriched = g_fetcher->fetchFlights(g_states, g_flights);
+        }
 
         // Dead-link watchdog: the ESP32 can stay "connected" to Wi-Fi with a
         // link that passes nothing (every DNS lookup fails). After a run of
@@ -460,7 +475,10 @@ void loop()
         // either, restart.
         {
             static int failStreak = 0;
-            failStreak = g_fetcher->lastFetchOk() ? 0 : failStreak + 1;
+            // A fetch skipped for lack of heap (tlsAffordable) is not a dead link.
+            const bool memoryShort = ESP.getFreeHeap() < 75000;
+            if (g_fetcher->lastFetchOk()) failStreak = 0;
+            else if (!memoryShort)        ++failStreak;
             if (failStreak == 6 || failStreak == 12)
             {
                 Log.printf("WiFi: %d fetches in a row failed, reconnecting\n", failStreak);
@@ -511,7 +529,11 @@ void loop()
     {
         g_lastMetarMs = millis();
         Metar m;
-        const bool gotWeather = Weather::fetch(m);
+        bool gotWeather;
+        {
+            NetBusy busy;
+            gotWeather = tlsAffordable("weather") && Weather::fetch(m);
+        }
         heapCheckpoint("weather fetch");
         if (gotWeather)
         {
@@ -551,7 +573,7 @@ void loop()
         {
             lastBeatMs = beatNow;
             const uint32_t frames = g_display.framesDrawn(), reqs = g_webConfig.requestsServed();
-            Log.printf("Heartbeat: up %lus, display +%u frames, web +%u requests, heap %u (max block %u, low %u), %u routes cached\n",
+            Log.printf("Beat %lus: +%u frames, +%u web, heap %u blk %u low %u, %u routes\n",
                        beatNow / 1000, (unsigned)(frames - lastFrames), (unsigned)(reqs - lastReqs),
                        (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
                        (unsigned)ESP.getMinFreeHeap(), (unsigned)(g_fetcher ? g_fetcher->cachedFlights() : 0));

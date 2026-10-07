@@ -28,7 +28,13 @@ private:
     int                    _arrivals = 0;
     int                    _departures = 0;
     int                    _goArounds = 0;
-    std::map<String, bool> _counted;      // idents counted today
+    // Flights counted today, as 32-bit hashes of the ident in a fixed
+    // open-addressing table (a String map grew by ~80 bytes per flight all
+    // day long). 0 marks an empty slot.
+    static constexpr size_t kSeenSlots = 1024;   // 4 KB; up to 768 flights a day
+    uint32_t               _seen[kSeenSlots] = {};
+    size_t                 _seenCount = 0;
+    bool                   markSeen(const String &ident);   // false if already counted
     std::map<String, int>  _airlines;
     std::map<String, int>  _types;
     std::map<String, unsigned long> _typeLastMs;

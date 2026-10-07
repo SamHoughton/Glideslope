@@ -33,6 +33,10 @@ void WebConfig::begin(uint16_t port)
 void WebConfig::loop()
 {
     StageTrace::mark(StageTrace::Web, StageTrace::WebAccept);
+    // While the main loop is in a TLS handshake the heap briefly drops by
+    // 60-70 KB; serving a request then (its buffers, the reply) could leave
+    // the handshake short. New requests wait in the backlog until it passes.
+    if (g_netBusy || ESP.getFreeHeap() < kMinHeapToServe) { delay(20); return; }
     WiFiClient client = _server.accept();
     if (!client) { StageTrace::mark(StageTrace::Web, StageTrace::WebIdle); return; }
     ++_requests;
@@ -560,9 +564,9 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
     // Built in a static buffer (only the web task calls this): a log reply
     // every 1.5 s used to allocate and free several KB, fragmenting the heap.
     // Sub-steps for hang reports: 82 building, 83 sending.
-    static char s_json[7 * 1024];
+    static char s_json[4 * 1024];
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 82);
-    size_t n = Log.linesJson(cursor, 50, s_json, sizeof(s_json));
+    size_t n = Log.linesJson(cursor, 32, s_json, sizeof(s_json));
     if (n == 0) n = snprintf(s_json, sizeof(s_json), "{\"cursor\":%lu,\"lines\":[]}", (unsigned long)cursor);
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 83);
     c.printf("HTTP/1.1 200 OK\r\n"
