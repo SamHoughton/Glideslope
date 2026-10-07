@@ -56,6 +56,7 @@ public:
 
 private:
     WiFiServer _server{80};
+    static constexpr uint32_t kMinHeapToServe = 40000;
 
     // "Now showing" JSON, built on the main loop by setCurrentFlight() and read
     // by the web task; guarded by _displayMutex.

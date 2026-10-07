@@ -413,7 +413,10 @@ void loop()
     // Fast interval while a live source answers (local receiver or the
     // community feeds); the slower, quota-limited one when it fell to OpenSky.
     const bool onOpenSky = g_stateFetcher.usedFallback() && g_feedChain.usedFallback();
-    const unsigned long intervalMs = onOpenSky
+    const bool onFeeds   = g_stateFetcher.usedFallback() && !g_feedChain.usedFallback();
+    const unsigned long intervalMs = onFeeds
+        ? max(g_config.local_fetch_interval_seconds * 1000UL, g_feeds.minIntervalMs())
+        : onOpenSky
         ? g_config.fetch_interval_seconds       * 1000UL
         : g_config.local_fetch_interval_seconds * 1000UL;
     const unsigned long now = millis();
@@ -434,6 +437,14 @@ void loop()
         g_wasNightSuppressed = false;
         // Back-date the timer so the fetch block below fires this iteration
         g_lastFetchMs = now - intervalMs;
+    }
+
+    // adsb.lol resting after a refusal: wait it out (the display dead-reckons)
+    // rather than switch to adsb.fi and its 65 KB TLS handshake.
+    if (onFeeds && now - g_lastFetchMs >= intervalMs && g_config.use_community_feeds)
+    {
+        const unsigned long hold = g_feeds.holdOffMs();
+        if (hold) g_lastFetchMs = now - intervalMs + min(hold, 30000UL);
     }
 
     if (now - g_lastFetchMs >= intervalMs)
