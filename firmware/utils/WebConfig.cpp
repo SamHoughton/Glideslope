@@ -557,40 +557,20 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
     String cv = qparam(r.query, "cursor");
     if (cv.length()) cursor = (uint32_t)cv.toInt();
 
-    // Sub-steps for hang reports: 81 waiting for the log, 82 building, 83 sending.
-    StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 81);
-    std::vector<String> lines;
-    uint32_t nextCursor = 0;
-    Log.getLines(cursor, lines, nextCursor);
+    // Built in a static buffer (only the web task calls this): a log reply
+    // every 1.5 s used to allocate and free several KB, fragmenting the heap.
+    // Sub-steps for hang reports: 82 building, 83 sending.
+    static char s_json[7 * 1024];
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 82);
-
-    // Keep replies small: at most the newest kMaxLogLines lines per request.
-    constexpr size_t kMaxLogLines = 80;
-    if (lines.size() > kMaxLogLines)
-        lines.erase(lines.begin(), lines.end() - kMaxLogLines);
-
-    // Build JSON manually — avoids large ArduinoJson allocation for log dumps
-    String json;
-    json.reserve(lines.size() * 80 + 32);
-    json = "{\"cursor\":";
-    json += String(nextCursor);
-    json += ",\"lines\":[";
-    for (size_t i = 0; i < lines.size(); ++i)
-    {
-        if (i) json += ',';
-        json += '"';
-        for (char ch : lines[i])
-        {
-            if      (ch == '"')  json += "\\\"";
-            else if (ch == '\\') json += "\\\\";
-            else if (ch == '\r') { /* skip */ }
-            else                 json += ch;
-        }
-        json += '"';
-    }
-    json += "]}";
+    size_t n = Log.linesJson(cursor, 50, s_json, sizeof(s_json));
+    if (n == 0) n = snprintf(s_json, sizeof(s_json), "{\"cursor\":%lu,\"lines\":[]}", (unsigned long)cursor);
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 83);
-    sendHttp(c, 200, "application/json", json);
+    c.printf("HTTP/1.1 200 OK\r\n"
+             "Content-Type: application/json\r\n"
+             "Content-Length: %u\r\n"
+             "Connection: close\r\n\r\n",
+             (unsigned)n);
+    sendChunked(c, (const uint8_t *)s_json, n, 1024);
 }
 
 // ---------------------------------------------------------------------------
