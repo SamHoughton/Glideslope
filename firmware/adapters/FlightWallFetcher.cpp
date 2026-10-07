@@ -1,7 +1,7 @@
 /*
 Purpose: Look up human-friendly names and airport codes from the FlightWall CDN.
 Responsibilities:
-- HTTPS GET small JSON blobs for airline names, aircraft type names, and airport IATA codes.
+- HTTP GET small JSON blobs for airline names, aircraft type names, and airport IATA codes.
 - Called by FlightDataFetcher on AeroAPI cache misses; results are then cached for 30 min.
 Inputs: Airline ICAO code, aircraft ICAO type code, or airport ICAO code.
 Outputs: Display name / IATA code strings via out parameters.
@@ -11,14 +11,14 @@ Outputs: Display name / IATA code strings via out parameters.
 
 bool FlightWallFetcher::httpGetJson(const String &url, String &outPayload)
 {
-    WiFiClientSecure client;
-    if (APIConfiguration::FLIGHTWALL_INSECURE_TLS)
-    {
-        client.setInsecure();
-    }
+    // The CDN serves the same public JSON over plain HTTP: no TLS handshake
+    // (60-65 KB of heap) for a lookup of a few dozen bytes.
+    String plainUrl = url;
+    if (plainUrl.startsWith("https://")) plainUrl = String("http://") + plainUrl.substring(8);
+    WiFiClient client;
 
     HTTPClient http;
-    http.begin(client, url);
+    http.begin(client, plainUrl);
     http.setTimeout(8000);  // 8 s — prevents hangs on CDN timeouts
     http.addHeader("Accept", "application/json");
 
