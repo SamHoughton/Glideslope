@@ -99,6 +99,7 @@ bool OpenSkyFetcher::requestAccessToken(String &outToken, unsigned long &outExpi
         return false;
     }
 
+    if (!tlsAffordable("OpenSky request")) return false;
     WiFiClientSecure client;
     if (APIConfiguration::OPENSKY_INSECURE_TLS)
         client.setInsecure();
@@ -391,6 +392,9 @@ bool OpenSkyFetcher::fetchFlightRoute(const String &icao24,
                                        String       &outOriginIcao,
                                        String       &outDestIcao)
 {
+    if (!tlsAffordable("OpenSky route"))
+        return false;
+
     // Need a real wall-clock time from NTP; millis() is not sufficient.
     time_t now = time(nullptr);
     if (now < 1000000000L)
@@ -412,6 +416,7 @@ bool OpenSkyFetcher::fetchFlightRoute(const String &icao24,
                + "&begin=" + String((long)begin)
                + "&end="   + String((long)now);
 
+    if (!tlsAffordable("OpenSky request")) return false;
     WiFiClientSecure client;
     if (APIConfiguration::OPENSKY_INSECURE_TLS)
         client.setInsecure();

@@ -10,6 +10,7 @@ to cache the result (with the appropriate success or fail-TTL).
 #include "adapters/HexDbFetcher.h"
 #include "config/TimingConfiguration.h"
 #include "utils/TelnetLogger.h"
+#include "utils/HeapWatch.h"
 #include <ArduinoJson.h>
 
 static constexpr const char *kBase = "https://hexdb.io/api/v1";
@@ -17,6 +18,11 @@ static constexpr const char *kBase = "https://hexdb.io/api/v1";
 // ---------------------------------------------------------------------------
 bool HexDbFetcher::httpGet(const String &url, String &outPayload)
 {
+    // One lookup can mean several requests in a row (route, then each
+    // airport): check for TLS room before every one, not just the first.
+    if (!tlsAffordable("hexdb lookup"))
+        return false;
+
     // Circuit breaker: stop all requests while in blackout window.
     if (_blackoutUntilMs && millis() < _blackoutUntilMs)
     {
