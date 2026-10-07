@@ -13,7 +13,9 @@ TelnetLogger Log;
 
 TelnetLogger::TelnetLogger()
     : _mutex(xSemaphoreCreateMutex())
-{}
+{
+    memset(_ring, 0, sizeof(_ring));
+}
 
 // ---------------------------------------------------------------------------
 // Timestamp helper
@@ -46,18 +48,17 @@ static void makeTimestamp(char *buf, size_t bufLen)
 // Private helpers (always called with _mutex held)
 // ---------------------------------------------------------------------------
 
-void TelnetLogger::pushLine(const String &line)
+void TelnetLogger::pushLine()
 {
-    // Prepend timestamp to the stored line so the web log panel shows it too
-    char ts[12];
-    makeTimestamp(ts, sizeof(ts));
-    _lines.push_back(String(ts) + line);
-    _seqNext++;
-    while (_lines.size() > MAX_LINES)
-    {
-        _lines.pop_front();
-        _seqBase++;
-    }
+    // The stored line carries its timestamp so the web log panel shows it too.
+    char *slot = _ring[_seqNext % MAX_LINES];
+    makeTimestamp(slot, 12);
+    const size_t ts = strlen(slot);
+    const size_t n  = min(_pendingLen, LINE_LEN - 1 - ts);
+    memcpy(slot + ts, _pending, n);
+    slot[ts + n] = '\0';
+    ++_seqNext;
+    _pendingLen = 0;
 }
 
 // Core single-byte write — handles timestamp injection and line accumulation.
@@ -70,8 +71,6 @@ void TelnetLogger::writeByte(uint8_t c)
         makeTimestamp(ts, sizeof(ts));
         if (Serial.availableForWrite() >= (int)strlen(ts)) Serial.print(ts);
         _lineStart = false;
-        // Note: timestamp is NOT added to _pending — pushLine() prepends it
-        // to the stored line so we don't double-store it in memory.
     }
 
     // Serial is best effort: skip it when the USB buffer is full (nothing on
@@ -80,13 +79,12 @@ void TelnetLogger::writeByte(uint8_t c)
 
     if (c == '\n')
     {
-        pushLine(_pending);
-        _pending = "";
+        pushLine();
         _lineStart = true;
     }
-    else
+    else if (c != '\r' && _pendingLen < LINE_LEN - 1)
     {
-        _pending += (char)c;
+        _pending[_pendingLen++] = (char)c;
     }
 }
 
@@ -116,24 +114,49 @@ size_t TelnetLogger::write(const uint8_t *buf, size_t size)
     return size;
 }
 
-void TelnetLogger::getLines(uint32_t cursor,
-                            std::vector<String> &out,
-                            uint32_t &nextCursor) const
+size_t TelnetLogger::linesJson(uint32_t cursor, size_t maxLines, char *buf, size_t len) const
 {
-    out.clear();
-    nextCursor = cursor;   // unchanged if the lock is busy: the caller just retries
-    if (_mutex && xSemaphoreTake(_mutex, kLockTicks) != pdTRUE) return;
+    if (len < 64) return 0;
+    if (_mutex && xSemaphoreTake(_mutex, kLockTicks) != pdTRUE) return 0;
 
-    nextCursor = _seqNext;
+    // Oldest line still held, then at most maxLines of the newest.
+    const uint32_t oldest = _seqNext > MAX_LINES ? _seqNext - MAX_LINES : 0;
+    uint32_t seq = cursor < oldest ? oldest : cursor;
+    if (seq > _seqNext) seq = oldest;                       // cursor from before a restart
+    if (_seqNext - seq > maxLines) seq = _seqNext - maxLines;
 
-    // Clamp cursor to the oldest line we still have
-    uint32_t start = (cursor < _seqBase) ? _seqBase : cursor;
-    if (start < _seqNext)
+    // Leave room for the closing "]}" and the cursor; a line that won't fit
+    // ends the batch and the browser fetches the rest next time.
+    size_t n = 0;
+    const size_t limit = len - 32;
+    buf[n++] = '['; 
+    bool first = true;
+    for (; seq < _seqNext; ++seq)
     {
-        size_t idx = (size_t)(start - _seqBase);
-        for (size_t i = idx; i < _lines.size(); ++i)
-            out.push_back(_lines[i]);
+        const char *line = _ring[seq % MAX_LINES];
+        const size_t need = strlen(line) * 2 + 3;            // worst case: every char escaped
+        if (n + need > limit) break;
+        if (!first) buf[n++] = ',';
+        first = false;
+        buf[n++] = '"';
+        for (const char *p = line; *p; ++p)
+        {
+            const char ch = *p;
+            if (ch == '"' || ch == '\\') { buf[n++] = '\\'; buf[n++] = ch; }
+            else if ((unsigned char)ch >= 0x20) buf[n++] = ch;
+        }
+        buf[n++] = '"';
     }
-
     if (_mutex) xSemaphoreGive(_mutex);
+
+    // Prefix the cursor: shift the lines right to make room.
+    char head[32];
+    const int h = snprintf(head, sizeof(head), "{\"cursor\":%lu,\"lines\":", (unsigned long)seq);
+    memmove(buf + h, buf, n);
+    memcpy(buf, head, h);
+    n += h;
+    buf[n++] = ']';
+    buf[n++] = '}';
+    buf[n] = '\0';
+    return n;
 }
