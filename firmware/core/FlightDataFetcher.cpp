@@ -106,6 +106,7 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         g_config.center_lon,
         g_config.radius_km,
         outStates);
+    _lastFetchOk = ok;
     if (!ok)
         return 0;
 

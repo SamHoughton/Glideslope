@@ -8,6 +8,7 @@ the map and the scanning screen.
 #include <Arduino.h>
 #include "display/FrameCanvas.h"
 #include "display/DailyStats.h"
+#include "utils/Weather.h"
 
 namespace InfoScreens
 {
@@ -26,6 +27,10 @@ namespace InfoScreens
     // Up to four arrivals soonest first, plus the weather line at the bottom.
     void renderArrivals(FrameCanvas &c, const Arrival *rows, int n, const char *runway,
                         const char *weather, unsigned long nowMs);
+    // Heathrow weather: wind with a compass arrow, visibility, weather,
+    // temperature, pressure, and the wind across / along the runway in use.
+    void renderWeather(FrameCanvas &c, const Metar &m, const char *runway, unsigned long nowMs);
+
     // Emergency squawk: flashing red frame, code, meaning, call sign, detail.
     void renderAlert(FrameCanvas &c, const char *code, const char *meaning, const char *ident,
                      const char *detail, uint32_t tMs);

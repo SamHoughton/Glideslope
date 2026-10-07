@@ -18,6 +18,7 @@ struct Metar
     int   visM    = -1;       // metres; 9999 = 10 km or more; -1 = unknown
     bool  cavok   = false;
     int   tempC   = -99;      // -99 = unknown
+    int   qnh     = 0;        // hPa; 0 = unknown
     char  wx[8]   = "";       // present weather, e.g. "RA", "+TSRA" (first group only)
     char  raw[112] = "";
 };

@@ -72,6 +72,12 @@ struct RuntimeConfig
     uint32_t fetch_interval_seconds;        // used when falling back to OpenSky
     uint32_t local_fetch_interval_seconds;  // used when local ADS-B is the active source
     uint32_t display_cycle_seconds;
+    // Screen rhythm: an approach card comes in this long before touchdown;
+    // after each landing, one rotation screen for interlude_seconds; screens
+    // is a bit mask of the rotation (1 map, 2 arrivals, 4 stats, 8 weather).
+    uint32_t card_lead_seconds;
+    uint32_t interlude_seconds;
+    uint8_t  screens;
     uint32_t aeroapi_cache_ttl_seconds;
     uint32_t aeroapi_fail_cache_ttl_seconds;
 };

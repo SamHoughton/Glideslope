@@ -14,6 +14,7 @@
 #include "display/DailyStats.h"
 #include "display/InfoScreens.h"
 #include "display/LandingScene.h"
+#include "utils/Weather.h"
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
 // Mirror of what is currently on the panel; the web preview reads this.
@@ -32,7 +33,7 @@ void requestSplashPreview(uint32_t durationMs);
 // Show the London map for durationMs (preview). Safe from the web task.
 void requestMapPreview(uint32_t durationMs);
 
-// Preview an ambient screen (1 = stats, 2 = clock, 3 = arrivals) for durationMs. Safe from the web task.
+// Preview a screen (1 = stats, 2 = clock, 3 = arrivals, 4 = weather) for durationMs. Safe from the web task.
 void requestScreenPreview(uint8_t which, uint32_t durationMs);
 
 // Replay the fly-across onto the current card. forceDirection: 0 = the
@@ -94,8 +95,8 @@ public:
     // Arrivals board rows, soonest first (call once per fetch).
     void setArrivals(const InfoScreens::Arrival *rows, int n);
 
-    // Heathrow weather line for the arrivals board and night clock ("" = none).
-    void setWeather(const char *line);
+    // Heathrow weather for the weather screen, arrivals board and night clock.
+    void setWeather(const Metar &m);
 
     // Emergency squawk: takes over the panel for a few seconds. Safe from any task.
     void raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail);
@@ -116,6 +117,7 @@ private:
         unsigned long goAroundMs = 0;
         bool          goAroundAnimPending = false;
         bool          takeoffPlayed = false;   // departure scene shown
+        bool          breakTaken = false;      // the break after its landing has started
         unsigned long altMs = 0;           // when shownAltFt was last updated
     };
 
@@ -145,7 +147,12 @@ private:
     TrafficTracker       _traffic;               // guarded by _lock
 
     // Button-selected mode (display task only)
-    enum class Mode : uint8_t { Auto, Map, Arrivals, Stats };
+    enum class Mode : uint8_t { Auto, Map, Arrivals, Stats, Weather };
+    // Rotation screens; bit n of g_config.screens enables Screen n.
+    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Count };
+    Screen               _screen = Screen::Weather;   // so the first rotation starts with the map
+    unsigned long        _screenSinceMs = 0;
+    unsigned long        _interludeUntilMs = 0;      // break after a landing ends
     Mode                 _mode = Mode::Auto;
     bool                 _buttonDown = false;
     unsigned long        _buttonChangeMs = 0;
@@ -161,6 +168,7 @@ private:
     InfoScreens::Arrival _arrivals[InfoScreens::kMaxArrivals];   // guarded by _lock
     int                  _arrivalCount = 0;
     char                 _weather[24] = "";       // guarded by _lock
+    Metar                _metar;                  // guarded by _lock
 
     // Emergency-squawk alert (guarded by _lock)
     char                 _alertCode[6] = "", _alertMeaning[12] = "", _alertIdent[12] = "", _alertDetail[24] = "";
@@ -195,6 +203,12 @@ private:
     bool renderLanding(unsigned long now);
     void startScene(unsigned long now, LandingScene::Kind kind, bool demo);
     bool isFreshDeparture(const FlightInfo &f) const;
+    bool isArrival(const Entry &e) const;
+    float entryEta(const Entry &e, unsigned long now) const;
+    int  dueIndex(unsigned long now, bool imminentOnly) const;
+    bool screenAvailable(Screen s) const;
+    void nextScreen();
+    unsigned long screenDwellMs(Screen s) const;
     void renderMessage(const String &message);
     void applyPanelSettings();
     bool renderSpriteGallery();

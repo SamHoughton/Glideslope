@@ -136,6 +136,77 @@ void InfoScreens::renderArrivals(FrameCanvas &c, const Arrival *rows, int n, con
     }
 }
 
+void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runway, unsigned long nowMs)
+{
+    c.clear();
+    centred(c, 2, "HEATHROW WEATHER", kTitle);
+    for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 11, kDim);
+    if (!m.valid) { centred(c, 30, "NO REPORT YET", kDim); return; }
+
+    // Wind, large: "330/04" (or CALM / VRB), gusts underneath.
+    char wind[12];
+    if (m.windKt == 0)      snprintf(wind, sizeof(wind), "CALM");
+    else if (m.windDir < 0) snprintf(wind, sizeof(wind), "VRB/%02d", m.windKt);
+    else                    snprintf(wind, sizeof(wind), "%03d/%02d", m.windDir, m.windKt);
+    c.text(4, 15, wind, kValue, 2, 11);
+    c.text(4, 31, m.gustKt ? "GUSTS" : "KNOTS", kLabel);
+    if (m.gustKt)
+    {
+        char g[8];
+        snprintf(g, sizeof(g), "%d", m.gustKt);
+        c.text(40, 31, g, Rgb{255, 95, 80});
+    }
+
+    // Compass on the right: ring of dots, arrow showing where the wind blows to.
+    const int cx = 108, cy = 25, r = 11;
+    for (int a = 0; a < 360; a += 30)
+    {
+        const float rad = a * (float)M_PI / 180.0f;
+        c.set(cx + (int)lroundf(sinf(rad) * r), cy - (int)lroundf(cosf(rad) * r), a == 0 ? kTitle : kDim);
+    }
+    if (m.windDir >= 0 && m.windKt > 0)
+    {
+        // A gentle wobble so it reads as moving air.
+        const float wob = sinf(nowMs / 400.0f) * 0.06f;
+        const float to = (m.windDir + 180) * (float)M_PI / 180.0f + wob;
+        const float dx = sinf(to), dy = -cosf(to);
+        for (int i = -(r - 3); i <= r - 3; ++i)
+            c.set(cx + (int)lroundf(dx * i), cy + (int)lroundf(dy * i), kValue);
+        // Arrow head at the downwind end.
+        const int hx = cx + (int)lroundf(dx * (r - 3)), hy = cy + (int)lroundf(dy * (r - 3));
+        for (int k = 1; k <= 3; ++k)
+            for (int side = -1; side <= 1; side += 2)
+                c.set(hx - (int)lroundf(dx * k - dy * k * side * 0.8f),
+                      hy - (int)lroundf(dy * k + dx * k * side * 0.8f), kValue);
+    }
+
+    // Visibility, weather, temperature, pressure.
+    char row[24], vis[8] = "-";
+    if (m.cavok)             snprintf(vis, sizeof(vis), "CAVOK");
+    else if (m.visM >= 9999) snprintf(vis, sizeof(vis), "10KM+");
+    else if (m.visM >= 5000) snprintf(vis, sizeof(vis), "%dKM", m.visM / 1000);
+    else if (m.visM >= 0)    snprintf(vis, sizeof(vis), "%dM", m.visM);
+    snprintf(row, sizeof(row), "VIS %s%s%s", vis, m.wx[0] ? " " : "", m.wx);
+    c.text(4, 41, row, Rgb{200, 205, 215});
+    row[0] = '\0';
+    if (m.tempC != -99) snprintf(row, sizeof(row), "%dC", m.tempC);
+    if (m.qnh) snprintf(row + strlen(row), sizeof(row) - strlen(row), "%sQ%d", row[0] ? "  " : "", m.qnh);
+    c.text(4, 51, row, Rgb{200, 205, 215});
+
+    // Wind on the runway in use: crosswind, and head- or tailwind.
+    if (runway && runway[0] && m.windDir >= 0 && m.windKt > 0)
+    {
+        const int rwyDeg = (runway[0] - '0') * 100 + (runway[1] - '0') * 10;
+        int cross = 0, tail = 0;
+        Weather::components(m, rwyDeg, cross, tail);
+        char rw[16];
+        snprintf(rw, sizeof(rw), "XW%d %s%d", cross, tail > 0 ? "TW" : "HW", tail > 0 ? tail : -tail);
+        const bool notable = cross >= 20 || tail >= 5;
+        c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(rw), 51, rw, notable ? Rgb{255, 95, 80} : kLabel);
+        c.text(FrameCanvas::W - 4 - FrameCanvas::textWidth(runway), 41, runway, kLabel);
+    }
+}
+
 void InfoScreens::renderAlert(FrameCanvas &c, const char *code, const char *meaning, const char *ident,
                               const char *detail, uint32_t tMs)
 {

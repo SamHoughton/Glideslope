@@ -120,6 +120,7 @@ void WebConfig::loop()
     else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength);
     else if (r.path == "/api/demo/takeoff"  && r.method == "POST") { requestTakeoffDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/squawk"   && r.method == "POST") { requestAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/weather"  && r.method == "POST") { requestScreenPreview(4, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/arrivals" && r.method == "POST") { requestScreenPreview(3, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/sprites"  && r.method == "POST") { requestSpriteGallery(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -237,6 +238,9 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["fetch_interval_seconds"]        = g_config.fetch_interval_seconds;
     doc["local_fetch_interval_seconds"]  = g_config.local_fetch_interval_seconds;
     doc["display_cycle_seconds"]         = g_config.display_cycle_seconds;
+    doc["card_lead_seconds"]             = g_config.card_lead_seconds;
+    doc["interlude_seconds"]             = g_config.interlude_seconds;
+    doc["screens"]                       = g_config.screens;
     doc["aeroapi_cache_ttl_seconds"]     = g_config.aeroapi_cache_ttl_seconds;
     doc["aeroapi_fail_cache_ttl_seconds"] = g_config.aeroapi_fail_cache_ttl_seconds;
 
@@ -310,6 +314,9 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
     g_config.fetch_interval_seconds        = doc["fetch_interval_seconds"]        | g_config.fetch_interval_seconds;
     g_config.local_fetch_interval_seconds  = doc["local_fetch_interval_seconds"]  | g_config.local_fetch_interval_seconds;
     g_config.display_cycle_seconds         = doc["display_cycle_seconds"]         | g_config.display_cycle_seconds;
+    g_config.card_lead_seconds             = doc["card_lead_seconds"]             | g_config.card_lead_seconds;
+    g_config.interlude_seconds             = doc["interlude_seconds"]             | g_config.interlude_seconds;
+    g_config.screens                       = (uint8_t)(doc["screens"]             | (int)g_config.screens);
     g_config.aeroapi_cache_ttl_seconds     = doc["aeroapi_cache_ttl_seconds"]      | g_config.aeroapi_cache_ttl_seconds;
     g_config.aeroapi_fail_cache_ttl_seconds = doc["aeroapi_fail_cache_ttl_seconds"] | g_config.aeroapi_fail_cache_ttl_seconds;
 
@@ -648,6 +655,7 @@ const char kHtmlPage[] =
 "<button data-demo='takeoff'>Take-off</button>"
 "<button data-demo='squawk'>Emergency squawk</button>"
 "<button data-demo='arrivals'>Arrivals board (10 s)</button>"
+"<button data-demo='weather'>Weather (10 s)</button>"
 "<button data-demo='sprites'>Aircraft sprites (10 s)</button>"
 "<button data-demo='splash'>Scanning screen (10 s)</button>"
 "<button data-demo='map'>London map (30 s)</button>"
@@ -674,7 +682,20 @@ const char kHtmlPage[] =
 "<option>S</option><option>SSW</option><option>SW</option><option>WSW</option>"
 "<option>W</option><option>WNW</option><option>NW</option><option>NNW</option>"
 "</select></div>"
-"<div class='f'><label for='display_cycle_seconds'>Minimum time per card (s) <small>(before the next new plane can fly in)</small></label>"
+"<div class='row'>"
+"<div class='f'><label for='card_lead_seconds'>Card before landing (s) <small>(when an approach flies in)</small></label>"
+"<input type='number' min='30' max='600' id='card_lead_seconds'></div>"
+"<div class='f'><label for='interlude_seconds'>Break after a landing (s) <small>(0 = none)</small></label>"
+"<input type='number' min='0' max='120' id='interlude_seconds'></div>"
+"</div>"
+"<div class='f'><label>Screens between planes <small>(each comes round in turn)</small></label>"
+"<div class='btns'>"
+"<label class='ck'><input type='checkbox' data-scr='1'>Map</label>"
+"<label class='ck'><input type='checkbox' data-scr='2'>Arrivals</label>"
+"<label class='ck'><input type='checkbox' data-scr='4'>Stats</label>"
+"<label class='ck'><input type='checkbox' data-scr='8'>Weather</label>"
+"</div></div>"
+"<div class='f'><label for='display_cycle_seconds'>Minimum time per approach card (s)</label>"
 "<input type='number' min='3' id='display_cycle_seconds'></div>"
 "<label class='ck'><input type='checkbox' id='display_border'>Airline-coloured border</label>"
 "<label class='ck'><input type='checkbox' id='display_nearest_only'><span>Nearest aircraft only <small>(one lookup per fetch; a new card when the nearest plane changes)</small></span></label>"
@@ -766,6 +787,7 @@ const char kHtmlPage[] =
 "$('night_end_time').value=toTime(d.night_end_minutes||0);"
 "['opensky_client_secret','aeroapi_key'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});"
 "$('bv').textContent=d.display_brightness;"
+"document.querySelectorAll('[data-scr]').forEach(function(e){e.checked=!!(d.screens&parseInt(e.dataset.scr));});"
 "$('hdr').textContent=d.center_lat.toFixed(3)+', '+d.center_lon.toFixed(3)+' · '+d.radius_km+' km';"
 "});"
 "}"
@@ -773,7 +795,8 @@ const char kHtmlPage[] =
 "function save(){"
 "var d={};"
 "['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});"
-"['display_brightness','display_cycle_seconds','night_brightness','fetch_interval_seconds',"
+"d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});"
+"['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',"
 "'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});"
 "['display_nearest_only','display_border','display_flip','night_mode_enabled','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});"
 "d.screen_facing=$('screen_facing').value;"

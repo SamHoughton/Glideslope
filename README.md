@@ -40,26 +40,34 @@ the code (`SZS`) because logos are not part of this repository; see below.
   7600 (radio failure) or 7500 (hijack) takes over the panel for a few seconds
   with a flashing red alert, and shows red on the map. It must be seen in two
   fetches running, so a single garbled reply doesn't trigger it.
-- **Landing traffic first**: aircraft lined up on a Heathrow runway are picked
-  ahead of everything else, closest to touchdown first, and a card on final is
-  held until its landing has played.
-- **London map** between approaches: the Thames, reservoirs, M25 and
+- **The rhythm**: between planes the board rotates through its screens (map,
+  arrivals, stats, weather). A plane's card is the event: an approach flies in
+  about two minutes before touchdown and stays until it has landed; a
+  departure or overflight gets a short card. After every landing comes a
+  15-second break showing the next screen in the rotation, so they all come
+  round even at a busy Heathrow (skipped if the next plane is under 45
+  seconds out). Lead time, break length and which screens rotate are set on
+  the web page.
+- **London map**: the Thames, reservoirs, M25 and
   Heathrow's runways (pre-rendered into flash), with every tracked aircraft as
   a small plane icon pointing the way it is flying, in its airline colour; the
   one on final blinks. A home marker can be set in the web page.
-- **Arrivals board** after the map: the next four arrivals with their type and
+- **Arrivals board**: the next four arrivals with their type and
   minutes to touchdown (`~` while still a rough guess, before they join
   final), and Heathrow's weather along the bottom, e.g. `310/04 7KM RA 14C`
   (wind, visibility, rain, temperature).
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
-- **Today's stats** between map views: arrivals and departures, busiest
-  airline, rarest type, go-arounds.
+- **Today's stats**: arrivals and departures, busiest airline, rarest type,
+  go-arounds.
+- **Weather**: Heathrow's wind (with a compass arrow), gusts, visibility,
+  weather, temperature, pressure, and the crosswind and head- or tailwind on
+  the runway in use.
 - **Runway in use**, e.g. `27L UNTIL 15:00` (westerly ops alternate at 15:00).
 - **Quiet hours**: a dim clock (with the weather) overnight when there's no
   traffic.
-- **Board button** cycles Auto / Map / Arrivals / Stats.
+- **Board button** cycles Auto / Map / Arrivals / Stats / Weather.
 - **Scanning screen** when nothing is being tracked.
 
   ![Scanning screen](docs/scanning.gif)

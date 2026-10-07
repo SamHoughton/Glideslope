@@ -30,7 +30,11 @@ public:
     size_t fetchFlights(std::vector<StateVector> &outStates,
                         std::vector<FlightInfo>  &outFlights);
 
+    // False when the last fetch got no answer from any position source.
+    bool lastFetchOk() const { return _lastFetchOk; }
+
 private:
+    bool _lastFetchOk = true;
     BaseStateVectorFetcher *_stateFetcher;
     BaseFlightFetcher      *_flightFetcher;
     BaseLogoStore          *_logoStore;

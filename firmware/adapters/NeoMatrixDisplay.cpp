@@ -33,16 +33,14 @@ static constexpr unsigned long kSeenCooldownMs  = 15UL * 60 * 1000;  // don't re
 static constexpr unsigned long kStaleEntryMs    = 3UL * 60 * 1000;   // drop queued flights not refreshed
 static constexpr unsigned long kMessageMs       = 4000;
 static constexpr unsigned long kIdleAfterMs     = 5UL * 60 * 1000;   // card -> scanning screen
-static constexpr float         kHoldForLandingSec = 300.0f;          // keep an approach card if ETA below this
-static constexpr unsigned long kLandedHoldMs    = 10000;             // LANDED card, then the next approach
+static constexpr unsigned long kLandedHoldMs    = 8000;              // LANDED card, then a break
+static constexpr unsigned long kShortCardMs     = 8000;              // departure / overflight card
+static constexpr float         kImminentSec     = 45.0f;             // lands this soon: skip the break
+static constexpr unsigned long kMapDwellMs      = 20000;             // rotation: map ...
+static constexpr unsigned long kScreenDwellMs   = 10000;             // ... each other screen
 static constexpr float         kAltEaseSec      = 0.8f;              // altitude smoothing time constant
-static constexpr unsigned long kCardBeforeMapMs = 75000;             // card up this long with nothing due -> map
-static constexpr unsigned long kMapShowMs       = 30000;             // then the map for this long
 static constexpr uint32_t      kAmbientFadeMs   = 700;               // card -> map cross-fade
-static constexpr float         kBackForLandingSec = 90.0f;           // leave the map for a landing this close
 static constexpr uint32_t      kFlourishMs      = 1600;              // rare-spot banner before the fly-across
-static constexpr unsigned long kAmbientMapMs    = 30000;             // ambient rotation: map ...
-static constexpr unsigned long kAmbientStatsMs  = 8000;              // ... then stats
 static constexpr unsigned long kCaptionMs       = 1200;              // mode-change caption
 static constexpr int           kButtonPin       = 17;                // HD-WF2 test key (0 = pressed)
 static constexpr unsigned long kFinalMemoryMs   = 180000;            // "was on final" lasts this long
@@ -50,7 +48,6 @@ static constexpr float         kGoAroundClimbFpm = 500.0f;           // climbing
 static constexpr float         kGoAroundMaxFt   = 5000.0f;           // ... below this, after final
 static constexpr unsigned long kLandedSilentMs  = 15000;             // gone from the data this long at the threshold = landed
 static constexpr float         kLandedReportFt  = 200.0f;            // or reported this low near the threshold
-static constexpr unsigned long kAmbientArrivalsMs = 8000;            // ... the arrivals board ...
 static constexpr unsigned long kAlertMs         = 12000;             // emergency-squawk alert on screen
 static constexpr float         kFreshDepartureFt = 4000.0f;          // take-off scene below this
 static constexpr uint32_t      kAnimFrameMs     = 20;                // 50 fps during the fly-across
@@ -324,10 +321,13 @@ void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
     for (int i = 0; i < _arrivalCount; ++i) _arrivals[i] = rows[i];
 }
 
-void NeoMatrixDisplay::setWeather(const char *line)
+void NeoMatrixDisplay::setWeather(const Metar &m)
 {
+    char line[24];
+    Weather::line(m, line, sizeof(line));
     Lock l(_lock);
-    strlcpy(_weather, line ? line : "", sizeof(_weather));
+    _metar = m;
+    strlcpy(_weather, line, sizeof(_weather));
 }
 
 void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail)
@@ -514,19 +514,23 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     if (_mode == Mode::Auto && renderLanding(now))
         return kAnimFrameMs;
 
-    // A plane on final approach keeps the card until it has landed, so new
-    // contacts wait rather than cutting off the landing.
-    bool awaitingLanding = false, landingSoon = false;
-    if (_hasCurrent && !_current.landingPlayed)
+    // ── What to show: the rhythm ────────────────────────────────────────────
+    // The screen rotation (map, arrivals, stats, weather) is the resting
+    // state; a card is an event. An approach card comes in when its landing is
+    // within the lead time and stays until it has landed; a departure or
+    // overflight gets a short card. After every landing comes a break of one
+    // rotation screen before the next card, unless that one is about to land.
+    const float leadSec = (float)g_config.card_lead_seconds;
+    bool awaitingLanding = false;
+    if (_hasCurrent && !_current.landingPlayed && !_current.goAround)
     {
         const ApproachStatus s = liveStatus(now);
         awaitingLanding = (s.phase == ApproachStatus::Approach || s.phase == ApproachStatus::Landing) &&
-                          !isnan(s.etaSec) && s.etaSec <= kHoldForLandingSec && !_current.goAround;
-        landingSoon = awaitingLanding && s.etaSec <= kBackForLandingSec;
+                          !isnan(s.etaSec) && s.etaSec <= leadSec;
     }
 
-    // Landed: after ~10 s move on to the next aircraft on approach, even one
-    // that has been on the card before.
+    // Landed: queue the next aircraft on approach, even one shown before; it
+    // flies in once it is due.
     if (_hasCurrent && _current.landed && _queue.empty() && _hasNextApproach &&
         _nextApproach.flight.ident != _current.flight.ident)
     {
@@ -534,14 +538,25 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         _hasNextApproach = false;
     }
 
-    const unsigned long holdMs = _hasCurrent && _current.landed
-        ? kLandedHoldMs
-        : (unsigned long)g_config.display_cycle_seconds * 1000UL;
-    if (_mode == Mode::Auto && !_queue.empty() &&
-        (!_hasCurrent || (now - _shownSinceMs >= holdMs && !awaitingLanding)))
+    // In a break, or about to start one (a landed card whose break is still
+    // to come): only an aircraft about to land may cut in.
+    const bool breakPending = _hasCurrent && _current.landed && !_current.breakTaken &&
+                              g_config.interlude_seconds > 0 && !_ambientActive;
+    const bool interlude = (_ambientActive && (long)(now - _interludeUntilMs) < 0) || breakPending;
+    unsigned long holdMs = kShortCardMs;
+    if (_hasCurrent && _current.landed)       holdMs = kLandedHoldMs;
+    else if (_hasCurrent && isArrival(_current)) holdMs = (unsigned long)g_config.display_cycle_seconds * 1000UL;
+    const bool cardHeld = _hasCurrent && !_ambientActive && (awaitingLanding || now - _shownSinceMs < holdMs);
+
+    if (_mode == Mode::Auto && !cardHeld)
     {
-        beginNextCard(now);
-        return 0;   // draw the first animation frame straight away
+        const int i = dueIndex(now, interlude);
+        if (i >= 0)
+        {
+            if (i > 0) std::rotate(_queue.begin(), _queue.begin() + i, _queue.begin() + i + 1);
+            beginNextCard(now);
+            return 0;   // draw the first animation frame straight away
+        }
     }
 
     // A card whose flight has stopped appearing in fetches has left range.
@@ -551,33 +566,45 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         _hasCurrent = false;
     }
 
-    // Ambient screen (the map) when no card is due: nothing on the card, a
-    // card that has been up a while with nothing else queued, or a landed
-    // card past its hold. Back to the card for its landing.
     if (s_mapRequestMs)
     {
         s_mapPreviewUntil = now + s_mapRequestMs;
         s_mapRequestMs    = 0;
     }
     if (s_screenPreview && (long)(now - s_screenPreviewUntil) >= 0) s_screenPreview = 0;
-    const bool mapPreview = (s_mapPreviewUntil && (long)(now - s_mapPreviewUntil) < 0) || s_screenPreview;
-    if (!mapPreview) s_mapPreviewUntil = 0;
+    const bool preview = (s_mapPreviewUntil && (long)(now - s_mapPreviewUntil) < 0) || s_screenPreview;
+    if (!preview) s_mapPreviewUntil = 0;
+
+    // Back to the current approach card once its landing is due (during a
+    // break, only if it is about to land).
+    bool backToCard = false;
+    if (_hasCurrent && awaitingLanding)
+    {
+        const float eta = entryEta(_current, now);
+        backToCard = !interlude || (!isnan(eta) && eta <= kImminentSec);
+    }
 
     bool showAmbient;
-    if (!_hasCurrent || mapPreview || _mode != Mode::Auto)
-        showAmbient = true;
-    else if (_ambientActive)
-        showAmbient = !landingSoon && (_current.landed || (long)(now - _ambientUntilMs) < 0);
-    else
-        showAmbient = !awaitingLanding && _queue.empty() &&
-                      now - _shownSinceMs >= (_current.landed ? kLandedHoldMs : kCardBeforeMapMs);
+    if (!_hasCurrent || preview || _mode != Mode::Auto) showAmbient = true;
+    else if (_ambientActive)                           showAmbient = !backToCard;
+    else                                               showAmbient = !cardHeld;
 
     if (showAmbient && !_ambientActive)
     {
         g_oldFrame.copyFrom(g_shownFrame);   // cross-fade from whatever is showing
         _ambientActive  = true;
         _ambientSinceMs = now;
-        _ambientUntilMs = now + kMapShowMs;
+        _screenSinceMs  = now;
+        // A break after a landing shows one screen; it is the next in the
+        // rotation each time, so they all come round.
+        const bool startBreak = _hasCurrent && _current.landed && !_current.breakTaken;
+        if (startBreak) _current.breakTaken = true;
+        _interludeUntilMs = startBreak ? now + (unsigned long)g_config.interlude_seconds * 1000UL : now;
+        nextScreen();
+        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather"};
+        if (!preview && _mode == Mode::Auto)
+            Log.printf("Display: %s, %s\n", _interludeUntilMs != now ? "break after landing" : "screens",
+                       kScreenNames[(int)_screen]);
     }
     else if (!showAmbient && _ambientActive)
     {
@@ -593,6 +620,14 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
 
     if (_ambientActive)
     {
+        // Next screen in the rotation when this one has had its time.
+        if (_mode == Mode::Auto && !preview && now - _screenSinceMs >= screenDwellMs(_screen))
+        {
+            g_oldFrame.copyFrom(g_shownFrame);
+            _ambientSinceMs = now;
+            _screenSinceMs  = now;
+            nextScreen();
+        }
         renderAmbient(now);
         const uint32_t t = now - _ambientSinceMs;
         if (t < kAmbientFadeMs)
@@ -610,39 +645,106 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     return kCardFrameMs;
 }
 
-// The screen shown when no card is due: the map while aircraft are being
-// tracked, otherwise the scanning screen.
+// ── Rotation helpers ─────────────────────────────────────────────────────────
+
+bool NeoMatrixDisplay::isArrival(const Entry &e) const
+{
+    const ApproachStatus s = ApproachModel::evaluate(e.flight);
+    return s.phase == ApproachStatus::Approach || s.phase == ApproachStatus::Landing ||
+           s.phase == ApproachStatus::Inbound;
+}
+
+// Seconds to touchdown, dead-reckoned; NAN unless on final.
+float NeoMatrixDisplay::entryEta(const Entry &e, unsigned long now) const
+{
+    const ApproachStatus s = ApproachModel::advance(ApproachModel::evaluate(e.flight), e.flight.velocity,
+                                                    now - e.dataMs);
+    const bool onFinal = s.phase == ApproachStatus::Approach || s.phase == ApproachStatus::Landing;
+    return onFinal ? s.etaSec : NAN;
+}
+
+// First queued flight that is due a card: an approach within the lead time,
+// or any departure / overflight. Arrivals not yet on final wait (they are on
+// the arrivals board). imminentOnly: just approaches about to land.
+int NeoMatrixDisplay::dueIndex(unsigned long now, bool imminentOnly) const
+{
+    const float leadSec = (float)g_config.card_lead_seconds;
+    for (size_t i = 0; i < _queue.size(); ++i)
+    {
+        const Entry &e = _queue[i];
+        const float eta = entryEta(e, now);
+        if (!isnan(eta))
+        {
+            if (eta <= (imminentOnly ? kImminentSec : leadSec)) return (int)i;
+            continue;
+        }
+        if (!imminentOnly && !isArrival(e)) return (int)i;
+    }
+    return -1;
+}
+
+bool NeoMatrixDisplay::screenAvailable(Screen s) const
+{
+    if (!(g_config.screens & (1u << (uint8_t)s))) return false;
+    switch (s)
+    {
+        case Screen::Map:      return !_traffic.empty();
+        case Screen::Arrivals: return _arrivalCount > 0;
+        case Screen::Weather:  return _metar.valid;
+        default:               return true;
+    }
+}
+
+void NeoMatrixDisplay::nextScreen()
+{
+    for (int k = 1; k <= (int)Screen::Count; ++k)
+    {
+        const Screen s = (Screen)(((int)_screen + k) % (int)Screen::Count);
+        if (screenAvailable(s)) { _screen = s; return; }
+    }
+    _screen = Screen::Map;   // nothing enabled or available: the map / scanning screen
+}
+
+unsigned long NeoMatrixDisplay::screenDwellMs(Screen s) const
+{
+    return s == Screen::Map ? kMapDwellMs : kScreenDwellMs;
+}
+
+// The screen shown when no card is due.
 void NeoMatrixDisplay::renderAmbient(unsigned long now)
 {
-    // Web previews, then the button-selected mode.
-    if (s_screenPreview == 1) { InfoScreens::renderStats(g_workFrame, _stats, now); return; }
-    if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now, _weather); return; }
-    if (s_screenPreview == 3 || _mode == Mode::Arrivals)
+    // Web previews, then the button-selected mode, then the rotation.
+    Screen s = _screen;
+    if      (s_screenPreview == 1) s = Screen::Stats;
+    else if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now, _weather); return; }
+    else if (s_screenPreview == 3) s = Screen::Arrivals;
+    else if (s_screenPreview == 4) s = Screen::Weather;
+    else if (s_mapPreviewUntil)    s = Screen::Map;
+    else if (_mode == Mode::Map)      s = Screen::Map;
+    else if (_mode == Mode::Arrivals) s = Screen::Arrivals;
+    else if (_mode == Mode::Stats)    s = Screen::Stats;
+    else if (_mode == Mode::Weather)  s = Screen::Weather;
+    else if (_traffic.empty())
     {
-        InfoScreens::renderArrivals(g_workFrame, _arrivals, _arrivalCount, _runwayInUse, _weather, now);
+        // Nothing tracked: a dim clock overnight, otherwise the scanning screen.
+        if (isNightActive()) InfoScreens::renderClock(g_workFrame, now, _weather);
+        else                 BootSplash::render(g_workFrame, now, _runwayInUse);
         return;
     }
-    if (_mode == Mode::Stats) { InfoScreens::renderStats(g_workFrame, _stats, now); return; }
 
-    if (_traffic.empty())
+    switch (s)
     {
-        // Quiet hours: a dim clock overnight instead of the scanning screen.
-        if (isNightActive() && _mode == Mode::Auto) InfoScreens::renderClock(g_workFrame, now, _weather);
-        else                                        BootSplash::render(g_workFrame, now, _runwayInUse);
-        return;
-    }
-    // Auto: the map, then the arrivals board (when there are any), then the
-    // stats screen, round and round.
-    if (_mode == Mode::Auto)
-    {
-        const unsigned long arrMs = _arrivalCount ? kAmbientArrivalsMs : 0;
-        const unsigned long t = (now - _ambientSinceMs) % (kAmbientMapMs + arrMs + kAmbientStatsMs);
-        if (t >= kAmbientMapMs + arrMs) { InfoScreens::renderStats(g_workFrame, _stats, now); return; }
-        if (t >= kAmbientMapMs)
-        {
+        case Screen::Arrivals:
             InfoScreens::renderArrivals(g_workFrame, _arrivals, _arrivalCount, _runwayInUse, _weather, now);
             return;
-        }
+        case Screen::Stats:
+            InfoScreens::renderStats(g_workFrame, _stats, now);
+            return;
+        case Screen::Weather:
+            InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now);
+            return;
+        default:
+            break;
     }
     const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
     MapRenderer::render(g_workFrame, _traffic, now,
@@ -924,17 +1026,15 @@ void NeoMatrixDisplay::applyPanelSettings()
     }
 }
 
-// The board's button cycles Auto -> Map -> Arrivals -> Stats -> Auto.
+// The board's button cycles Auto -> Map -> Arrivals -> Stats -> Weather -> Auto.
 void NeoMatrixDisplay::pollButton(unsigned long now)
 {
     const bool down = digitalRead(kButtonPin) == LOW;
     if (down && !_buttonDown && now - _buttonChangeMs > 60)
     {
-        _mode = _mode == Mode::Auto ? Mode::Map : _mode == Mode::Map ? Mode::Arrivals
-              : _mode == Mode::Arrivals ? Mode::Stats : Mode::Auto;
-        snprintf(_caption, sizeof(_caption), "%s",
-                 _mode == Mode::Auto ? "AUTO" : _mode == Mode::Map ? "MAP"
-                 : _mode == Mode::Arrivals ? "ARRIVALS" : "STATS");
+        static const char *const kNames[] = {"AUTO", "MAP", "ARRIVALS", "STATS", "WEATHER"};
+        _mode = (Mode)(((uint8_t)_mode + 1) % 5);
+        snprintf(_caption, sizeof(_caption), "%s", kNames[(uint8_t)_mode]);
         _captionUntilMs = now + kCaptionMs;
         Log.printf("Display: button -> %s mode\n", _caption);
     }

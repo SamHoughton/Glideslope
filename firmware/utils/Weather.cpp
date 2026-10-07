@@ -67,6 +67,7 @@ bool Weather::parse(const char *raw, Metar &m)
             const bool neg = t[0] == 'M';
             m.tempC = atoi(t + (neg ? 1 : 0)) * (neg ? -1 : 1);
         }
+        if (t[0] == 'Q' && strlen(t) == 5 && allDigits(t + 1, 4)) m.qnh = atoi(t + 1);
         if (strncmp(t, "RMK", 3) == 0) break;
     }
     m.valid = haveWind;

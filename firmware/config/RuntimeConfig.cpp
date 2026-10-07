@@ -60,6 +60,9 @@ static void applyDefaults(RuntimeConfig &c)
     c.fetch_interval_seconds        = TimingConfiguration::FETCH_INTERVAL_SECONDS;
     c.local_fetch_interval_seconds  = TimingConfiguration::LOCAL_FETCH_INTERVAL_SECONDS;
     c.display_cycle_seconds         = TimingConfiguration::DISPLAY_CYCLE_SECONDS;
+    c.card_lead_seconds             = 120;
+    c.interlude_seconds             = 15;
+    c.screens                       = 0x0F;   // map, arrivals, stats, weather
     c.aeroapi_cache_ttl_seconds     = TimingConfiguration::AEROAPI_CACHE_TTL_SECONDS;
     c.aeroapi_fail_cache_ttl_seconds = TimingConfiguration::AEROAPI_FAIL_CACHE_TTL_SECONDS;
 }
@@ -111,6 +114,9 @@ void loadConfig()
     g_config.fetch_interval_seconds        = p.getUInt("fetch_iv",   g_config.fetch_interval_seconds);
     g_config.local_fetch_interval_seconds  = p.getUInt("local_iv",   g_config.local_fetch_interval_seconds);
     g_config.display_cycle_seconds         = p.getUInt("disp_cyc",   g_config.display_cycle_seconds);
+    g_config.card_lead_seconds             = p.getUInt("card_lead",  g_config.card_lead_seconds);
+    g_config.interlude_seconds             = p.getUInt("interlude",  g_config.interlude_seconds);
+    g_config.screens                       = (uint8_t)p.getUInt("screens", g_config.screens);
     g_config.aeroapi_cache_ttl_seconds     = p.getUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     g_config.aeroapi_fail_cache_ttl_seconds = p.getUInt("api_fttl", g_config.aeroapi_fail_cache_ttl_seconds);
 
@@ -178,6 +184,9 @@ void saveConfig()
     p.putUInt("fetch_iv",  g_config.fetch_interval_seconds);
     p.putUInt("local_iv",  g_config.local_fetch_interval_seconds);
     p.putUInt("disp_cyc",  g_config.display_cycle_seconds);
+    p.putUInt("card_lead", g_config.card_lead_seconds);
+    p.putUInt("interlude", g_config.interlude_seconds);
+    p.putUInt("screens",   g_config.screens);
     p.putUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     p.putUInt("api_fttl",  g_config.aeroapi_fail_cache_ttl_seconds);
 

@@ -285,6 +285,10 @@ void setup()
     if (g_wifiSsid.length() > 0)
     {
         WiFi.mode(WIFI_STA);
+        // Modem sleep saves little here (the board runs off mains) and is a
+        // common cause of ESP32 links that go silently dead.
+        WiFi.setSleep(false);
+        WiFi.setAutoReconnect(true);
         g_display.displayMessage(String("WiFi: ") + g_wifiSsid);
         WiFi.begin(g_wifiSsid.c_str(), g_wifiPass.c_str());
         Log.print("Connecting to WiFi");
@@ -438,6 +442,29 @@ void loop()
         else
         {
         size_t enriched = g_fetcher->fetchFlights(g_states, g_flights);
+
+        // Dead-link watchdog: the ESP32 can stay "connected" to Wi-Fi with a
+        // link that passes nothing (every DNS lookup fails). After a run of
+        // fetches where no source answered, reconnect; if that doesn't help
+        // either, restart.
+        {
+            static int failStreak = 0;
+            failStreak = g_fetcher->lastFetchOk() ? 0 : failStreak + 1;
+            if (failStreak == 6 || failStreak == 12)
+            {
+                Log.printf("WiFi: %d fetches in a row failed, reconnecting\n", failStreak);
+                WiFi.disconnect(false);
+                delay(200);
+                WiFi.begin(g_wifiSsid.c_str(), g_wifiPass.c_str());
+                for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; ++i) delay(250);
+            }
+            else if (failStreak >= 18)
+            {
+                Log.println("WiFi: still no data after reconnecting, restarting");
+                delay(200);
+                ESP.restart();
+            }
+        }
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
         checkSquawks(g_states);
@@ -478,7 +505,7 @@ void loop()
             g_metar = m;
             char line[24];
             Weather::line(g_metar, line, sizeof(line));
-            g_display.setWeather(line);
+            g_display.setWeather(g_metar);
             g_webConfig.setWeather(g_metar.raw);
             if (changed) Log.printf("Weather: %s -> \"%s\"\n", g_metar.raw, line);
         }
