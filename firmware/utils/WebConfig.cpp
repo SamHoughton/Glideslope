@@ -113,7 +113,10 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/sprites"  && r.method == "POST") { requestSpriteGallery(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/map"      && r.method == "POST") { requestMapPreview(30000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/stats"    && r.method == "POST") { requestScreenPreview(1, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/clock"    && r.method == "POST") { requestScreenPreview(2, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/landing"  && r.method == "POST") { requestLandingReplay(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/rare"     && r.method == "POST") { requestRareSpotDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/flyacross" && r.method == "POST")
     {
         const String dir = qparam(r.query, "dir");
@@ -522,9 +525,12 @@ const char kHtmlPage[] =
 "<div class='btns'>"
 "<button data-demo='flyacross'>Replay fly-across</button>"
 "<button data-demo='landing'>Replay landing</button>"
+"<button data-demo='rare'>Rare spot</button>"
 "<button data-demo='sprites'>Aircraft sprites (10 s)</button>"
 "<button data-demo='splash'>Scanning screen (10 s)</button>"
 "<button data-demo='map'>London map (30 s)</button>"
+"<button data-demo='stats'>Today's stats (10 s)</button>"
+"<button data-demo='clock'>Night clock (10 s)</button>"
 "</div>"
 "</div>"
 "<div class='card'>"

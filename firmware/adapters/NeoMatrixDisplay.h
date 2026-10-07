@@ -11,6 +11,7 @@
 #include "display/FlyAcross.h"
 #include "display/ApproachModel.h"
 #include "display/Traffic.h"
+#include "display/DailyStats.h"
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
 // Mirror of what is currently on the panel; the web preview reads this.
@@ -29,12 +30,18 @@ void requestSplashPreview(uint32_t durationMs);
 // Show the London map for durationMs (preview). Safe from the web task.
 void requestMapPreview(uint32_t durationMs);
 
+// Preview an ambient screen (1 = stats, 2 = clock) for durationMs. Safe from the web task.
+void requestScreenPreview(uint8_t which, uint32_t durationMs);
+
 // Replay the fly-across onto the current card. forceDirection: 0 = the
 // flight's real direction, +1 = left-to-right, -1 = right-to-left (testing).
 void requestFlyAcrossReplay(int forceDirection = 0);
 
 // Replay the landing animation for the current card (testing / demo).
 void requestLandingReplay();
+
+// Show the rare-spot flourish on the current card (demo).
+void requestRareSpotDemo();
 
 /*
 Card flow: each fetch's flight list goes through displayFlights(). A flight
@@ -109,6 +116,21 @@ private:
     unsigned long        _ambientUntilMs = 0;
     TrafficTracker       _traffic;               // guarded by _lock
 
+    // Button-selected mode (display task only)
+    enum class Mode : uint8_t { Auto, Map, Stats };
+    Mode                 _mode = Mode::Auto;
+    bool                 _buttonDown = false;
+    unsigned long        _buttonChangeMs = 0;
+    char                 _caption[12] = "";
+    unsigned long        _captionUntilMs = 0;
+
+    // Rare-spot flourish before a fly-across (display task only)
+    bool                 _flourishActive = false;
+    unsigned long        _flourishStartMs = 0;
+    char                 _flourishLine1[20] = "", _flourishLine2[20] = "";
+
+    DailyStats           _stats;                  // guarded by _lock
+
     bool                 _landingActive  = false;
     bool                 _landingDemo    = false;
     unsigned long        _landingStartMs = 0;
@@ -128,6 +150,7 @@ private:
     void beginNextCard(unsigned long now);
     void renderCurrentCard(unsigned long now);
     void renderAmbient(unsigned long now);
+    void pollButton(unsigned long now);
     void crossFade(const FrameCanvas &from, float k);
     ApproachStatus liveStatus(unsigned long now);   // dead-reckoned status of the current card
     void startLanding(unsigned long now, bool demo);   // demo: replay only, card state unchanged

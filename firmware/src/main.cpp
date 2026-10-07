@@ -26,6 +26,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "adapters/NeoMatrixDisplay.h"
 #include "display/CardRenderer.h"
 #include "display/ApproachModel.h"
+#include "display/RareSpotter.h"
 #include "utils/TelnetLogger.h"
 #include "utils/WebConfig.h"
 #include "utils/WifiProvisioner.h"
@@ -139,6 +140,7 @@ void setup()
 
     // Mount LittleFS for local logo storage. Failure is non-fatal.
     g_logoStore.initialize();
+    RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
 
     // Resolve WiFi credentials: NVS-saved (provisioner) overrides compile-time constants.
     // If neither has an SSID, launch the captive-portal AP so the user can configure.

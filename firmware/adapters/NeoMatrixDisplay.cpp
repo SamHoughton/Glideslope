@@ -16,6 +16,8 @@ Responsibilities:
 #include "display/BootSplash.h"
 #include "display/LandingScene.h"
 #include "display/MapRenderer.h"
+#include "display/RareSpotter.h"
+#include "display/InfoScreens.h"
 #include "utils/TelnetLogger.h"
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
@@ -38,6 +40,11 @@ static constexpr unsigned long kCardBeforeMapMs = 75000;             // card up 
 static constexpr unsigned long kMapShowMs       = 30000;             // then the map for this long
 static constexpr uint32_t      kAmbientFadeMs   = 700;               // card -> map cross-fade
 static constexpr float         kBackForLandingSec = 90.0f;           // leave the map for a landing this close
+static constexpr uint32_t      kFlourishMs      = 1600;              // rare-spot banner before the fly-across
+static constexpr unsigned long kAmbientMapMs    = 30000;             // ambient rotation: map ...
+static constexpr unsigned long kAmbientStatsMs  = 8000;              // ... then stats
+static constexpr unsigned long kCaptionMs       = 1200;              // mode-change caption
+static constexpr int           kButtonPin       = 17;                // HD-WF2 test key (0 = pressed)
 static constexpr uint32_t      kAnimFrameMs     = 20;                // 50 fps during the fly-across
 static constexpr uint32_t      kCardFrameMs     = 50;                // 20 fps otherwise
 
@@ -56,12 +63,25 @@ static unsigned long     s_mapPreviewUntil = 0;
 
 void requestMapPreview(uint32_t durationMs) { s_mapRequestMs = durationMs ? durationMs : 1; }
 
+// Ambient screen previews from the web page: 1 stats, 2 clock.
+static volatile uint8_t s_screenPreview = 0;
+static unsigned long    s_screenPreviewUntil = 0;
+
+void requestScreenPreview(uint8_t which, uint32_t durationMs)
+{
+    s_screenPreviewUntil = millis() + durationMs;
+    s_screenPreview = which;
+}
+
 void requestSpriteGallery(uint32_t durationMs) { s_galleryRequestMs = durationMs ? durationMs : 1; }
 
 // Replay request from the web task: 0 none, 1 real path, 2 force L→R, 3 force R→L.
 static volatile uint8_t s_replayRequest = 0;
 
 static volatile bool s_landingReplay = false;
+static volatile bool s_rareDemo = false;
+
+void requestRareSpotDemo() { s_rareDemo = true; }
 
 void requestLandingReplay() { s_landingReplay = true; }
 
@@ -128,6 +148,8 @@ bool NeoMatrixDisplay::initialize()
     mxconfig.driver    = HUB75_I2S_CFG::ICN2038S;
     mxconfig.clkphase  = false;
     mxconfig.latch_blanking = 1;
+
+    pinMode(kButtonPin, INPUT_PULLUP);
 
     _matrix = new MatrixPanel_I2S_DMA(mxconfig);
     _matrix->begin();
@@ -196,6 +218,8 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
     for (const FlightInfo &f : flights)
     {
         if (f.ident.length() == 0) continue;
+
+        _stats.note(f);
 
         // Remember the runway in use for the scanning screen.
         const ApproachStatus st = ApproachModel::evaluate(f);
@@ -304,6 +328,15 @@ void NeoMatrixDisplay::showLoading()
 uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
 {
     applyPanelSettings();
+    pollButton(now);
+
+    if (_captionUntilMs && (long)(now - _captionUntilMs) < 0)
+    {
+        InfoScreens::renderCaption(g_workFrame, _caption);
+        present();
+        return kCardFrameMs;
+    }
+    _captionUntilMs = 0;
 
     if (renderSpriteGallery())
         return kCardFrameMs;
@@ -328,6 +361,20 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     }
     _messageUntilMs = 0;
 
+    // Web demo: the rare-spot flourish, then a fly-across onto the current card.
+    if (s_rareDemo && _hasCurrent && !_inTransition)
+    {
+        s_rareDemo = false;
+        snprintf(_flourishLine1, sizeof(_flourishLine1), "RARE SPOT");
+        snprintf(_flourishLine2, sizeof(_flourishLine2), "A380");
+        _flourishActive  = true;
+        _flourishStartMs = now;
+        _inTransition    = true;
+        _path = FlyAcross::pathFor(_current.flight.heading, _current.flight.vertical_rate,
+                                   g_config.screen_facing);
+    }
+    s_rareDemo = false;
+
     if (s_replayRequest && _hasCurrent && !_inTransition)
     {
         const uint8_t req = s_replayRequest;
@@ -341,6 +388,21 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         if (req == 3) _path.rightward = false;
     }
     s_replayRequest = 0;
+
+    // Rare spot: a banner first, then the fly-across starts from it.
+    if (_flourishActive)
+    {
+        const uint32_t t = now - _flourishStartMs;
+        if (t < kFlourishMs)
+        {
+            InfoScreens::renderRareBanner(g_workFrame, _flourishLine1, _flourishLine2, t);
+            present();
+            return kAnimFrameMs;
+        }
+        _flourishActive = false;
+        g_oldFrame.copyFrom(g_shownFrame);
+        _transStartMs = now;
+    }
 
     if (_inTransition)
     {
@@ -362,7 +424,7 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         return kCardFrameMs;
     }
 
-    if (renderLanding(now))
+    if (_mode == Mode::Auto && renderLanding(now))
         return kAnimFrameMs;
 
     // A plane on final approach keeps the card until it has landed, so new
@@ -388,7 +450,8 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     const unsigned long holdMs = _hasCurrent && _current.landed
         ? kLandedHoldMs
         : (unsigned long)g_config.display_cycle_seconds * 1000UL;
-    if (!_queue.empty() && (!_hasCurrent || (now - _shownSinceMs >= holdMs && !awaitingLanding)))
+    if (_mode == Mode::Auto && !_queue.empty() &&
+        (!_hasCurrent || (now - _shownSinceMs >= holdMs && !awaitingLanding)))
     {
         beginNextCard(now);
         return 0;   // draw the first animation frame straight away
@@ -409,11 +472,12 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         s_mapPreviewUntil = now + s_mapRequestMs;
         s_mapRequestMs    = 0;
     }
-    const bool mapPreview = s_mapPreviewUntil && (long)(now - s_mapPreviewUntil) < 0;
+    if (s_screenPreview && (long)(now - s_screenPreviewUntil) >= 0) s_screenPreview = 0;
+    const bool mapPreview = (s_mapPreviewUntil && (long)(now - s_mapPreviewUntil) < 0) || s_screenPreview;
     if (!mapPreview) s_mapPreviewUntil = 0;
 
     bool showAmbient;
-    if (!_hasCurrent || mapPreview)
+    if (!_hasCurrent || mapPreview || _mode != Mode::Auto)
         showAmbient = true;
     else if (_ambientActive)
         showAmbient = !landingSoon && (_current.landed || (long)(now - _ambientUntilMs) < 0);
@@ -463,9 +527,23 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
 // tracked, otherwise the scanning screen.
 void NeoMatrixDisplay::renderAmbient(unsigned long now)
 {
+    // Web previews, then the button-selected mode.
+    if (s_screenPreview == 1) { InfoScreens::renderStats(g_workFrame, _stats, now); return; }
+    if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now); return; }
+    if (_mode == Mode::Stats) { InfoScreens::renderStats(g_workFrame, _stats, now); return; }
+
     if (_traffic.empty())
     {
-        BootSplash::render(g_workFrame, now, _runwayInUse);
+        // Quiet hours: a dim clock overnight instead of the scanning screen.
+        if (isNightActive() && _mode == Mode::Auto) InfoScreens::renderClock(g_workFrame, now);
+        else                                        BootSplash::render(g_workFrame, now, _runwayInUse);
+        return;
+    }
+    // Auto: the map, with the stats screen for a few seconds in each cycle.
+    if (_mode == Mode::Auto &&
+        (now - _ambientSinceMs) % (kAmbientMapMs + kAmbientStatsMs) >= kAmbientMapMs)
+    {
+        InfoScreens::renderStats(g_workFrame, _stats, now);
         return;
     }
     const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
@@ -505,6 +583,15 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
     _transStartMs = now;
     _path = FlyAcross::pathFor(_current.flight.heading, _current.flight.vertical_rate,
                                g_config.screen_facing);
+    const RareSpotter::Reason why = RareSpotter::check(_current.flight);
+    if (why != RareSpotter::None)
+    {
+        RareSpotter::banner(why, _current.flight, _flourishLine1, sizeof(_flourishLine1),
+                            _flourishLine2, sizeof(_flourishLine2));
+        _flourishActive  = true;
+        _flourishStartMs = now;
+        Log.printf("Display: rare spot %s: %s %s\n", _current.flight.ident.c_str(), _flourishLine1, _flourishLine2);
+    }
     Log.printf("Display: fly-across to %s, %s, %s (%u still queued)\n",
                _current.flight.ident.c_str(),
                _path.rightward ? "left-to-right" : "right-to-left",
@@ -633,6 +720,22 @@ void NeoMatrixDisplay::applyPanelSettings()
         _matrix->setRotation(g_config.display_flip ? 2 : 0);
         _forceFull = true;
     }
+}
+
+// The board's button cycles Auto -> Map -> Stats -> Auto.
+void NeoMatrixDisplay::pollButton(unsigned long now)
+{
+    const bool down = digitalRead(kButtonPin) == LOW;
+    if (down && !_buttonDown && now - _buttonChangeMs > 60)
+    {
+        _mode = _mode == Mode::Auto ? Mode::Map : _mode == Mode::Map ? Mode::Stats : Mode::Auto;
+        snprintf(_caption, sizeof(_caption), "%s",
+                 _mode == Mode::Auto ? "AUTO" : _mode == Mode::Map ? "MAP" : "STATS");
+        _captionUntilMs = now + kCaptionMs;
+        Log.printf("Display: button -> %s mode\n", _caption);
+    }
+    if (down != _buttonDown) _buttonChangeMs = now;
+    _buttonDown = down;
 }
 
 void NeoMatrixDisplay::present()

@@ -1,5 +1,6 @@
 #include "display/MapRenderer.h"
 #include "display/MapBase.h"
+#include "display/InfoScreens.h"
 #include <math.h>
 
 namespace
@@ -102,8 +103,8 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
     // Runway in use, top left (open country to the north-west).
     if (runwayInUse && runwayInUse[0])
     {
-        char label[12];
-        snprintf(label, sizeof(label), "LHR %s", runwayInUse);
+        char label[20];
+        InfoScreens::runwaySummary(runwayInUse, label, sizeof(label), true);
         c.text(1, 1, label, kLabel);
     }
 }
