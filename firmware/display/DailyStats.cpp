@@ -1,5 +1,6 @@
 #include "display/DailyStats.h"
 #include <time.h>
+#include "config/Airport.h"
 
 void DailyStats::rollDay()
 {
@@ -23,12 +24,12 @@ void DailyStats::rollDay()
 void DailyStats::note(const FlightInfo &f)
 {
     rollDay();
-    const bool toLhr   = f.destination.code_icao == "EGLL" || f.destination.code_iata == "LHR";
-    const bool fromLhr = f.origin.code_icao == "EGLL" || f.origin.code_iata == "LHR";
-    if ((!toLhr && !fromLhr) || f.ident.length() == 0 || _counted.count(f.ident)) return;
+    const bool toHome   = AirportPack::isHome(f.destination);
+    const bool fromHome = AirportPack::isHome(f.origin);
+    if ((!toHome && !fromHome) || f.ident.length() == 0 || _counted.count(f.ident)) return;
     if (_counted.size() > 2500) return;   // bounded; far above a day's movements
     _counted[f.ident] = true;
-    if (toLhr) ++_arrivals; else ++_departures;
+    if (toHome) ++_arrivals; else ++_departures;
 
     String airline = f.ident_iata.length() >= 2 ? f.ident_iata.substring(0, 2) : f.operator_icao;
     airline.trim();

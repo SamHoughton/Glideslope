@@ -1,6 +1,7 @@
 #include "display/InfoScreens.h"
 #include <math.h>
 #include <time.h>
+#include "config/Airport.h"
 
 namespace
 {
@@ -29,11 +30,13 @@ void InfoScreens::runwaySummary(const char *runway, char *out, size_t len, bool 
     if (!runway || !runway[0]) { if (len) out[0] = '\0'; return; }
     const bool westerly = runway[0] == '2';
     struct tm lt;
-    // Westerly ops alternate the landing runway at 15:00 (27L <-> 27R).
-    if (withSwap && westerly && localNow(lt) && lt.tm_hour >= 6 && lt.tm_hour < 15)
+    // Heathrow's westerly ops alternate the landing runway at 15:00 (27L <-> 27R).
+    if (withSwap && westerly && g_airport.lhrAlternation && localNow(lt) && lt.tm_hour >= 6 && lt.tm_hour < 15)
         snprintf(out, len, "%s UNTIL 15:00", runway);
-    else
+    else if (g_airport.lhrAlternation)
         snprintf(out, len, "%s %s ARR", westerly ? "WEST" : "EAST", runway);
+    else
+        snprintf(out, len, "%s ARRIVALS", runway);
 }
 
 void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t animMs)
@@ -150,7 +153,10 @@ void InfoScreens::renderArrivals(FrameCanvas &c, const Arrival *rows, int n, con
 void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runway, unsigned long nowMs)
 {
     c.clear();
-    centred(c, 2, "HEATHROW WEATHER", kTitle);
+    char title[24];
+    snprintf(title, sizeof(title), "%s WEATHER", g_airport.name);
+    if (FrameCanvas::textWidth(title) > FrameCanvas::W - 4) snprintf(title, sizeof(title), "%s WEATHER", g_airport.icao);
+    centred(c, 2, title, kTitle);
     for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 11, kDim);
     if (!m.valid) { centred(c, 30, "NO REPORT YET", kDim); return; }
 

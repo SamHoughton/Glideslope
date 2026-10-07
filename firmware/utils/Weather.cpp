@@ -3,6 +3,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <math.h>
+#include "config/Airport.h"
 
 namespace
 {
@@ -79,7 +80,8 @@ bool Weather::fetch(Metar &out)
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
-    if (!http.begin(client, "https://aviationweather.gov/api/data/metar?ids=EGLL&format=raw"))
+    const String url = String("https://aviationweather.gov/api/data/metar?ids=") + g_airport.icao + "&format=raw";
+    if (!http.begin(client, url))
         return false;
     http.setTimeout(6000);
     http.useHTTP10(true);

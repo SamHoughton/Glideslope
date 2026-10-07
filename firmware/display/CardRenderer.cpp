@@ -1,5 +1,6 @@
 #include "display/CardRenderer.h"
 #include "display/AircraftSprites.h"
+#include "config/Airport.h"
 #include <math.h>
 
 namespace
@@ -387,7 +388,8 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
         }
         else
         {
-            snprintf(label, sizeof(label), s.runway[0] ? "RUNWAY %s" : "HEATHROW", s.runway);
+            if (s.runway[0]) snprintf(label, sizeof(label), "RUNWAY %s", s.runway);
+            else             snprintf(label, sizeof(label), "%s", g_airport.name);
             statusCol = kCyan;
         }
     }

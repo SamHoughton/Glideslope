@@ -1,4 +1,5 @@
 #include "display/LandingScene.h"
+#include "config/Airport.h"
 #include <math.h>
 
 namespace
@@ -80,6 +81,51 @@ namespace
             }
     }
 
+    // Any other airport: rolling hills, a tree line, hangars, a terminal
+    // with lit windows and a control tower whose beacon flashes green and
+    // white (as real aerodrome beacons do). Drawn procedurally, pre-mirrored
+    // like the London one; its base sits on the runway edge line.
+    void drawGenericSkyline(FrameCanvas &c, uint32_t tMs, bool mirrored)
+    {
+        const int base = kSurfaceY - 1;
+        auto put = [&](int x, int y, Rgb col) {
+            if (x < 0 || x >= FrameCanvas::W) return;
+            c.set(mirrored ? FrameCanvas::W - 1 - x : x, y, col);
+        };
+        const Rgb hills{26, 30, 42};
+        for (int x = 0; x < FrameCanvas::W; ++x)
+        {
+            const int h = 3 + (int)lroundf(2.0f * sinf(x * 0.045f) + 1.5f * sinf(x * 0.11f + 1.3f));
+            for (int y = base - h; y < base; ++y) put(x, y, hills);
+            // Tree line: clumps of 1-3 px on the hills.
+            const int t = (x * 37 + 11) % 23 < 9 ? 1 + ((x * 13) % 3) : 0;
+            for (int y = base - h - t; y < base - h; ++y) put(x, y, kSilhouette);
+        }
+        // Hangars: boxes with a lighter roof line.
+        const int hangars[][3] = { {8, 18, 7}, {28, 14, 6} };   // x, width, height
+        for (const auto &hg : hangars)
+        {
+            for (int y = base - hg[2]; y < base; ++y)
+                for (int x = hg[0]; x < hg[0] + hg[1]; ++x) put(x, y, kSilhouette);
+            for (int x = hg[0]; x < hg[0] + hg[1]; ++x) put(x, base - hg[2], Rgb{58, 64, 82});
+        }
+        // Terminal: long and low, two rows of windows.
+        for (int y = base - 6; y < base; ++y)
+            for (int x = 88; x < 124; ++x) put(x, y, kSilhouette);
+        for (int x = 90; x < 122; x += 2) { put(x, base - 4, kWindowLit); if (x % 6) put(x, base - 2, kWindowLit); }
+        // Control tower: shaft, flared cab with windows, beacon on top.
+        const int tx = 70;
+        for (int y = base - 18; y < base; ++y)
+            for (int x = tx - 1; x <= tx + 1; ++x) put(x, y, kSilhouette);
+        for (int y = base - 23; y < base - 18; ++y)
+            for (int x = tx - 4; x <= tx + 4; ++x) put(x, y, kSilhouette);
+        for (int x = tx - 3; x <= tx + 3; ++x) put(x, base - 21, Rgb{70, 140, 150});
+        put(tx, base - 24, kSilhouette);
+        const uint32_t phase = tMs % 1200;
+        if (phase < 150)                     put(tx, base - 25, Rgb{60, 255, 120});    // green ...
+        else if (phase >= 600 && phase < 750) put(tx, base - 25, Rgb{255, 255, 255});  // ... then white
+    }
+
     float easeOut(float u) { u = u < 0 ? 0 : (u > 1 ? 1 : u); return 1 - (1 - u) * (1 - u); }
 
     void mirror(FrameCanvas &c)
@@ -101,7 +147,8 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
 {
     const bool goAround = kind == GoAround, takeoff = kind == Takeoff;
     c.clear();
-    drawSkyline(c, tMs, rightward);
+    if (g_airport.londonSkyline) drawSkyline(c, tMs, rightward);
+    else                         drawGenericSkyline(c, tMs, rightward);
 
     // Runway: surface, dotted edge line, dashed centreline, piano keys.
     for (int y = kSurfaceY; y <= kSurfaceY + 3; ++y)

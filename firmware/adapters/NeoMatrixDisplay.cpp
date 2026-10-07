@@ -18,6 +18,7 @@ Responsibilities:
 #include "display/MapRenderer.h"
 #include "display/RareSpotter.h"
 #include "display/InfoScreens.h"
+#include "config/Airport.h"
 #include "utils/TelnetLogger.h"
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
@@ -993,7 +994,7 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
     static char caption[24];
     const String &id = f.ident_iata.length() ? f.ident_iata : f.ident;
     const String &dest = f.destination.code_iata.length() ? f.destination.code_iata : f.destination.code_icao;
-    if (_sceneKind == LandingScene::Takeoff && dest.length() && dest != "LHR" && dest != "EGLL")
+    if (_sceneKind == LandingScene::Takeoff && dest.length() && !AirportPack::isHome(f.destination))
         snprintf(caption, sizeof(caption), "%s TO %s", id.c_str(), dest.c_str());
     else
         snprintf(caption, sizeof(caption), "%s", id.c_str());

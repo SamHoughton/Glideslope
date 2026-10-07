@@ -1,5 +1,5 @@
 #include "display/MapRenderer.h"
-#include "display/MapBase.h"
+#include "config/Airport.h"
 #include "display/PlaneIcons.h"
 #include <math.h>
 
@@ -65,23 +65,20 @@ namespace
 
 void MapRenderer::project(double lat, double lon, float &x, float &y)
 {
-    x = (float)((lon - MapBase::LON_W) / (MapBase::LON_E - MapBase::LON_W) * FrameCanvas::W);
-    y = (float)((MapBase::LAT_N - lat) / (MapBase::LAT_N - MapBase::LAT_S) * FrameCanvas::H);
+    x = (float)((lon - g_airport.mapW) / (g_airport.mapE - g_airport.mapW) * FrameCanvas::W);
+    y = (float)((g_airport.mapN - lat) / (g_airport.mapN - g_airport.mapS) * FrameCanvas::H);
 }
 
 void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned long now,
                          double homeLat, double homeLon, const char *runwayInUse)
 {
-    // Base layer straight from flash.
+    // Base layer: Heathrow's from flash, or the airport pack's.
     for (int y = 0; y < FrameCanvas::H; ++y)
-    {
-        const char *row = MapBase::kRows[y];
         for (int x = 0; x < FrameCanvas::W; ++x)
         {
-            const uint8_t *p = MapBase::kPalette[row[x] - '0'];
+            const uint8_t *p = AirportPack::mapColour(AirportPack::mapIndex(x, y));
             c.set(x, y, Rgb{p[0], p[1], p[2]});
         }
-    }
 
     // Home: a small warm plus.
     float hx, hy;
