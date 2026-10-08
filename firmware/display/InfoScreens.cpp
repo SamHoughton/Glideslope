@@ -387,7 +387,7 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     char wind[16];
     if (m.windKt == 0)      snprintf(wind, sizeof(wind), "CALM");
     else if (m.windDir < 0) snprintf(wind, sizeof(wind), "VRB %dKT", m.windKt);
-    else                    snprintf(wind, sizeof(wind), "%03d/%d", m.windDir, m.windKt);
+    else                    snprintf(wind, sizeof(wind), "%03d/%dKT", m.windDir, m.windKt);
     c.text(kX + 1, 13, wind, kValue);
     if (m.gustKt)
     {
@@ -396,10 +396,10 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
         c.text(FrameCanvas::W - 2 - FrameCanvas::textWidth(g), 13, g, Rgb{255, 95, 80});
     }
 
-    drawRunwayWind(c, kX + 12, 33, 10, m, runway, nowMs);
+    drawRunwayWind(c, kX + 11, 32, 9, m, runway, nowMs);
     if (runway && runway[0])
     {
-        c.text(kX + 28, 23, runway, kLabel);
+        c.text(kX + 26, 21, runway, kLabel);
         if (m.windDir >= 0 && m.windKt > 0)
         {
             const int rwyDeg = atoi(runway) * 10;   // "27L" -> 270
@@ -408,8 +408,8 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
             char xw[10], hw[10];
             snprintf(xw, sizeof(xw), "XW %d", cross);
             snprintf(hw, sizeof(hw), "%s %d", tail > 0 ? "TW" : "HW", tail > 0 ? tail : -tail);
-            c.text(kX + 28, 32, xw, cross >= 20 ? Rgb{255, 95, 80} : Rgb{200, 205, 215});
-            c.text(kX + 28, 41, hw, tail >= 5 ? Rgb{255, 95, 80} : Rgb{200, 205, 215});
+            c.text(kX + 26, 29, xw, cross >= 20 ? Rgb{255, 95, 80} : Rgb{200, 205, 215});
+            c.text(kX + 26, 37, hw, tail >= 5 ? Rgb{255, 95, 80} : Rgb{200, 205, 215});
         }
     }
 
