@@ -12,6 +12,7 @@
 #include "display/ApproachModel.h"
 #include "display/Traffic.h"
 #include "display/DailyStats.h"
+#include "display/RunwayTracker.h"
 #include "display/InfoScreens.h"
 #include "display/LandingScene.h"
 #include "utils/Weather.h"
@@ -54,6 +55,7 @@ void requestTakeoffDemo();
 
 // Show a sample emergency-squawk alert (demo).
 void requestAlertDemo();
+void requestRunwayChangeDemo();
 
 // Scripted ~35 s showcase (for demos and the README recording): a fictional
 // flight, GS101, flies in on final for 27L with the Glideslope badge, lands,
@@ -100,6 +102,8 @@ public:
     // Today's stats from every aircraft in range (call once per fetch), and
     // their persistence: snapshot under the lock, write the file outside it.
     void noteTraffic(const std::vector<StateVector> &states);
+    // Runways in use from that traffic ("27L", "26R 26L"; "" if none).
+    void runwaysInUse(char *arr, size_t arrLen, char *dep, size_t depLen);
     bool statsSnapshot(std::vector<uint8_t> &out);   // false if unchanged
     void loadStats();
 
@@ -143,7 +147,12 @@ private:
     unsigned long        _shownSinceMs = 0;
     std::deque<Entry>    _queue;
     std::map<String, unsigned long> _seenMs;   // ident -> last time in a fetch
-    char                 _runwayInUse[4] = "";  // last arrival runway seen, e.g. "27L"
+    RunwayTracker        _runways;               // from every aircraft in range
+    char                 _runwayInUse[4] = "";  // main arrival runway, e.g. "27L"
+    char                 _runwayArr[12] = "", _runwayDep[12] = "";   // all in use
+    bool                 _rwyChangeActive = false;   // RUNWAY CHANGE on the panel
+    unsigned long        _rwyChangeMs = 0;
+    char                 _rwyFrom[4] = "", _rwyTo[4] = "";
     Entry                _nextApproach;          // closest-to-touchdown aircraft not on the card
     bool                 _hasNextApproach = false;
 

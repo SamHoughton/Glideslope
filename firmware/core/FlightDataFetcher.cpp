@@ -99,7 +99,8 @@ FlightDataFetcher::FlightDataFetcher(BaseStateVectorFetcher *stateFetcher,
 size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                                        std::vector<FlightInfo> &outFlights)
 {
-    outStates.clear();
+    // outStates still holds the previous fetch's aircraft: the sources replace
+    // it (and adsb.lol's carry-forward reuses it rather than keeping a copy).
     outFlights.clear();
 
     bool ok = _stateFetcher->fetchStateVectors(
@@ -109,6 +110,8 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         outStates);
     _lastFetchOk = ok;
     heapCheckpoint("position fetch");
+    if (!ok)
+        outStates.clear();
     if (!ok)
         return 0;
 

@@ -45,7 +45,7 @@ private:
     unsigned long _lolGapMs = 0;            // learnt adsb.lol pacing, see minIntervalMs()
     uint8_t       _lolStreak = 0;           // adsb.lol answers since the last change
     unsigned long _lolOkMs = 0;             // when adsb.lol last answered
-    std::vector<StateVector> _lolLast;      // its last answer, carried forward while it rests
+    unsigned long _carriedMs = 0;           // time the positions in the caller's list are for
     bool fetchFrom(int i, const String &url, const char *name, double centerLat, double centerLon,
                    double radiusKm, std::vector<StateVector> &out);
 };

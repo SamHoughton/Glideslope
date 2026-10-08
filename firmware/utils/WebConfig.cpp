@@ -130,6 +130,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/showcase" && r.method == "POST") { requestShowcase(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/takeoff"  && r.method == "POST") { requestTakeoffDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/squawk"   && r.method == "POST") { requestAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/runway"   && r.method == "POST") { requestRunwayChangeDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/weather"  && r.method == "POST") { requestScreenPreview(4, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/arrivals" && r.method == "POST") { requestScreenPreview(3, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/sprites"  && r.method == "POST") { requestSpriteGallery(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -443,6 +444,8 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["web_requests"]   = (uint32_t)_requests;
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
     doc["metar"]          = _metar;
+    doc["runways_arr"]    = _rwyArr;
+    doc["runways_dep"]    = _rwyDep;
     doc["airport"]        = g_airport.icao;
     doc["airport_name"]   = g_airport.name;
     doc["airport_lat"]    = g_airport.lat;
@@ -452,6 +455,14 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     String out;
     serializeJson(doc, out);
     sendHttp(c, 200, "application/json", out);
+}
+
+void WebConfig::setRunways(const char *arrivals, const char *departures)
+{
+    if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
+    strlcpy(_rwyArr, arrivals, sizeof(_rwyArr));
+    strlcpy(_rwyDep, departures, sizeof(_rwyDep));
+    if (_displayMutex) xSemaphoreGive(_displayMutex);
 }
 
 void WebConfig::setWeather(const char *metar)

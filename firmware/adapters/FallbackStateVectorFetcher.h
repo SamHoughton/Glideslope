@@ -45,7 +45,6 @@ public:
             Log.println("FallbackStateVectorFetcher: primary unavailable, using the fallback source");
             _logged = true;
         }
-        outStateVectors.clear();    // discard any partial results
         _usedFallback = true;
         return _secondary->fetchStateVectors(centerLat, centerLon, radiusKm, outStateVectors);
     }

@@ -16,5 +16,5 @@ namespace MapRenderer
     void project(double lat, double lon, float &x, float &y);
 
     void render(FrameCanvas &c, const TrafficTracker &traffic, unsigned long now,
-                double homeLat, double homeLon, const char *runwayInUse);
+                double homeLat, double homeLon, const char *arrivals, const char *departures);
 }

@@ -120,11 +120,15 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
     };
     static const char *const kNames[2] = { "adsb.lol", "adsb.fi" };
 
+    // The caller's list holds the previous fetch's aircraft. Set it aside
+    // (a swap: nothing copied; with 40 aircraft a copy was ~9 KB of heap).
+    std::vector<StateVector> previous;
+    previous.swap(outStateVectors);
+
     // adsb.lol first (plain HTTP, light on memory).
-    outStateVectors.clear();
     if (fetchFrom(0, urls[0], kNames[0], centerLat, centerLon, radiusKm, outStateVectors))
     {
-        _lolLast = outStateVectors;
+        _carriedMs = millis();
         return true;
     }
 
@@ -132,10 +136,11 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
     // answer forward (each aircraft moved along its track and climb rate to
     // now) rather than pay for adsb.fi's TLS handshake (~65 KB of heap).
     const unsigned long now = millis();
-    if (_lolOkMs && now - _lolOkMs <= 90000UL && !_lolLast.empty())
+    if (_lolOkMs && now - _lolOkMs <= 90000UL && !previous.empty() && _carriedMs)
     {
-        const double dt = (now - _lolOkMs) / 1000.0;
-        outStateVectors = _lolLast;
+        const double dt = (now - _carriedMs) / 1000.0;
+        _carriedMs = now;
+        outStateVectors.swap(previous);
         for (StateVector &s : outStateVectors)
         {
             if (!isnan(s.velocity) && !isnan(s.heading))
@@ -156,7 +161,10 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
     // adsb.lol down for a while: adsb.fi (HTTPS), if there is room for TLS.
     outStateVectors.clear();
     if (tlsAffordable("adsb.fi") && fetchFrom(1, urls[1], kNames[1], centerLat, centerLon, radiusKm, outStateVectors))
+    {
+        _carriedMs = millis();
         return true;
+    }
     outStateVectors.clear();
     return false;
 }

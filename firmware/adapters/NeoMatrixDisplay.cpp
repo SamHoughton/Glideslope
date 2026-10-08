@@ -51,6 +51,7 @@ static constexpr float         kGoAroundMaxFt   = 5000.0f;           // ... belo
 static constexpr unsigned long kLandedSilentMs  = 15000;             // gone from the data this long at the threshold = landed
 static constexpr float         kLandedReportFt  = 200.0f;            // or reported this low near the threshold
 static constexpr unsigned long kAlertMs         = 12000;             // emergency-squawk alert on screen
+static constexpr unsigned long kRunwayChangeMs  = 7000;              // RUNWAY CHANGE announcement
 static constexpr float         kFreshDepartureFt = 4000.0f;          // take-off scene below this
 static constexpr uint32_t      kAnimFrameMs     = 20;                // 50 fps during the fly-across
 static constexpr uint32_t      kCardFrameMs     = 50;                // 20 fps otherwise
@@ -94,6 +95,9 @@ static volatile bool s_alertDemo = false;
 void requestTakeoffDemo() { s_takeoffDemo = true; }
 
 void requestAlertDemo() { s_alertDemo = true; }
+
+static volatile bool s_runwayDemo = false;
+void requestRunwayChangeDemo() { s_runwayDemo = true; }
 
 static volatile bool s_showcaseRequest = false;
 void requestShowcase() { s_showcaseRequest = true; }
@@ -249,10 +253,7 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
     {
         if (f.ident.length() == 0) continue;
 
-        // Remember the runway in use for the scanning screen.
         const ApproachStatus st = ApproachModel::evaluate(f);
-        if (st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing)
-            strlcpy(_runwayInUse, st.runway, sizeof(_runwayInUse));
         if (st.phase == ApproachStatus::Approach && !isnan(st.distKm) && st.distKm < bestDist &&
             !(_hasCurrent && f.ident == _current.flight.ident))
         {
@@ -328,8 +329,26 @@ void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
 
 void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
 {
+    const unsigned long now = millis();
     Lock l(_lock);
     _stats.noteTraffic(states);
+    if (_runways.update(states, now))
+    {
+        strlcpy(_rwyFrom, _runways.changeFrom(), sizeof(_rwyFrom));
+        strlcpy(_rwyTo, _runways.changeTo(), sizeof(_rwyTo));
+        _rwyChangeMs = now;
+        _rwyChangeActive = true;
+    }
+    strlcpy(_runwayInUse, _runways.mainArrival(), sizeof(_runwayInUse));
+    _runways.arrivals(_runwayArr, sizeof(_runwayArr));
+    _runways.departures(_runwayDep, sizeof(_runwayDep));
+}
+
+void NeoMatrixDisplay::runwaysInUse(char *arr, size_t arrLen, char *dep, size_t depLen)
+{
+    Lock l(_lock);
+    strlcpy(arr, _runwayArr, arrLen);
+    strlcpy(dep, _runwayDep, depLen);
 }
 
 bool NeoMatrixDisplay::statsSnapshot(std::vector<uint8_t> &out)
@@ -554,6 +573,28 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
             return kCardFrameMs;
         }
         _alertActive = false;
+    }
+
+    // The landing direction has changed: announce it once.
+    if (s_runwayDemo)
+    {
+        s_runwayDemo = false;
+        const bool west = !_runwayInUse[0] || _runwayInUse[0] == '2';
+        strlcpy(_rwyFrom, west ? "27R" : "09L", sizeof(_rwyFrom));
+        strlcpy(_rwyTo, west ? "09L" : "27R", sizeof(_rwyTo));
+        _rwyChangeMs = now;
+        _rwyChangeActive = true;
+    }
+    if (_rwyChangeActive)
+    {
+        const uint32_t t = now - _rwyChangeMs;
+        if (t < kRunwayChangeMs)
+        {
+            InfoScreens::renderRunwayChange(g_workFrame, _rwyFrom, _rwyTo, t);
+            present();
+            return kCardFrameMs;
+        }
+        _rwyChangeActive = false;
     }
 
     // Web demo: the rare-spot flourish, then a fly-across onto the current card.
@@ -857,7 +898,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
     MapRenderer::render(g_workFrame, _traffic, now,
                         homeSet ? g_config.home_lat : g_config.center_lat,
-                        homeSet ? g_config.home_lon : g_config.center_lon, _runwayInUse);
+                        homeSet ? g_config.home_lon : g_config.center_lon, _runwayArr, _runwayDep);
 }
 
 // Blend the work frame with `from`: k = 0 shows `from`, 1 shows the work frame.

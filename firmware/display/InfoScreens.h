@@ -44,4 +44,6 @@ namespace InfoScreens
     void renderClock(FrameCanvas &c, uint32_t animMs, const char *weather = "");
     void renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs);
     void renderCaption(FrameCanvas &c, const char *text);
+    // The landing direction has changed (from may be "").
+    void renderRunwayChange(FrameCanvas &c, const char *from, const char *to, uint32_t tMs);
 }

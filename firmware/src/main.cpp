@@ -500,6 +500,11 @@ void loop()
         heapCheckpoint("fetch cycle");
         checkSquawks(g_states);
         g_display.noteTraffic(g_states);
+        {
+            char arr[12], dep[12];
+            g_display.runwaysInUse(arr, sizeof(arr), dep, sizeof(dep));
+            g_webConfig.setRunways(arr, dep);
+        }
         updateArrivals(g_states, g_flights);
 
         static String lastIdents;

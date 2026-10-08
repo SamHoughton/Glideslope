@@ -107,7 +107,13 @@ and a log.
 - **Weather**: Heathrow's wind (with a compass arrow), gusts, visibility,
   weather, temperature, pressure, and the crosswind and head- or tailwind on
   the runway in use.
-- **Runway in use**, e.g. `27L UNTIL 15:00` (westerly ops alternate at 15:00).
+- **Runways in use**, worked out from the traffic itself: every aircraft on
+  final or climbing out counts, at any airport, with several runways at once
+  (arrivals top left of the map, departures top right; `27L UNTIL 15:00` on
+  the arrivals board). When the landing direction changes (a westerly to
+  easterly switch, confirmed by two aircraft) the panel announces
+  `RUNWAY CHANGE · NOW LANDING 09L`. With nothing landing for 30 minutes,
+  no runway is shown.
 - **Quiet hours**: a dim clock (with the weather) overnight when there's no
   traffic.
 - **Board button** cycles Auto / Map / Arrivals / Stats / Weather.

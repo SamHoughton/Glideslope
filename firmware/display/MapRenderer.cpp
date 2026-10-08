@@ -70,7 +70,7 @@ void MapRenderer::project(double lat, double lon, float &x, float &y)
 }
 
 void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned long now,
-                         double homeLat, double homeLon, const char *runwayInUse)
+                         double homeLat, double homeLon, const char *arrivals, const char *departures)
 {
     // Base layer: Heathrow's from flash, or the airport pack's.
     for (int y = 0; y < FrameCanvas::H; ++y)
@@ -89,9 +89,19 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
     plot(c, ix - 1, iy, dimHome); plot(c, ix + 1, iy, dimHome);
     plot(c, ix, iy - 1, dimHome); plot(c, ix, iy + 1, dimHome);
 
-    // Runway in use, top left (open country to the north-west).
-    if (runwayInUse && runwayInUse[0])
-        c.text(1, 1, runwayInUse, kLabel);
+    // Runways in use: arrivals top left, departures top right (dimmer amber).
+    int arrW = 0;
+    if (arrivals && arrivals[0])
+    {
+        c.text(1, 1, arrivals, kLabel);
+        arrW = FrameCanvas::textWidth(arrivals);
+    }
+    if (departures && departures[0] && strcmp(departures, arrivals ? arrivals : "") != 0)
+    {
+        const int w = FrameCanvas::textWidth(departures);
+        if (arrW + w + 8 <= FrameCanvas::W)
+            c.text(FrameCanvas::W - 1 - w, 1, departures, Rgb{200, 140, 50});
+    }
 
     // Aircraft: a plane icon pointing along the track, in the airline colour
     // with a white nose. Halos first, then icons, so neighbours on the

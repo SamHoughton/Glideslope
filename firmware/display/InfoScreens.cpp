@@ -316,6 +316,26 @@ void InfoScreens::renderRareBanner(FrameCanvas &c, const char *line1, const char
     else                         centred(c, 32, line2, kGold);
 }
 
+void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const char *to, uint32_t tMs)
+{
+    c.clear();
+    // An amber frame that pulses, the new runway large in the middle.
+    const float k = 0.55f + 0.45f * sinf(tMs / 160.0f);
+    const Rgb frame = FrameCanvas::scale(kValue, k);
+    for (int x = 0; x < FrameCanvas::W; ++x) { c.set(x, 0, frame); c.set(x, FrameCanvas::H - 1, frame); }
+    for (int y = 0; y < FrameCanvas::H; ++y) { c.set(0, y, frame); c.set(FrameCanvas::W - 1, y, frame); }
+    centred(c, 5, "RUNWAY CHANGE", (tMs / 400) % 2 ? kValue : kTitle);
+    centred(c, 16, "NOW LANDING", kLabel);
+    const int w = FrameCanvas::textWidth(to, 2, 11);
+    c.text((FrameCanvas::W - w) / 2, 27, to, kValue, 2, 11);
+    if (from && from[0])
+    {
+        char was[12];
+        snprintf(was, sizeof(was), "WAS %s", from);
+        centred(c, 52, was, Rgb{140, 146, 160});
+    }
+}
+
 void InfoScreens::renderCaption(FrameCanvas &c, const char *text)
 {
     c.clear();

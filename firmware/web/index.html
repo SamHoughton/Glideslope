@@ -146,6 +146,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="splash">Scanning</button>
         <button data-demo="rare">Rare spot</button>
         <button data-demo="squawk">Emergency squawk</button>
+        <button data-demo="runway">Runway change</button>
         <button data-demo="sprites">Aircraft sprites</button>
       </div>
     </details>
@@ -334,6 +335,7 @@ function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
     $('apchip').innerHTML='<b>'+esc(s.airport_name||'HEATHROW')+'</b> · '+esc(s.airport||'EGLL');
     $('apt').textContent=(s.airport_name||'')+' ('+(s.airport||'')+')'+(s.airport_pack?' from an airport pack':', built in');
     $('sys').innerHTML='<dt>Firmware</dt><dd>'+esc(s.version)+' <small>'+esc(s.built)+'</small></dd>'+
+      (s.runways_arr||s.runways_dep?'<dt>Runways</dt><dd>'+(s.runways_arr?'Landing '+esc(s.runways_arr):'')+(s.runways_arr&&s.runways_dep?' · ':'')+(s.runways_dep?'Departing '+esc(s.runways_dep):'')+'</dd>':'')+
       '<dt>Up</dt><dd>'+fmtUp(s.uptime_s)+'</dd><dt>Memory</dt><dd>'+Math.round(s.heap_free/1024)+' KB free, low '+Math.round(s.heap_min_free/1024)+' KB</dd>'+
       (s.metar?'<dt>Weather</dt><dd class="mono" style="font-size:12px">'+esc(s.metar)+'</dd>':'');
     $('livedot').className='dot on';$('livetxt').textContent='live';
