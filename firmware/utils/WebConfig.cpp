@@ -133,7 +133,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/squawk"   && r.method == "POST") { requestAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/sky"      && r.method == "POST") { const String look = qparam(r.query, "look"); requestSkyPreview(look.length() ? look.c_str() : "night"); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/runway"   && r.method == "POST") { requestRunwayChangeDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
-    else if (r.path == "/api/demo/weather"  && r.method == "POST") { requestScreenPreview(4, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/weather"  && r.method == "POST") { const String look = qparam(r.query, "look"); if (look.length()) requestSkyPreview(look.c_str(), false); requestScreenPreview(4, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/arrivals" && r.method == "POST") { requestScreenPreview(3, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/sprites"  && r.method == "POST") { requestSpriteGallery(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }

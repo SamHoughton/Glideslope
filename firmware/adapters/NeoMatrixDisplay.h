@@ -59,7 +59,7 @@ void requestAlertDemo();
 void requestRunwayChangeDemo();
 // Plays the showcase under a forced sky ("night+rain", see Sky::preview);
 // scenes keep that look for a minute.
-void requestSkyPreview(const char *look);
+void requestSkyPreview(const char *look, bool showcase = true);
 
 // Scripted ~35 s showcase (for demos and the README recording): a fictional
 // flight, GS101, flies in on final for 27L with the Glideslope badge, lands,

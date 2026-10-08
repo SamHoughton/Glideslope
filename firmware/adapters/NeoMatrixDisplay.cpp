@@ -102,11 +102,11 @@ static volatile bool s_runwayDemo = false;
 static char          s_skyPreview[24] = "";
 static volatile unsigned long s_skyPreviewUntil = 0;
 static volatile bool s_showcaseRequest = false;
-void requestSkyPreview(const char *look)
+void requestSkyPreview(const char *look, bool showcase)
 {
     strlcpy(s_skyPreview, look, sizeof(s_skyPreview));
-    s_skyPreviewUntil = millis() + 60000;
-    s_showcaseRequest = true;
+    s_skyPreviewUntil = millis() + (showcase ? 60000 : 12000);
+    if (showcase) s_showcaseRequest = true;
 }
 void requestRunwayChangeDemo() { s_runwayDemo = true; }
 
