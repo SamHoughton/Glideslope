@@ -114,6 +114,20 @@ and a log.
   easterly switch, confirmed by two aircraft) the panel announces
   `RUNWAY CHANGE · NOW LANDING 09L`. With nothing landing for 30 minutes,
   no runway is shown.
+- **Living sky**: landings, go-arounds and take-offs are drawn in the light
+  at the airport at that moment, from the sun's real position: blue sky by
+  day, an orange sun on the horizon at golden hour, twilight, then stars,
+  the moon, lit windows, runway edge lights and the aircraft's landing
+  lights, beacon and strobes after dark. The latest weather adds cloud,
+  rain, snow, thunder flashes or fog, and the map dims at night.
+- **Holding stacks**: at Heathrow the four stacks (Bovingdon, Lambourne,
+  Biggin Hill, Ockham) are checked in turn, and anywhere in range an
+  aircraft that keeps circling counts. A holding screen shows each stack
+  as a racetrack with its aircraft going round, the count and the longest
+  wait.
+- **Phone alerts** through [ntfy](https://ntfy.sh) (free, no account): emergency
+  squawks, rare spots, go-arounds, runway changes and busy stacks, each
+  switchable on the web page's Alerts tab.
 - **Quiet hours**: a dim clock (with the weather) overnight when there's no
   traffic.
 - **Board button** cycles Auto / Map / Arrivals / Stats / Weather.
@@ -301,6 +315,7 @@ Aircraft positions, first to answer wins:
 - [aviationweather.gov](https://aviationweather.gov/) (NOAA) for Heathrow's
   METAR, every 10 minutes.
 - FlightAware AeroAPI, optional and paid.
+- [ntfy.sh](https://ntfy.sh/) for phone alerts, if a topic is set.
 
 ## Credits and licence
 
