@@ -14,7 +14,6 @@ Saved to /stats.bin on LittleFS every few minutes, so a restart keeps the
 day's count; resets at local midnight.
 */
 #include <Arduino.h>
-#include <map>
 #include <vector>
 #include "models/StateVector.h"
 
@@ -55,11 +54,17 @@ private:
     bool     markSeen(uint32_t h);    // false if already counted
     bool     wasSeen(uint32_t h) const;
 
-    struct TypeCount { uint16_t n; uint16_t seq; };
-    std::map<String, uint16_t>  _airlines;   // bounded (kMaxAirlines)
-    std::map<String, TypeCount> _types;      // bounded (kMaxTypes)
-    uint16_t _seq = 0;
-    static constexpr size_t kMaxAirlines = 64, kMaxTypes = 96;
+    // Fixed tables, not maps: a std::map<String> node costs ~50 bytes of heap,
+    // and over a day the tallies grew to ~8 KB, below the TLS headroom.
+    struct AirlineCount { char code[4]; uint16_t n; };
+    struct TypeCount    { char t[6]; uint16_t n; uint16_t seq; };
+    static constexpr size_t kMaxAirlines = 48, kMaxTypes = 80;
+    AirlineCount _airlines[kMaxAirlines] = {};
+    TypeCount    _types[kMaxTypes] = {};
+    uint8_t      _nAirlines = 0, _nTypes = 0;
+    uint16_t     _seq = 0;
+    void addAirline(const char *code, uint16_t n);
+    TypeCount *typeSlot(const char *t, bool create);
 
     void rollDay();
     void reset();

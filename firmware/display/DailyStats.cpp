@@ -70,8 +70,7 @@ void DailyStats::reset()
     memset(_depHour, 0, sizeof(_depHour));
     memset(_seen, 0, sizeof(_seen));
     _seenCount = 0;
-    _airlines.clear();
-    _types.clear();
+    _nAirlines = _nTypes = 0;
     _seq = 0;
 }
 
@@ -130,24 +129,39 @@ void DailyStats::count(const StateVector &s, bool arrival, int hour)
     _dirty = true;
 
     const String airline = airlineOf(s.callsign);
-    if (airline.length() && (_airlines.count(airline) || _airlines.size() < kMaxAirlines))
-        ++_airlines[airline];
+    if (airline.length()) addAirline(airline.c_str(), 1);
     String type = s.aircraft_type;
     type.trim();
-    if (type.length() && (_types.count(type) || _types.size() < kMaxTypes))
-    {
-        TypeCount &t = _types[type];
-        ++t.n;
-        t.seq = ++_seq;
-    }
+    if (type.length())
+        if (TypeCount *t = typeSlot(type.c_str(), true)) { ++t->n; t->seq = ++_seq; }
+}
+
+void DailyStats::addAirline(const char *code, uint16_t n)
+{
+    for (uint8_t i = 0; i < _nAirlines; ++i)
+        if (strncmp(_airlines[i].code, code, sizeof(_airlines[i].code)) == 0) { _airlines[i].n += n; return; }
+    if (_nAirlines >= kMaxAirlines) return;
+    strlcpy(_airlines[_nAirlines].code, code, sizeof(_airlines[0].code));
+    _airlines[_nAirlines++].n = n;
+}
+
+DailyStats::TypeCount *DailyStats::typeSlot(const char *t, bool create)
+{
+    for (uint8_t i = 0; i < _nTypes; ++i)
+        if (strncmp(_types[i].t, t, sizeof(_types[i].t)) == 0) return &_types[i];
+    if (!create || _nTypes >= kMaxTypes) return nullptr;
+    TypeCount &slot = _types[_nTypes++];
+    slot = TypeCount{};
+    strlcpy(slot.t, t, sizeof(slot.t));
+    return &slot;
 }
 
 String DailyStats::busiestAirline(int &count) const
 {
     String best;
     count = 0;
-    for (const auto &kv : _airlines)
-        if (kv.second > count) { best = kv.first; count = kv.second; }
+    for (uint8_t i = 0; i < _nAirlines; ++i)
+        if (_airlines[i].n > count) { best = _airlines[i].code; count = _airlines[i].n; }
     return best;
 }
 
@@ -155,11 +169,14 @@ String DailyStats::rarestType() const
 {
     String best;
     int fewest = 1 << 30, latest = -1;
-    for (const auto &kv : _types)
-        if (kv.second.n < fewest || (kv.second.n == fewest && kv.second.seq > latest))
+    for (uint8_t i = 0; i < _nTypes; ++i)
+    {
+        const TypeCount &tc = _types[i];
+        if (tc.n < fewest || (tc.n == fewest && tc.seq > latest))
         {
-            best = kv.first; fewest = kv.second.n; latest = kv.second.seq;
+            best = String(tc.t).substring(0, sizeof(tc.t)); fewest = tc.n; latest = tc.seq;
         }
+    }
     return best;
 }
 
@@ -176,21 +193,17 @@ void DailyStats::serialise(std::vector<uint8_t> &v)
     for (uint16_t n : _depHour) put(v, n);
     put(v, _seenCount); put(v, _seq);
     v.insert(v.end(), (const uint8_t *)_seen, (const uint8_t *)_seen + sizeof(_seen));
-    put(v, (uint8_t)_airlines.size());
-    for (const auto &kv : _airlines)
+    put(v, _nAirlines);
+    for (uint8_t i = 0; i < _nAirlines; ++i)
     {
-        char code[4] = {};
-        strlcpy(code, kv.first.c_str(), sizeof(code));
-        v.insert(v.end(), code, code + 4);
-        put(v, kv.second);
+        v.insert(v.end(), _airlines[i].code, _airlines[i].code + 4);
+        put(v, _airlines[i].n);
     }
-    put(v, (uint8_t)_types.size());
-    for (const auto &kv : _types)
+    put(v, _nTypes);
+    for (uint8_t i = 0; i < _nTypes; ++i)
     {
-        char t[6] = {};
-        strlcpy(t, kv.first.c_str(), sizeof(t));
-        v.insert(v.end(), t, t + 6);
-        put(v, kv.second.n); put(v, kv.second.seq);
+        v.insert(v.end(), _types[i].t, _types[i].t + 6);
+        put(v, _types[i].n); put(v, _types[i].seq);
     }
     _dirty = false;
 }
@@ -225,15 +238,16 @@ void DailyStats::load()
         char code[5] = {};
         uint16_t c = 0;
         ok = f.read((uint8_t *)code, 4) == 4 && get(f, c);
-        if (ok) _airlines[String(code)] = c;
+        if (ok) addAirline(code, c);
     }
     ok = ok && get(f, n);
     for (int i = 0; ok && i < n; ++i)
     {
         char t[7] = {};
-        TypeCount tc{};
-        ok = f.read((uint8_t *)t, 6) == 6 && get(f, tc.n) && get(f, tc.seq);
-        if (ok) _types[String(t)] = tc;
+        uint16_t tn = 0, tseq = 0;
+        ok = f.read((uint8_t *)t, 6) == 6 && get(f, tn) && get(f, tseq);
+        if (ok)
+            if (TypeCount *slot = typeSlot(t, true)) { slot->n = tn; slot->seq = tseq; }
     }
     f.close();
     if (!ok)
