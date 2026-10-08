@@ -116,9 +116,23 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/api/display':    self.send(DISPLAY)
         elif p == '/api/frame':      self.send(self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
+        elif p.startswith('/packs/') and (ROOT / p.lstrip('/')).is_file():
+            # The repo's packs/, for trying the airport picker locally
+            # (in the browser console: PACKS='/packs/' then reload the list).
+            self.send((ROOT / p.lstrip('/')).read_bytes(),
+                      'application/json' if p.endswith('.json') else 'application/octet-stream')
         else:                        self.send_error(404)
 
     def do_POST(self):
+        n = int(self.headers.get('Content-Length') or 0)
+        body = self.rfile.read(n) if n else b''
+        if self.path == '/api/airport':
+            head = body.split(b'\n', 1)[0]
+            try:
+                self.send({'ok': True, 'airport': json.loads(head)['icao'], 'bytes': len(body)})
+            except Exception:
+                self.send({'ok': False, 'error': 'header is not JSON'})
+            return
         self.send({'ok': True})
 
 

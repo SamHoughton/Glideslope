@@ -110,7 +110,15 @@ def short_name(full, town, icao):
     return (name or town.upper() or icao)[:NAME_MAX]
 
 
+# Zones whose official POSIX rule uses negative daylight saving (winter as
+# the "DST" period), which embedded C libraries don't all handle: the
+# equivalent conventional rule instead.
+POSIX_OVERRIDES = {'Europe/Dublin': 'GMT0IST,M3.5.0/1,M10.5.0'}
+
+
 def posix_tz(iana):
+    if iana in POSIX_OVERRIDES:
+        return POSIX_OVERRIDES[iana]
     try:
         import importlib.resources as res
         import tzdata  # noqa: F401
@@ -171,12 +179,12 @@ out geom;'''
             return json.loads(fetch(servers[attempt % 2], key, data=data))['elements']
         except (urllib.error.URLError, TimeoutError) as e:
             code = getattr(e, 'code', None)
-            if code is not None and code not in (429, 502, 503, 504):
+            if code is not None and code not in (429, 500, 502, 503, 504):
                 raise
             wait = 20 * (attempt // 2 + 1)
             print(f'  Overpass busy ({code or "no answer"}), retrying in {wait} s...')
             time.sleep(wait)
-    sys.exit('Overpass is not answering; try again later')
+    raise ValueError('Overpass is not answering; try again later')
 
 
 def classify(tags):
@@ -384,41 +392,33 @@ def render_map(elements, bbox, ends):
     return grid
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('icao', help='ICAO airport code, e.g. EGKK')
-    ap.add_argument('--tz', help='IANA time zone, e.g. Europe/London')
-    ap.add_argument('--name', help='short name for the panel (max 16 characters)')
-    ap.add_argument('--center', help='map centre as lat,lon (default: the airport)')
-    ap.add_argument('--out', help='output folder (default: current)')
-    a = ap.parse_args()
-    icao = a.icao.upper()
-
+def build(icao, tz_name=None, name=None, center=None, out='.', preview=True):
+    """Make <ICAO>.airport (and a preview PNG) in out; returns a summary for
+    the pack index. Raises ValueError for an airport it cannot make."""
+    icao = icao.upper()
     apt = next((r for r in ourairports('airports.csv') if r['ident'] == icao), None)
     if not apt:
-        sys.exit(f'{icao} not found in OurAirports')
+        raise ValueError(f'{icao} not found in OurAirports')
     lat, lon = float(apt['latitude_deg']), float(apt['longitude_deg'])
     iata = (apt.get('iata_code') or '').strip().upper()
-    name = (a.name or short_name(apt['name'], apt.get('municipality', ''), icao)).upper()[:NAME_MAX]
+    name = (name or short_name(apt['name'], apt.get('municipality', ''), icao)).upper()[:NAME_MAX]
 
-    tz_name = a.tz
     if not tz_name:
         try:
             from timezonefinder import TimezoneFinder
             tz_name = TimezoneFinder().timezone_at(lat=lat, lng=lon)
         except ImportError:
-            sys.exit('Give the time zone with --tz (e.g. --tz Europe/London), or pip install timezonefinder')
+            raise ValueError('give the time zone with --tz (e.g. --tz Europe/London), or pip install timezonefinder')
     tz = posix_tz(tz_name)
 
     ends = runway_ends(icao)
     if not ends:
-        sys.exit(f'No runways for {icao} in OurAirports')
+        raise ValueError(f'no runways for {icao} in OurAirports')
 
-    clat, clon = (float(v) for v in a.center.split(',')) if a.center else (lat, lon)
+    clat, clon = center if center else (lat, lon)
     lon_span = LAT_SPAN * 2 / math.cos(math.radians(clat))   # 2:1 map with square pixels
     bbox = (clat + LAT_SPAN / 2, clat - LAT_SPAN / 2, clon - lon_span / 2, clon + lon_span / 2)
     print(f'{icao} {name}: {len(ends)} runway ends, tz {tz_name} -> {tz}')
-    print('Fetching map data from OpenStreetMap...')
     grid = render_map(overpass(bbox[1], bbox[2], bbox[0], bbox[3]), bbox, ends)
 
     header = {
@@ -433,21 +433,41 @@ def main():
     for y in range(H):
         for x in range(0, W, 2):
             packed.append((grid[y][x] << 4) | grid[y][x + 1])
-    out = Path(a.out or '.')
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
     pack = out / f'{icao}.airport'
     pack.write_bytes(json.dumps(header, separators=(',', ':')).encode() + b'\n' + bytes(packed))
 
-    img = Image.new('RGB', (W, H))
-    img.putdata([PALETTE[grid[y][x]] for y in range(H) for x in range(W)])
-    img = img.resize((W * 6, H * 6), Image.NEAREST)
-    d = ImageDraw.Draw(img)
-    for r in ends:   # mark thresholds on the preview only
-        x = (r['lon'] - bbox[2]) / (bbox[3] - bbox[2]) * W * 6
-        y = (bbox[0] - r['lat']) / (bbox[0] - bbox[1]) * H * 6
-        d.ellipse([x - 3, y - 3, x + 3, y + 3], outline=(255, 200, 60))
-    img.save(out / f'{icao}-preview.png')
-    print(f'Wrote {pack} ({pack.stat().st_size} bytes) and {icao}-preview.png')
-    print('Install it from the board\'s web page: Airport -> Install airport.')
+    if preview:
+        img = Image.new('RGB', (W, H))
+        img.putdata([PALETTE[grid[y][x]] for y in range(H) for x in range(W)])
+        img = img.resize((W * 6, H * 6), Image.NEAREST)
+        d = ImageDraw.Draw(img)
+        for r in ends:   # mark thresholds on the preview only
+            x = (r['lon'] - bbox[2]) / (bbox[3] - bbox[2]) * W * 6
+            y = (bbox[0] - r['lat']) / (bbox[0] - bbox[1]) * H * 6
+            d.ellipse([x - 3, y - 3, x + 3, y + 3], outline=(255, 200, 60))
+        img.save(out / f'{icao}-preview.png')
+    return {'icao': icao, 'iata': iata, 'name': name, 'city': apt.get('municipality', ''),
+            'country': apt.get('iso_country', ''), 'runways': len(ends) // 2 or 1,
+            'file': pack.name, 'bytes': pack.stat().st_size}
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('icao', help='ICAO airport code, e.g. EGKK')
+    ap.add_argument('--tz', help='IANA time zone, e.g. Europe/London')
+    ap.add_argument('--name', help='short name for the panel (max 16 characters)')
+    ap.add_argument('--center', help='map centre as lat,lon (default: the airport)')
+    ap.add_argument('--out', help='output folder (default: current)')
+    a = ap.parse_args()
+    center = tuple(float(v) for v in a.center.split(',')) if a.center else None
+    try:
+        info = build(a.icao, a.tz, a.name, center, a.out or '.')
+    except ValueError as e:
+        sys.exit(str(e))
+    print(f"Wrote {info['file']} ({info['bytes']} bytes) and {info['icao']}-preview.png")
+    print("Install it from the board's web page: Airport -> Install airport.")
 
 
 if __name__ == '__main__':

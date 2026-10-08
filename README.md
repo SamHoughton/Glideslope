@@ -217,17 +217,24 @@ Without a logo, the card shows a tile in a default colour with the airline code.
 
 ## Other airports
 
-Heathrow is built in. For any other airport, make an **airport pack** and
-install it from the board's web page:
+Heathrow is built in. For another airport, install an **airport pack** from
+the board's web page: under **Airport**, pick one from the list and press
+**Install airport**. Your browser downloads it from this repository and
+hands it to the board, which restarts watching that airport. **Centre
+search on airport** moves the search area there too, and **Back to
+Heathrow** removes the pack.
+
+There are [ready-made packs](packs/) for around fifty of the busiest
+airports, from Gatwick, Manchester and Dublin to Schiphol, JFK, Dubai and
+Sydney. For any other airport, make one yourself:
 
 ```bash
-python tools/airport_pack.py EGKK --tz Europe/London
+python tools/airport_pack.py EGNM --tz Europe/London
 ```
 
-This writes `EGKK.airport` (and a preview PNG). On the web page, under
-**Airport**, choose the file and press **Install airport**; the board
-restarts watching Gatwick. **Centre search on airport** moves the search
-area there too, and **Back to Heathrow** removes the pack.
+This writes `EGNM.airport` and a preview PNG; choose it under **…or a pack
+file** on the web page. `python tools/build_packs.py` rebuilds the
+ready-made set from [`packs/airports.txt`](packs/airports.txt).
 
 The pack holds the airport's position, IATA code, short name, local time
 zone, every runway end (threshold, landing direction, displaced thresholds)

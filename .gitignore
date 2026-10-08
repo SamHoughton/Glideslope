@@ -16,3 +16,4 @@ tools/.cache/
 *.airport
 *-preview.png
 !brand/social-preview.png
+!packs/*.airport

@@ -1,0 +1,285 @@
+{
+ "v": 1,
+ "packs": [
+  {
+   "icao": "EGBB",
+   "iata": "BHX",
+   "name": "BIRMINGHAM",
+   "city": "Birmingham, West Midlands",
+   "country": "GB",
+   "runways": 1,
+   "file": "EGBB.airport",
+   "bytes": 4427
+  },
+  {
+   "icao": "EGGD",
+   "iata": "BRS",
+   "name": "BRISTOL",
+   "city": "Bristol",
+   "country": "GB",
+   "runways": 1,
+   "file": "EGGD.airport",
+   "bytes": 4422
+  },
+  {
+   "icao": "EGPH",
+   "iata": "EDI",
+   "name": "EDINBURGH",
+   "city": "Ingliston, Edinburgh",
+   "country": "GB",
+   "runways": 1,
+   "file": "EGPH.airport",
+   "bytes": 4429
+  },
+  {
+   "icao": "EGKK",
+   "iata": "LGW",
+   "name": "GATWICK",
+   "city": "London",
+   "country": "GB",
+   "runways": 2,
+   "file": "EGKK.airport",
+   "bytes": 4535
+  },
+  {
+   "icao": "EGPF",
+   "iata": "GLA",
+   "name": "GLASGOW",
+   "city": "Glasgow",
+   "country": "GB",
+   "runways": 1,
+   "file": "EGPF.airport",
+   "bytes": 4423
+  },
+  {
+   "icao": "EGGW",
+   "iata": "LTN",
+   "name": "LONDON LUTON",
+   "city": "Luton, Luton",
+   "country": "GB",
+   "runways": 1,
+   "file": "EGGW.airport",
+   "bytes": 4425
+  },
+  {
+   "icao": "EGSS",
+   "iata": "STN",
+   "name": "LONDON STANSTED",
+   "city": "London, Essex",
+   "country": "GB",
+   "runways": 1,
+   "file": "EGSS.airport",
+   "bytes": 4423
+  },
+  {
+   "icao": "CYYZ",
+   "iata": "YYZ",
+   "name": "TORONTO",
+   "city": "Toronto",
+   "country": "CA",
+   "runways": 5,
+   "file": "CYYZ.airport",
+   "bytes": 4861
+  },
+  {
+   "icao": "LSZH",
+   "iata": "ZRH",
+   "name": "ZURICH",
+   "city": "Zurich",
+   "country": "CH",
+   "runways": 4,
+   "file": "LSZH.airport",
+   "bytes": 4731
+  },
+  {
+   "icao": "EDDB",
+   "iata": "BER",
+   "name": "BERLIN",
+   "city": "Berlin",
+   "country": "DE",
+   "runways": 2,
+   "file": "EDDB.airport",
+   "bytes": 4536
+  },
+  {
+   "icao": "EDDM",
+   "iata": "MUC",
+   "name": "MUNICH",
+   "city": "Munich",
+   "country": "DE",
+   "runways": 2,
+   "file": "EDDM.airport",
+   "bytes": 4524
+  },
+  {
+   "icao": "EKCH",
+   "iata": "CPH",
+   "name": "COPENHAGEN",
+   "city": "Copenhagen",
+   "country": "DK",
+   "runways": 3,
+   "file": "EKCH.airport",
+   "bytes": 4635
+  },
+  {
+   "icao": "LEBL",
+   "iata": "BCN",
+   "name": "BARCELONA",
+   "city": "Barcelona",
+   "country": "ES",
+   "runways": 3,
+   "file": "LEBL.airport",
+   "bytes": 4633
+  },
+  {
+   "icao": "LFPG",
+   "iata": "CDG",
+   "name": "CHARLES DE GAULL",
+   "city": "Paris (Roissy-en-France, Val-d'Oise)",
+   "country": "FR",
+   "runways": 5,
+   "file": "LFPG.airport",
+   "bytes": 4847
+  },
+  {
+   "icao": "LFPO",
+   "iata": "ORY",
+   "name": "ORLY",
+   "city": "Paris (Orly, Val-de-Marne)",
+   "country": "FR",
+   "runways": 3,
+   "file": "LFPO.airport",
+   "bytes": 4618
+  },
+  {
+   "icao": "EIDW",
+   "iata": "DUB",
+   "name": "DUBLIN",
+   "city": "Dublin",
+   "country": "IE",
+   "runways": 3,
+   "file": "EIDW.airport",
+   "bytes": 4638
+  },
+  {
+   "icao": "LIRF",
+   "iata": "FCO",
+   "name": "FIUMICINO",
+   "city": "Rome",
+   "country": "IT",
+   "runways": 3,
+   "file": "LIRF.airport",
+   "bytes": 4634
+  },
+  {
+   "icao": "EHAM",
+   "iata": "AMS",
+   "name": "SCHIPHOL",
+   "city": "Amsterdam",
+   "country": "NL",
+   "runways": 6,
+   "file": "EHAM.airport",
+   "bytes": 4930
+  },
+  {
+   "icao": "NZAA",
+   "iata": "AKL",
+   "name": "AUCKLAND",
+   "city": "Auckland",
+   "country": "NZ",
+   "runways": 1,
+   "file": "NZAA.airport",
+   "bytes": 4440
+  },
+  {
+   "icao": "LPPT",
+   "iata": "LIS",
+   "name": "LISBON",
+   "city": "Lisbon",
+   "country": "PT",
+   "runways": 1,
+   "file": "LPPT.airport",
+   "bytes": 4424
+  },
+  {
+   "icao": "WSSS",
+   "iata": "SIN",
+   "name": "CHANGI",
+   "city": "Singapore",
+   "country": "SG",
+   "runways": 2,
+   "file": "WSSS.airport",
+   "bytes": 4509
+  },
+  {
+   "icao": "LTFM",
+   "iata": "IST",
+   "name": "ISTANBUL",
+   "city": "Istanbul",
+   "country": "TR",
+   "runways": 6,
+   "file": "LTFM.airport",
+   "bytes": 4936
+  },
+  {
+   "icao": "KATL",
+   "iata": "ATL",
+   "name": "ATLANTA",
+   "city": "Atlanta",
+   "country": "US",
+   "runways": 5,
+   "file": "KATL.airport",
+   "bytes": 4839
+  },
+  {
+   "icao": "KBOS",
+   "iata": "BOS",
+   "name": "BOSTON",
+   "city": "Boston",
+   "country": "US",
+   "runways": 6,
+   "file": "KBOS.airport",
+   "bytes": 4958
+  },
+  {
+   "icao": "KDFW",
+   "iata": "DFW",
+   "name": "DALLAS FT WORTH",
+   "city": "Dallas-Fort Worth",
+   "country": "US",
+   "runways": 7,
+   "file": "KDFW.airport",
+   "bytes": 5054
+  },
+  {
+   "icao": "KDEN",
+   "iata": "DEN",
+   "name": "DENVER",
+   "city": "Denver",
+   "country": "US",
+   "runways": 6,
+   "file": "KDEN.airport",
+   "bytes": 4943
+  },
+  {
+   "icao": "KSFO",
+   "iata": "SFO",
+   "name": "SAN FRANCISCO",
+   "city": "San Francisco",
+   "country": "US",
+   "runways": 4,
+   "file": "KSFO.airport",
+   "bytes": 4774
+  },
+  {
+   "icao": "KSEA",
+   "iata": "SEA",
+   "name": "SEATTLE",
+   "city": "Seattle",
+   "country": "US",
+   "runways": 3,
+   "file": "KSEA.airport",
+   "bytes": 4637
+  }
+ ]
+}
