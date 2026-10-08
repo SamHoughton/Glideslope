@@ -92,8 +92,14 @@ panel, the animations on demand, every setting, firmware updates and a log.
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
-- **Today's stats**: arrivals and departures, busiest airline, rarest type,
-  go-arounds.
+- **Today's stats**: big arrival and departure counters, an hourly bar chart
+  of the day's movements, and the busiest airline, rarest type and
+  go-arounds in turn. Every aircraft in range counts (an arrival once it is
+  on final, a departure once it climbs out along a runway), not only the
+  ones that get a card, and the tally is saved so a restart keeps the day.
+  It only sees what is in range: centre the search near the airport (or
+  make the radius large enough to cover both approaches) to count every
+  movement.
 - **Weather**: Heathrow's wind (with a compass arrow), gusts, visibility,
   weather, temperature, pressure, and the crosswind and head- or tailwind on
   the runway in use.

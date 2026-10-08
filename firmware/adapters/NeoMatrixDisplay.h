@@ -97,6 +97,12 @@ public:
     // Copy of the flight on screen, without its logo; false when none (scanning screen).
     bool currentFlight(FlightInfo &out);
 
+    // Today's stats from every aircraft in range (call once per fetch), and
+    // their persistence: snapshot under the lock, write the file outside it.
+    void noteTraffic(const std::vector<StateVector> &states);
+    bool statsSnapshot(std::vector<uint8_t> &out);   // false if unchanged
+    void loadStats();
+
     // Arrivals board rows, soonest first (call once per fetch).
     void setArrivals(const InfoScreens::Arrival *rows, int n);
 

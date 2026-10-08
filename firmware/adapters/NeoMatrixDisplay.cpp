@@ -248,8 +248,6 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
     {
         if (f.ident.length() == 0) continue;
 
-        _stats.note(f);
-
         // Remember the runway in use for the scanning screen.
         const ApproachStatus st = ApproachModel::evaluate(f);
         if (st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing)
@@ -325,6 +323,26 @@ void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
     Lock l(_lock);
     _arrivalCount = min(n, InfoScreens::kMaxArrivals);
     for (int i = 0; i < _arrivalCount; ++i) _arrivals[i] = rows[i];
+}
+
+void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
+{
+    Lock l(_lock);
+    _stats.noteTraffic(states);
+}
+
+bool NeoMatrixDisplay::statsSnapshot(std::vector<uint8_t> &out)
+{
+    Lock l(_lock);
+    if (!_stats.dirty()) return false;
+    _stats.serialise(out);
+    return true;
+}
+
+void NeoMatrixDisplay::loadStats()
+{
+    Lock l(_lock);
+    _stats.load();
 }
 
 void NeoMatrixDisplay::setWeather(const Metar &m)

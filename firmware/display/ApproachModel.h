@@ -30,4 +30,9 @@ namespace ApproachModel
 
     // Status label for the card, e.g. "APPROACH 27L", "DEPARTED 09R", "OVERFLIGHT".
     void label(const ApproachStatus &s, char *buf, size_t len);
+
+    // Climbing out along a runway's extended centreline, in that runway's
+    // direction and ahead of its threshold: a departure, judged from the
+    // position alone (no route needed). Writes the runway into runway.
+    bool climbingOut(const FlightInfo &f, char *runway, size_t len);
 }

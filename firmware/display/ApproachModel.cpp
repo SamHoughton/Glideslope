@@ -141,6 +141,29 @@ ApproachStatus ApproachModel::advance(const ApproachStatus &s, double gsKt, uint
     return out;
 }
 
+bool ApproachModel::climbingOut(const FlightInfo &f, char *runway, size_t len)
+{
+    if (isnan(f.lat) || isnan(f.lon) || isnan(f.heading) || isnan(f.vertical_rate) || f.vertical_rate < 300)
+        return false;
+    const Threshold *best = nullptr;
+    float bestCross = 1e9f;
+    for (const Threshold &t : kThresholds)
+    {
+        if (angleDiff((float)f.heading, t.course) > 30) continue;
+        float x, y;
+        offsetKm(t.lat, t.lon, f.lat, f.lon, x, y);
+        const float crs   = t.course * (float)M_PI / 180.0f;
+        const float along = x * sinf(crs) + y * cosf(crs);          // ahead of the threshold
+        const float cross = fabsf(x * cosf(crs) - y * sinf(crs));
+        if (along < 1.0f || along > 15.0f) continue;               // past the runway, up to 15 km out
+        if (cross > 1.5f + along * 0.2f) continue;
+        if (cross < bestCross) { best = &t; bestCross = cross; }
+    }
+    if (!best) return false;
+    if (runway && len) strlcpy(runway, best->name, len);
+    return true;
+}
+
 void ApproachModel::label(const ApproachStatus &s, char *buf, size_t len)
 {
     switch (s.phase)
