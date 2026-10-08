@@ -263,6 +263,7 @@ void setup()
     g_logoStore.initialize();
     RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
     AirportPack::load();    // Heathrow, or the airport pack on LittleFS
+    g_display.loadStats();  // today's tally survives a restart
 
     // Resolve WiFi credentials: NVS-saved (provisioner) overrides compile-time constants.
     // If neither has an SSID, launch the captive-portal AP so the user can configure.
@@ -498,6 +499,7 @@ void loop()
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
         heapCheckpoint("fetch cycle");
         checkSquawks(g_states);
+        g_display.noteTraffic(g_states);
         updateArrivals(g_states, g_flights);
 
         static String lastIdents;
@@ -560,6 +562,19 @@ void loop()
             // the display what it is actually showing.
             static FlightInfo shown;
             g_webConfig.setCurrentFlight(g_display.currentFlight(shown) ? &shown : nullptr);
+        }
+    }
+
+    // Save today's stats every 5 minutes when they have changed (the file
+    // write happens outside the display lock).
+    {
+        static unsigned long lastSaveMs = 0;
+        if (millis() - lastSaveMs >= 5UL * 60 * 1000 && ESP.getFreeHeap() > 40000)
+        {
+            lastSaveMs = millis();
+            std::vector<uint8_t> data;
+            if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
+                Log.println("Stats: could not save");
         }
     }
 

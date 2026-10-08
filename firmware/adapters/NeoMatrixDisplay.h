@@ -55,6 +55,11 @@ void requestTakeoffDemo();
 // Show a sample emergency-squawk alert (demo).
 void requestAlertDemo();
 
+// Scripted ~35 s showcase (for demos and the README recording): a fictional
+// flight, GS101, flies in on final for 27L with the Glideslope badge, lands,
+// then the map, arrivals board and weather, and a take-off. Safe from the web task.
+void requestShowcase();
+
 // Short status text on the panel for a few seconds (e.g. update progress). Safe from the web task.
 void requestPanelMessage(const char *text);
 
@@ -91,6 +96,12 @@ public:
 
     // Copy of the flight on screen, without its logo; false when none (scanning screen).
     bool currentFlight(FlightInfo &out);
+
+    // Today's stats from every aircraft in range (call once per fetch), and
+    // their persistence: snapshot under the lock, write the file outside it.
+    void noteTraffic(const std::vector<StateVector> &states);
+    bool statsSnapshot(std::vector<uint8_t> &out);   // false if unchanged
+    void loadStats();
 
     // Arrivals board rows, soonest first (call once per fetch).
     void setArrivals(const InfoScreens::Arrival *rows, int n);
@@ -202,6 +213,12 @@ private:
     void startLanding(unsigned long now, bool demo);   // demo: replay only, card state unchanged
     bool renderLanding(unsigned long now);
     void startScene(unsigned long now, LandingScene::Kind kind, bool demo);
+    // Showcase (display task only)
+    bool          _showcaseActive = false;
+    unsigned long _showcaseStartMs = 0;
+    uint8_t       _showcaseStep = 0;
+    void startShowcase(unsigned long now);
+    void stepShowcase(unsigned long now);
     bool isFreshDeparture(const FlightInfo &f) const;
     bool isArrival(const Entry &e) const;
     float entryEta(const Entry &e, unsigned long now) const;

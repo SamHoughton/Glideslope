@@ -19,6 +19,7 @@ Responsibilities:
 #include "display/RareSpotter.h"
 #include "display/InfoScreens.h"
 #include "config/Airport.h"
+#include "display/DemoLogo.h"
 #include "utils/TelnetLogger.h"
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
@@ -93,6 +94,9 @@ static volatile bool s_alertDemo = false;
 void requestTakeoffDemo() { s_takeoffDemo = true; }
 
 void requestAlertDemo() { s_alertDemo = true; }
+
+static volatile bool s_showcaseRequest = false;
+void requestShowcase() { s_showcaseRequest = true; }
 
 static char          s_panelMsg[20] = "";
 static volatile bool s_panelMsgPending = false;
@@ -245,8 +249,6 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
     {
         if (f.ident.length() == 0) continue;
 
-        _stats.note(f);
-
         // Remember the runway in use for the scanning screen.
         const ApproachStatus st = ApproachModel::evaluate(f);
         if (st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing)
@@ -324,6 +326,26 @@ void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
     for (int i = 0; i < _arrivalCount; ++i) _arrivals[i] = rows[i];
 }
 
+void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
+{
+    Lock l(_lock);
+    _stats.noteTraffic(states);
+}
+
+bool NeoMatrixDisplay::statsSnapshot(std::vector<uint8_t> &out)
+{
+    Lock l(_lock);
+    if (!_stats.dirty()) return false;
+    _stats.serialise(out);
+    return true;
+}
+
+void NeoMatrixDisplay::loadStats()
+{
+    Lock l(_lock);
+    _stats.load();
+}
+
 void NeoMatrixDisplay::setWeather(const Metar &m)
 {
     char line[24];
@@ -342,6 +364,81 @@ void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const c
     strlcpy(_alertDetail, detail, sizeof(_alertDetail));
     _alertStartMs = millis();
     _alertActive  = true;
+}
+
+// ── Showcase ─────────────────────────────────────────────────────────────────
+
+void NeoMatrixDisplay::startShowcase(unsigned long now)
+{
+    // GS101, a fictional flight in the Glideslope badge: 3.2 km out on final
+    // for 27L (east of the threshold, tracking west), 1,050 ft, descending.
+    Entry e;
+    FlightInfo &f = e.flight;
+    f.ident = "GSL101";
+    f.ident_icao = "GSL101";
+    f.ident_iata = "GS101";
+    f.operator_icao = "GSL";
+    f.airline_display_name_full = "Glideslope";
+    f.origin.code_iata = "JFK";       f.origin.code_icao = "KJFK";
+    f.destination.code_iata = "LHR";  f.destination.code_icao = "EGLL";
+    f.aircraft_code = "A35K";
+    f.aircraft_display_name_short = "A350-1000";
+    f.registration = "G-GSLP";
+    f.airline_logo_rgb565.assign(kDemoLogo, kDemoLogo + 32 * 32);
+    const double kmEast = 3.2;
+    f.lat = 51.4649;
+    f.lon = -0.4340 + kmEast / (111.32 * cos(51.4649 * M_PI / 180.0));
+    f.heading = 269.7;
+    f.velocity = 148;
+    f.baro_altitude = 1050;
+    f.vertical_rate = -760;
+    f.distance_km = 6;
+    e.dataMs = now;
+    e.accent = Rgb{255, 185, 60};   // the brand amber
+
+    g_oldFrame.clear();   // fly in over a clear panel: no real airline's logo in a recording
+    _ambientActive = false;
+    _landingActive = false;
+    _alertActive = false;
+    _current = e;
+    _hasCurrent = true;
+    _inTransition = true;
+    _transStartMs = now;
+    _path = FlyAcross::pathFor(f.heading, f.vertical_rate, g_config.screen_facing);
+    _showcaseActive = true;
+    _showcaseStartMs = now;
+    _showcaseStep = 0;
+    Log.println("Display: showcase");
+}
+
+// Timeline from the start: card (with its countdown) to 9 s, landing, the
+// LANDED card, then map 5 s, arrivals 4 s, weather 4 s, a take-off, done.
+void NeoMatrixDisplay::stepShowcase(unsigned long now)
+{
+    const uint32_t t = now - _showcaseStartMs;
+    switch (_showcaseStep)
+    {
+        case 0: if (t >= 9000)  { startLanding(now, false); ++_showcaseStep; } break;
+        case 1: if (t >= 16500) { s_mapPreviewUntil = now + 5000; ++_showcaseStep; } break;
+        case 2: if (t >= 21500) { s_mapPreviewUntil = 0; s_screenPreviewUntil = now + 4000; s_screenPreview = 3; ++_showcaseStep; } break;
+        case 3: if (t >= 25500) { s_screenPreviewUntil = now + 4000; s_screenPreview = 4; ++_showcaseStep; } break;
+        case 4: if (t >= 29500)
+                {
+                    s_screenPreview = 0;
+                    _ambientActive = false;
+                    startScene(now, LandingScene::Takeoff, true);
+                    ++_showcaseStep;
+                }
+                break;
+        default:
+            if (t >= 29500 + LandingScene::DURATION_MS + 1500)
+            {
+                _showcaseActive = false;
+                _hasCurrent = false;   // back to normal service
+                Log.println("Display: showcase over");
+            }
+            break;
+    }
 }
 
 bool NeoMatrixDisplay::isFreshDeparture(const FlightInfo &f) const
@@ -428,13 +525,21 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     }
     _messageUntilMs = 0;
 
+    if (s_showcaseRequest)
+    {
+        s_showcaseRequest = false;
+        startShowcase(now);
+        return 0;
+    }
+    if (_showcaseActive) stepShowcase(now);
+
     // Emergency squawk: takes over the panel for a few seconds.
     if (s_alertDemo)
     {
         s_alertDemo = false;
         strlcpy(_alertCode, "7700", sizeof(_alertCode));
         strlcpy(_alertMeaning, "EMERGENCY", sizeof(_alertMeaning));
-        strlcpy(_alertIdent, "BA117 DEMO", sizeof(_alertIdent));
+        strlcpy(_alertIdent, "GS101 DEMO", sizeof(_alertIdent));
         strlcpy(_alertDetail, "4200FT 12KM E", sizeof(_alertDetail));
         _alertStartMs = now;
         _alertActive  = true;
@@ -551,7 +656,7 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     else if (_hasCurrent && isArrival(_current)) holdMs = (unsigned long)g_config.display_cycle_seconds * 1000UL;
     const bool cardHeld = _hasCurrent && !_ambientActive && (awaitingLanding || now - _shownSinceMs < holdMs);
 
-    if (_mode == Mode::Auto && !cardHeld)
+    if (_mode == Mode::Auto && !cardHeld && !_showcaseActive)
     {
         const int i = dueIndex(now, interlude);
         if (i >= 0)

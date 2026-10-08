@@ -1,10 +1,29 @@
-# Glideslope
+<p align="center">
+  <img src="brand/glideslope-lockup.svg" alt="Glideslope" width="600">
+</p>
 
-A 128×64 LED flight board for planes landing at Heathrow. It picks the next
-aircraft on final approach, flies it onto the panel, counts it down to the
-runway threshold and plays a touchdown animation when it lands.
+<p align="center">
+  <b>An LED flight board for the planes landing over your house.</b><br>
+  Live ADS-B on a 128×64 LED panel: each arrival flies in, counts down to the
+  runway and lands; departures take off; between them, a map, an arrivals
+  board and the weather.
+</p>
 
-![Approach card](docs/card.png)
+<p align="center">
+  <a href="https://github.com/SamHoughton/Glideslope/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/SamHoughton/Glideslope?color=ffb93c&label=release"></a>
+  <a href="https://github.com/SamHoughton/Glideslope/actions/workflows/build.yml"><img alt="Build" src="https://github.com/SamHoughton/Glideslope/actions/workflows/build.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="Licence: Apache 2.0" src="https://img.shields.io/badge/licence-Apache%202.0-5aaaff"></a>
+  <img alt="ESP32-S3" src="https://img.shields.io/badge/ESP32--S3-HUB75-8b949e">
+</p>
+
+<p align="center">
+  <img src="docs/showcase.gif" alt="Glideslope on the panel: a flight flies in, counts down to runway 27L and lands, then the map, arrivals board, weather and a take-off" width="680">
+</p>
+
+Recorded from the board's own frames with its built-in showcase (the
+fictional flight GS101, in Glideslope's colours). Real cards carry the
+airline's logo, which you supply yourself: logos are not part of this
+repository (see [Airline logos](#airline-logos)).
 
 | New aircraft flies in | Touchdown |
 | --- | --- |
@@ -14,12 +33,18 @@ runway threshold and plays a touchdown animation when it lands.
 | --- | --- |
 | ![Take-off](docs/takeoff.gif) | ![Arrivals board](docs/arrivals.png) |
 
-| Heathrow weather | Emergency squawk |
+| Weather | Emergency squawk |
 | --- | --- |
 | ![Weather](docs/weather.png) | ![Squawk alert](docs/squawk.png) |
 
-All images are recorded from the board's own frames. The airline logo tile shows
-the code (`SZS`) because logos are not part of this repository; see below.
+### The web page
+
+Every board serves a page at `http://glideslope.local/`: a live mirror of the
+panel, the animations on demand, every setting, firmware updates and a log.
+
+| Desktop | Phone |
+| --- | --- |
+| <img src="docs/webui-desktop.png" alt="The Glideslope web page on a desktop" width="560"> | <img src="docs/webui-phone.png" alt="The Glideslope web page on a phone" width="220"> |
 
 ## What it shows
 
@@ -67,8 +92,14 @@ the code (`SZS`) because logos are not part of this repository; see below.
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
-- **Today's stats**: arrivals and departures, busiest airline, rarest type,
-  go-arounds.
+- **Today's stats**: big arrival and departure counters, an hourly bar chart
+  of the day's movements, and the busiest airline, rarest type and
+  go-arounds in turn. Every aircraft in range counts (an arrival once it is
+  on final, a departure once it climbs out along a runway), not only the
+  ones that get a card, and the tally is saved so a restart keeps the day.
+  It only sees what is in range: centre the search near the airport (or
+  make the radius large enough to cover both approaches) to count every
+  movement.
 - **Weather**: Heathrow's wind (with a compass arrow), gusts, visibility,
   weather, temperature, pressure, and the crosswind and head- or tailwind on
   the runway in use.
@@ -79,6 +110,9 @@ the code (`SZS`) because logos are not part of this repository; see below.
 - **Scanning screen** when nothing is being tracked.
 
   ![Scanning screen](docs/scanning.gif)
+- **Showcase**: a 35-second scripted tour (the button on the web page) for
+  showing the board off, and for recording the README demo with
+  `tools/record_demo.py`.
 - **Web page** on the board: a live mirror of the panel, animation previews,
   brightness, night dimming (UK time, GMT/BST automatic), location and data
   source settings, firmware updates over Wi-Fi, a log and a health endpoint.
@@ -211,6 +245,14 @@ time and the labels. Outside London the landing and take-off scenes use a
 generic skyline (hills, hangars, a terminal and a control tower with a
 flashing beacon); Heathrow's 15:00 runway alternation applies only to
 Heathrow.
+
+## Brand
+
+The logo, wordmark, favicon and social preview are drawn on an LED grid like
+the panel, by `tools/brand_workbench.py` (`python tools/brand_workbench.py a`
+for the marks, `social` for the preview card); the files are in `brand/`.
+`tools/webui_preview.py` serves the board's web page on your computer with
+sample data, for screenshots or for working on the page without a board.
 
 ## Editing sprites
 

@@ -7,6 +7,7 @@ WebServer library to avoid framework include-path issues.
 #include "utils/TelnetLogger.h"
 #include "utils/WifiProvisioner.h"
 #include "utils/StageTrace.h"
+#include "utils/BrandMark.h"
 #include "config/RuntimeConfig.h"
 #include "config/Airport.h"
 #include <LittleFS.h>
@@ -127,6 +128,7 @@ void WebConfig::loop()
     else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength);
     else if (r.path == "/api/airport"       && r.method == "POST") handleAirport(client, r.contentLength);
     else if (r.path == "/api/airport/reset" && r.method == "POST") handleAirportReset(client);
+    else if (r.path == "/api/demo/showcase" && r.method == "POST") { requestShowcase(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/takeoff"  && r.method == "POST") { requestTakeoffDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/squawk"   && r.method == "POST") { requestAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/weather"  && r.method == "POST") { requestScreenPreview(4, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -673,13 +675,16 @@ const char kHtmlPage[] =
 "<head>"
 "<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
 "<title>Glideslope</title>"
+"<link rel='icon' type='image/svg+xml' href=\"" GS_FAVICON_URI "\">"
+"<meta name='theme-color' content='#0d1117'>"
 "<style>"
 "*{box-sizing:border-box;margin:0;padding:0}"
 "body{background:#0d1117;color:#c9d1d9;font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif}"
-"header{padding:12px 18px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:baseline;gap:12px}"
+"header{padding:12px 18px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:12px}"
+"header svg{width:28px;height:28px;flex:none}header b{letter-spacing:.08em}header b i{font-style:normal;color:#ffb93c}"
 "header b{font-size:16px;color:#f0f6fc}header span{color:#8b949e;font-size:13px}"
 ".wrap{display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);gap:18px;padding:18px;max-width:1200px}"
-"@media(max-width:900px){.wrap{grid-template-columns:1fr}}"
+"@media(max-width:900px){.wrap{grid-template-columns:minmax(0,1fr);padding:12px;gap:12px}}"
 ".card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px 16px;margin-bottom:16px}"
 "h2{color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}"
 "#dmp{display:block;width:100%;height:auto;background:#050608;border-radius:4px;image-rendering:pixelated}"
@@ -706,7 +711,7 @@ const char kHtmlPage[] =
 "</style>"
 "</head>"
 "<body>"
-"<header><b>&#9992; Glideslope</b><span id='hdr'></span></header>"
+"<header>" GS_BRAND_SVG "<b>GLIDE<i>SLOPE</i></b><span id='hdr'></span></header>"
 "<div class='wrap'>"
 
 // ── Left: live panel, animations, log ───────────────────────────────────────
@@ -719,6 +724,7 @@ const char kHtmlPage[] =
 "<div class='card'>"
 "<h2>Animations</h2>"
 "<div class='btns'>"
+"<button data-demo='showcase' class='go'>Showcase (35 s)</button>"
 "<button data-demo='flyacross'>Replay fly-across</button>"
 "<button data-demo='landing'>Replay landing</button>"
 "<button data-demo='rare'>Rare spot</button>"
