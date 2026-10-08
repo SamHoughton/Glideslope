@@ -70,11 +70,13 @@ def main():
             print(f'  {icao} failed: {e}')
             failed.append(icao)
             continue
+        cached = info.pop("cached", False)
         prev = PACKS / f'{icao}-preview.png'
         prev.replace(PACKS / 'previews' / f'{icao}.png')
         known[icao] = info
         write_index(list(known.values()))
-        time.sleep(20)  # be gentle with the Overpass servers
+        if not cached:
+            time.sleep(20)   # be gentle with the Overpass servers
     write_index(list(known.values()))
     print(f'{len(known)} packs in packs/' + (f'; failed: {" ".join(failed)}' if failed else ''))
 

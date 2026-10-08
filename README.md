@@ -6,7 +6,8 @@
   <b>An LED flight board for the planes landing over your house.</b><br>
   Live ADS-B on a 128×64 LED panel: each arrival flies in, counts down to the
   runway and lands; departures take off; between them, a map, an arrivals
-  board and the weather.
+  board and the weather.<br>
+  Heathrow out of the box, and around fifty more airports a click away.
 </p>
 
 <p align="center">
@@ -40,7 +41,9 @@ repository (see [Airline logos](#airline-logos)).
 ### The web page
 
 Every board serves a page at `http://glideslope.local/`: a live mirror of the
-panel, the animations on demand, every setting, firmware updates and a log.
+panel drawn as glowing LEDs, what's on it now, the animations on demand, every
+setting in tabs (display, airport, night, data, system, log), firmware updates
+and a log.
 
 | Desktop | Phone |
 | --- | --- |
@@ -81,8 +84,9 @@ panel, the animations on demand, every setting, firmware updates and a log.
   round even at a busy Heathrow (skipped if the next plane is under 45
   seconds out). Lead time, break length and which screens rotate are set on
   the web page.
-- **London map**: the Thames, reservoirs, M25 and
-  Heathrow's runways (pre-rendered into flash), with every tracked aircraft as
+- **Map**: the airport's surroundings at 128×64, generated from
+  OpenStreetMap (around Heathrow: the Thames, the reservoirs, the M4 and
+  M25), with every tracked aircraft as
   a small plane icon pointing the way it is flying, in its airline colour; the
   one on final blinks. A home marker can be set in the web page.
 - **Arrivals board**: the next four arrivals with their type and
@@ -226,7 +230,11 @@ Heathrow** removes the pack.
 
 There are [ready-made packs](packs/) for around fifty of the busiest
 airports, from Gatwick, Manchester and Dublin to Schiphol, JFK, Dubai and
-Sydney. For any other airport, make one yourself:
+Sydney:
+
+![Airport maps on the panel](docs/airports.png)
+
+For any other airport, make one yourself:
 
 ```bash
 python tools/airport_pack.py EGNM --tz Europe/London
@@ -258,6 +266,8 @@ Heathrow.
 The logo, wordmark, favicon and social preview are drawn on an LED grid like
 the panel, by `tools/brand_workbench.py` (`python tools/brand_workbench.py a`
 for the marks, `social` for the preview card); the files are in `brand/`.
+The board's web page is `firmware/web/index.html`; the build turns it into
+`utils/WebPage.h` (`firmware/scripts/gen_webpage.py`), filling in the logo.
 `tools/webui_preview.py` serves the board's web page on your computer with
 sample data, for screenshots or for working on the page without a board.
 

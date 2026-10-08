@@ -172,6 +172,7 @@ def overpass(s, w, n, e):
 );
 out geom;'''
     key = f'osm2_{s:.3f}_{w:.3f}_{n:.3f}_{e:.3f}.json'
+    overpass.cached = (CACHE / key).exists()
     data = urllib.parse.urlencode({'data': q}).encode()
     servers = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
     for attempt in range(6):
@@ -260,56 +261,72 @@ def join_rings(parts):
 
 def sea_layer(elements, xy, size):
     """The sea, from coastline ways (OSM keeps the water on their right-hand
-    side and the land on their left). Coastlines are drawn as walls; every
-    segment seeds sea just to its right and land just to its left, and both
-    grow together (one breadth-first fill), each pixel going to whichever
-    reaches it first. A gap in the walls then only blurs the shore nearby
-    instead of flooding the land."""
-    from collections import deque
-    w, h = size
-    wall = Image.new('1', size, 0)
-    d = ImageDraw.Draw(wall)
-    seeds = []   # (x, y, label): 1 sea, 2 land
+    side). Each point takes the side of its nearest stretch of coastline:
+    no flood fill, so a gap in the data cannot pour the sea onto the land
+    and there are no seams where fills meet. Worked out on a coarser grid
+    (2 samples per map pixel) and scaled up to the layer."""
+    segs = []
     for el in elements:
         if el.get('tags', {}).get('natural') != 'coastline' or 'geometry' not in el:
             continue
         pts = [xy(p['lat'], p['lon']) for p in el['geometry']]
-        d.line(pts, fill=1, width=2)
         for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
-            dx, dy = x2 - x1, y2 - y1
-            L = math.hypot(dx, dy)
-            if L < 1:
-                continue
-            mx, my, nx, ny = (x1 + x2) / 2, (y1 + y2) / 2, -dy / L, dx / L   # (nx, ny): right of travel
-            seeds.append((mx + nx * 3, my + ny * 3, 1))
-            seeds.append((mx - nx * 3, my - ny * 3, 2))
-    if not seeds:
+            if (x1, y1) != (x2, y2):
+                segs.append((x1, y1, x2, y2))
+    if not segs:
         return None
-    wp = wall.load()
-    label = bytearray(w * h)
-    q = deque()
-    for fx, fy, lab in seeds:
-        x, y = int(fx), int(fy)
-        if 0 <= x < w and 0 <= y < h and not wp[x, y] and not label[y * w + x]:
-            label[y * w + x] = lab
-            q.append((x, y))
-    while q:
-        x, y = q.popleft()
-        lab = label[y * w + x]
-        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-            if 0 <= nx < w and 0 <= ny < h and not wp[nx, ny] and not label[ny * w + nx]:
-                label[ny * w + nx] = lab
-                q.append((nx, ny))
-    # The walls themselves: sea where they border sea (no dark seams on the water).
-    for y in range(h):
-        for x in range(w):
-            if wp[x, y] and not label[y * w + x]:
-                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-                    if 0 <= nx < w and 0 <= ny < h and label[ny * w + nx] == 1:
-                        label[y * w + x] = 3
-                        break
-    sea = Image.frombytes('L', size, bytes(255 if v in (1, 3) else 0 for v in label)).convert('1')
-    return sea
+
+    lw, lh = size
+    gw, gh = W * 2, H * 2                 # sample grid
+    sx, sy = lw / gw, lh / gh             # layer px per sample
+    cell = 16                             # bucket size, in samples
+    cols, rows = (gw + cell - 1) // cell, (gh + cell - 1) // cell
+    buckets = {}
+    for i, (x1, y1, x2, y2) in enumerate(segs):
+        c0 = max(0, int(min(x1, x2) / sx) // cell); c1 = min(cols - 1, int(max(x1, x2) / sx) // cell)
+        r0 = max(0, int(min(y1, y2) / sy) // cell); r1 = min(rows - 1, int(max(y1, y2) / sy) // cell)
+        if c1 < 0 or r1 < 0 or c0 >= cols or r0 >= rows:
+            # off the map: still matters for points near the edge
+            c0, c1 = max(0, min(c0, cols - 1)), max(0, min(c1, cols - 1))
+            r0, r1 = max(0, min(r0, rows - 1)), max(0, min(r1, rows - 1))
+        for c in range(c0, c1 + 1):
+            for r in range(r0, r1 + 1):
+                buckets.setdefault((c, r), []).append(i)
+
+    def side(px, py):
+        # Search rings of buckets outwards until nothing nearer can exist.
+        bc, br = int(px / sx) // cell, int(py / sy) // cell
+        best, votes = 1e18, 0.0
+        for ring in range(0, max(cols, rows) + 1):
+            found = False
+            for c in range(bc - ring, bc + ring + 1):
+                for r in range(br - ring, br + ring + 1):
+                    if max(abs(c - bc), abs(r - br)) != ring:
+                        continue
+                    for i in buckets.get((c, r), ()):
+                        x1, y1, x2, y2 = segs[i]
+                        dx, dy = x2 - x1, y2 - y1
+                        L2 = dx * dx + dy * dy
+                        t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / L2))
+                        qx, qy = x1 + t * dx - px, y1 + t * dy - py
+                        d = qx * qx + qy * qy
+                        cross = (dx * (py - y1) - dy * (px - x1)) / math.sqrt(L2)   # > 0: right of travel
+                        if d < best - 1e-6:
+                            best, votes, found = d, cross, True
+                        elif abs(d - best) <= 1e-6:
+                            votes += cross     # shared corner: the segments vote
+            reach = (ring * cell) * min(sx, sy)
+            if best < 1e18 and reach * reach > best:
+                break
+        return votes > 0
+
+    grid = Image.new('1', (gw, gh), 0)
+    gp = grid.load()
+    for y in range(gh):
+        for x in range(gw):
+            if side((x + 0.5) * sx, (y + 0.5) * sy):
+                gp[x, y] = 1
+    return grid.resize(size, Image.NEAREST)
 
 
 def render_map(elements, bbox, ends):
@@ -392,7 +409,26 @@ def render_map(elements, bbox, ends):
     return grid
 
 
-def build(icao, tz_name=None, name=None, center=None, out='.', preview=True):
+def firmware_map_header(grid, bbox):
+    """Heathrow's built-in map (firmware/display/MapBase.h): the same base
+    layer as a pack, one palette digit per pixel, in flash."""
+    n, s_, w, e = bbox
+    rows = ',\n'.join('    "' + ''.join(str(v) for v in row) + '"' for row in grid)
+    pal = ',\n'.join(f'    {{{r:3d}, {g:3d}, {b:3d}}}' for r, g, b in PALETTE)
+    return ('// Generated by tools/airport_pack.py EGLL --firmware-map: do not edit by hand.\n'
+            '// Heathrow\'s built-in map base layer: 128x64, one palette digit per pixel, in flash.\n'
+            '#pragma once\n#include <stdint.h>\n\nnamespace MapBase\n{\n'
+            '    // Bounding box (equirectangular): x = (lon - LON_W) / (LON_E - LON_W) * 128,\n'
+            '    // y = (LAT_N - lat) / (LAT_N - LAT_S) * 64.\n'
+            f'    constexpr double LAT_N = {n:.5f}, LAT_S = {s_:.5f};\n'
+            f'    constexpr double LON_W = {w:.5f}, LON_E = {e:.5f};\n\n'
+            '    // 0 empty, 1 rivers, 2 lakes and reservoirs, 3 runways, 4 aprons,\n'
+            '    // 5 motorways, 6 parks, 7 approach lanes\n'
+            f'    static const uint8_t kPalette[][3] = {{\n{pal}\n    }};\n\n'
+            f'    static const char *const kRows[64] = {{\n{rows}\n    }};\n}}\n')
+
+
+def build(icao, tz_name=None, name=None, center=None, out='.', preview=True, firmware_map=False):
     """Make <ICAO>.airport (and a preview PNG) in out; returns a summary for
     the pack index. Raises ValueError for an airport it cannot make."""
     icao = icao.upper()
@@ -420,6 +456,10 @@ def build(icao, tz_name=None, name=None, center=None, out='.', preview=True):
     bbox = (clat + LAT_SPAN / 2, clat - LAT_SPAN / 2, clon - lon_span / 2, clon + lon_span / 2)
     print(f'{icao} {name}: {len(ends)} runway ends, tz {tz_name} -> {tz}')
     grid = render_map(overpass(bbox[1], bbox[2], bbox[0], bbox[3]), bbox, ends)
+    if firmware_map:
+        target = Path(__file__).resolve().parent.parent / 'firmware' / 'display' / 'MapBase.h'
+        target.write_text(firmware_map_header(grid, bbox), encoding='utf-8')
+        print('wrote', target)
 
     header = {
         'v': 1, 'icao': icao, 'iata': iata, 'name': name,
@@ -450,7 +490,7 @@ def build(icao, tz_name=None, name=None, center=None, out='.', preview=True):
         img.save(out / f'{icao}-preview.png')
     return {'icao': icao, 'iata': iata, 'name': name, 'city': apt.get('municipality', ''),
             'country': apt.get('iso_country', ''), 'runways': len(ends) // 2 or 1,
-            'file': pack.name, 'bytes': pack.stat().st_size}
+            'file': pack.name, 'bytes': pack.stat().st_size, 'cached': getattr(overpass, 'cached', False)}
 
 
 def main():
@@ -460,10 +500,13 @@ def main():
     ap.add_argument('--name', help='short name for the panel (max 16 characters)')
     ap.add_argument('--center', help='map centre as lat,lon (default: the airport)')
     ap.add_argument('--out', help='output folder (default: current)')
+    ap.add_argument('--firmware-map', action='store_true',
+                    help="also write the map as Heathrow's built-in one (firmware/display/MapBase.h); "
+                         'use with EGLL --center 51.475,-0.369')
     a = ap.parse_args()
     center = tuple(float(v) for v in a.center.split(',')) if a.center else None
     try:
-        info = build(a.icao, a.tz, a.name, center, a.out or '.')
+        info = build(a.icao, a.tz, a.name, center, a.out or '.', firmware_map=a.firmware_map)
     except ValueError as e:
         sys.exit(str(e))
     print(f"Wrote {info['file']} ({info['bytes']} bytes) and {info['icao']}-preview.png")

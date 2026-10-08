@@ -17,3 +17,6 @@ tools/.cache/
 *-preview.png
 !brand/social-preview.png
 !packs/*.airport
+
+# Generated from firmware/web/index.html at build time
+firmware/utils/WebPage.h
