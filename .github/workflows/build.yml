@@ -96,7 +96,9 @@ jobs:
       - name: Assemble the installer site
         run: |
           mkdir -p public
-          cp site/index.html docs/card.png public/
+          cp site/index.html brand/favicon.svg public/
+          cp docs/showcase-card.png public/card.png
+          cp brand/glideslope-lockup.svg public/lockup.svg
           cp fw/glideslope-*-full.bin public/glideslope-full.bin
           cat > public/manifest.json <<EOF
           {

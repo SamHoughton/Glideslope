@@ -10,3 +10,9 @@ logos_input/*
 
 # Local tool output
 docs/_capture/
+
+# Tool downloads and recordings
+tools/.cache/
+*.airport
+*-preview.png
+!brand/social-preview.png
