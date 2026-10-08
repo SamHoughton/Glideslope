@@ -1,7 +1,7 @@
 #pragma once
 /*
 Purpose: Live traffic for the map. The main loop hands over one TrafficPoint
-per tracked aircraft each fetch; TrafficTracker keeps a short position trail
+per tracked aircraft each fetch; TrafficTracker keeps the latest report
 per aircraft and dead-reckons it between fetches.
 */
 #include <Arduino.h>
@@ -21,15 +21,12 @@ struct TrafficPoint
 class TrafficTracker
 {
 public:
-    static constexpr int kTrail = 6;      // previous positions kept per aircraft
     static constexpr int kMax   = 48;
 
     struct Tracked
     {
         TrafficPoint  p;
         unsigned long posMs = 0;           // when p's position was reported
-        float         trailLat[kTrail], trailLon[kTrail];
-        uint8_t       trailN = 0;          // newest at index 0
     };
 
     void update(const std::vector<TrafficPoint> &points, unsigned long now);

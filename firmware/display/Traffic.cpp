@@ -20,18 +20,6 @@ void TrafficTracker::update(const std::vector<TrafficPoint> &points, unsigned lo
             _tracked.push_back(Tracked());
             t = &_tracked.back();
         }
-        else if (t->p.lat != p.lat || t->p.lon != p.lon)
-        {
-            // Moved: push the previous position onto the trail.
-            for (int i = kTrail - 1; i > 0; --i)
-            {
-                t->trailLat[i] = t->trailLat[i - 1];
-                t->trailLon[i] = t->trailLon[i - 1];
-            }
-            t->trailLat[0] = t->p.lat;
-            t->trailLon[0] = t->p.lon;
-            if (t->trailN < kTrail) ++t->trailN;
-        }
         t->p     = p;
         t->posMs = now;
     }

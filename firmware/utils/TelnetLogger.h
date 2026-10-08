@@ -21,7 +21,7 @@ class TelnetLogger : public Print
 public:
     TelnetLogger();
 
-    static constexpr size_t MAX_LINES = 64;    // retained lines
+    static constexpr size_t MAX_LINES = 56;    // retained lines
     static constexpr size_t LINE_LEN  = 112;   // per line, timestamp included; longer lines are cut
 
     // Print overrides — write to Serial AND the ring.
