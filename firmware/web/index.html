@@ -181,9 +181,15 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <div class="f"><label for="card_lead_seconds">Card before landing <small>(s)</small></label><input type="number" min="30" max="600" id="card_lead_seconds"></div>
         <div class="f"><label for="interlude_seconds">Break after a landing <small>(s, 0 = none)</small></label><input type="number" min="0" max="120" id="interlude_seconds"></div>
       </div>
-      <div class="f"><label>Screens between planes <small>&mdash; each comes round in turn</small></label>
-        <div class="pills"><label><input type="checkbox" data-scr="1">Map</label><label><input type="checkbox" data-scr="2">Arrivals</label><label><input type="checkbox" data-scr="4">Stats</label><label><input type="checkbox" data-scr="8">Weather</label><label><input type="checkbox" data-scr="16">Holding</label></div></div>
       <div class="f"><label for="display_cycle_seconds">Minimum time per approach card <small>(s)</small></label><input type="number" min="3" id="display_cycle_seconds"></div>
+      <h3>Screens between planes</h3>
+      <p class="hint">Each comes round in turn; one that has nothing to show is skipped.</p>
+      <label class="sw"><input type="checkbox" data-scr="1"><span>Map<small>Everything in range around the airport</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="2"><span>Arrivals board<small>The next four landings, with countdowns</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="32"><span>Departures on the board<small>Recent take-offs as a second page of the arrivals board</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="4"><span>Today's stats<small>Movements, hourly chart, against yesterday</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="8"><span>Weather<small>Live sky, windsock and the wind on the runway</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="16"><span>Holding stacks<small>Only when aircraft are holding</small></span></label>
       <h3>Look</h3>
       <label class="sw"><input type="checkbox" id="display_border"><span>Airline-coloured border</span></label>
       <label class="sw"><input type="checkbox" id="display_nearest_only"><span>Nearest aircraft only<small>One route lookup per fetch; easier on memory and APIs</small></span></label>
@@ -215,6 +221,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
 
     <section class="tab" id="t-night">
       <label class="sw"><input type="checkbox" id="night_mode_enabled"><span>Dim at night<small>Airport local time, daylight saving automatic</small></span></label>
+      <label class="sw"><input type="checkbox" id="night_follow_sun"><span>Follow the sun<small>Dims through dusk and brightens at dawn at the airport, all year; the times below are ignored</small></span></label>
       <div class="row">
         <div class="f"><label for="night_start_time">From</label><input type="time" id="night_start_time"></div>
         <div class="f"><label for="night_end_time">Until</label><input type="time" id="night_end_time"></div>
@@ -246,7 +253,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <div class="f"><label for="ntfy_topic">ntfy topic <small>(or a full URL for your own server; blank = off)</small></label><input id="ntfy_topic" autocomplete="off" spellcheck="false" placeholder="e.g. glideslope-k3x9q2m7w1"></div>
       <div class="btns"><button id="ntr">Random topic</button><button id="ntt">Save and send a test</button><span class="msg" id="ntst"></span></div>
       <div class="f"><label>Tell me about</label>
-        <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label></div></div>
+        <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label><label><input type="checkbox" data-ntf="32">Evening round-up</label></div></div>
     </section>
 
     <section class="tab" id="t-system">
@@ -299,7 +306,7 @@ function save(){var d={};
   ['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
   ['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',
    'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});
-  ['display_nearest_only','display_border','display_flip','night_mode_enabled','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
+  ['display_nearest_only','display_border','display_flip','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
   d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});
   d.screen_facing=$('screen_facing').value;d.tar1090_host=$('tar1090_host').value;
   d.ntfy_topic=$('ntfy_topic').value.trim();d.notify_mask=ntfMask();

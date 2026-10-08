@@ -42,6 +42,7 @@ struct RuntimeConfig
 
     // Night mode — optional time-based brightness reduction
     bool     night_mode_enabled;
+    bool     night_follow_sun;           // dim from dusk to dawn at the airport (ignores the times)
     uint16_t night_start_minutes;        // local time of night start (minutes since midnight)
     uint16_t night_end_minutes;          // local time of night end
     uint8_t  night_brightness;           // brightness during night period (0 = screen off)
@@ -110,3 +111,8 @@ static constexpr const char *kLocalTimeZone = "GMT0BST,M3.5.0/1,M10.5.0";
 // inside the configured night window.  Returns false if NTP has not yet synced
 // (wall clock < year 2000) so night mode is never triggered on a cold boot.
 bool isNightActive();
+
+// How far into night it is for the brightness: 0 = day, 1 = night. With
+// night_follow_sun it eases through dusk and dawn (sun from +2 to -6
+// degrees); otherwise it is 0 or 1 from the night times.
+float nightLevel();

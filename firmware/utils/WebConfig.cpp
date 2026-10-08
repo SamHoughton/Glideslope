@@ -251,6 +251,7 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["screen_facing"]                 = String(g_config.screen_facing);
     doc["display_flip"]                  = g_config.display_flip;
     doc["night_mode_enabled"]            = g_config.night_mode_enabled;
+    doc["night_follow_sun"]              = g_config.night_follow_sun;
     doc["night_start_minutes"]           = g_config.night_start_minutes;
     doc["night_end_minutes"]             = g_config.night_end_minutes;
     doc["night_brightness"]              = g_config.night_brightness;
@@ -325,6 +326,7 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
 
     g_config.display_flip          = doc["display_flip"]          | g_config.display_flip;
     g_config.night_mode_enabled    = doc["night_mode_enabled"]    | g_config.night_mode_enabled;
+    g_config.night_follow_sun      = doc["night_follow_sun"]      | g_config.night_follow_sun;
     g_config.night_start_minutes   = (uint16_t)(doc["night_start_minutes"] | (int)g_config.night_start_minutes);
     g_config.night_end_minutes     = (uint16_t)(doc["night_end_minutes"]   | (int)g_config.night_end_minutes);
     g_config.night_brightness      = (uint8_t)(doc["night_brightness"]     | (int)g_config.night_brightness);

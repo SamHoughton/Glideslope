@@ -2,6 +2,8 @@
 Purpose: RuntimeConfig — mutable settings backed by ESP32 NVS (Preferences).
 Compile-time defaults come from UserConfiguration.h and TimingConfiguration.h.
 */
+#include "display/Sky.h"
+#include "config/Airport.h"
 #include "config/RuntimeConfig.h"
 #include "config/UserConfiguration.h"
 #include "config/TimingConfiguration.h"
@@ -37,6 +39,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.screen_facing[sizeof(c.screen_facing) - 1] = '\0';
     c.display_flip               = false;
     c.night_mode_enabled         = true;      // dim overnight by default
+    c.night_follow_sun           = false;
     c.night_start_minutes        = 22 * 60;   // 22:00
     c.night_end_minutes          =  7 * 60;   // 07:00
     c.night_brightness           = 38;        // ~15%
@@ -104,6 +107,7 @@ void loadConfig()
 
     g_config.display_flip           = p.getBool("flip",     g_config.display_flip);
     g_config.night_mode_enabled     = p.getBool("night_en", g_config.night_mode_enabled);
+    g_config.night_follow_sun       = p.getBool("night_sun", g_config.night_follow_sun);
     g_config.night_start_minutes    = (uint16_t)p.getUInt("night_s",  g_config.night_start_minutes);
     g_config.night_end_minutes      = (uint16_t)p.getUInt("night_e",  g_config.night_end_minutes);
     g_config.night_brightness       = (uint8_t)p.getUInt("night_br",  g_config.night_brightness);
@@ -180,6 +184,7 @@ void saveConfig()
 
     p.putBool("flip",     g_config.display_flip);
     p.putBool("night_en", g_config.night_mode_enabled);
+    p.putBool("night_sun", g_config.night_follow_sun);
     p.putUInt("night_s",  g_config.night_start_minutes);
     p.putUInt("night_e",  g_config.night_end_minutes);
     p.putUInt("night_br", g_config.night_brightness);
@@ -224,6 +229,10 @@ bool isNightActive()
     if (utcNow < 946684800L)          // pre-2000 → NTP not yet synced
         return false;
 
+    // Dusk to dawn: the sun more than 4 degrees below the horizon.
+    if (g_config.night_follow_sun)
+        return Sky::sunElevation(g_airport.lat, g_airport.lon, utcNow) < -4.0f;
+
     // Local time via the TZ rule set at boot (kLocalTimeZone), so the
     // GMT/BST changes happen automatically.
     struct tm tmBuf;
@@ -238,4 +247,15 @@ bool isNightActive()
         return (nowMin >= startMin && nowMin < endMin);  // same-day window
     else
         return (nowMin >= startMin || nowMin < endMin);  // overnight span
+}
+
+float nightLevel()
+{
+    if (!g_config.night_mode_enabled) return 0;
+    const time_t t = time(nullptr);
+    if (t < 946684800L) return 0;
+    if (!g_config.night_follow_sun) return isNightActive() ? 1 : 0;
+    const float e = Sky::sunElevation(g_airport.lat, g_airport.lon, t);
+    const float k = (2.0f - e) / 8.0f;
+    return k < 0 ? 0 : (k > 1 ? 1 : k);
 }

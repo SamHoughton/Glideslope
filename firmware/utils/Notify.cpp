@@ -12,7 +12,7 @@ namespace
     {
         uint8_t kind, priority;
         char    title[48];
-        char    body[96];
+        char    body[160];
         char    tags[28];
     };
     constexpr int kQueue = 3;

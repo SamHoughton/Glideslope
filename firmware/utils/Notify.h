@@ -27,6 +27,7 @@ namespace Notify
         GoAround  = 4,
         Runway    = 8,
         Holding   = 16,
+        Daily     = 32,    // the day's round-up at 22:30
         Test      = 128,   // always allowed when a topic is set
     };
 

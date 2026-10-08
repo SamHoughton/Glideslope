@@ -48,8 +48,14 @@ namespace Sky
 
     // Background above horizonY: gradient, stars or sun or moon, clouds.
     void drawSky(FrameCanvas &c, const Look &l, uint32_t tMs, int horizonY);
-    // Rain, snow and fog over the finished scene (before captions).
-    void drawWeather(FrameCanvas &c, const Look &l, uint32_t tMs);
+    // Rain, snow and fog over the finished scene (before captions), within
+    // columns x0..x1 (set the canvas clip to match for rain and snow).
+    void drawWeather(FrameCanvas &c, const Look &l, uint32_t tMs, int x0 = 0, int x1 = FrameCanvas::W - 1);
+
+    // Moon phase at Unix time t: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter.
+    float moonPhase(time_t t);
+    // The moon as it looks tonight: a disc lit to the phase (k = brightness).
+    void drawMoon(FrameCanvas &c, int cx, int cy, float r, float phase, Rgb lit, float k = 1);
 
     // Colour for scenery silhouettes in this light (night colour given).
     Rgb shade(const Look &l, Rgb nightColour);

@@ -250,6 +250,52 @@ static void updateArrivals(const std::vector<StateVector> &states, const std::ve
     g_display.setArrivals(rows, n);
 }
 
+// Recent departures (newest first) for the board's second page: every
+// aircraft climbing out along a runway, its destination if a route is known.
+static void updateDepartures(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
+{
+    static InfoScreens::Departure recent[InfoScreens::kMaxDepartures];
+    static uint32_t ids[InfoScreens::kMaxDepartures] = {};
+    static int n = 0;
+    bool changed = false;
+    for (const StateVector &s : states)
+    {
+        FlightInfo f;
+        f.lat = s.lat;  f.lon = s.lon;  f.heading = s.heading;
+        f.baro_altitude = isnan(s.baro_altitude) ? NAN : s.baro_altitude * 3.28084;
+        f.velocity      = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
+        f.vertical_rate = isnan(s.vertical_rate) ? NAN : s.vertical_rate * 196.85;
+        char rwy[4] = "";
+        if (!ApproachModel::climbingOut(f, rwy, sizeof(rwy))) continue;
+        const uint32_t id = (uint32_t)strtoul(s.icao24.c_str(), nullptr, 16) | 1;
+        bool seen = false;
+        for (int i = 0; i < n; ++i) if (ids[i] == id) seen = true;
+        if (seen) continue;
+
+        const FlightInfo *known = nullptr;
+        for (const FlightInfo &k : flights)
+            if (k.ident == s.callsign) { known = &k; break; }
+        InfoScreens::Departure d;
+        String id2 = known && known->ident_iata.length() ? known->ident_iata : flightNumberFromCallsign(s.callsign);
+        if (!id2.length()) id2 = s.callsign.length() ? s.callsign : s.icao24;
+        strlcpy(d.ident, id2.c_str(), sizeof(d.ident));
+        strlcpy(d.type, (known && known->aircraft_code.length() ? known->aircraft_code : s.aircraft_type).c_str(), sizeof(d.type));
+        if (known)
+            strlcpy(d.dest, (known->destination.code_iata.length() ? known->destination.code_iata
+                                                                   : known->destination.code_icao).c_str(), sizeof(d.dest));
+        strlcpy(d.runway, rwy, sizeof(d.runway));
+        d.accent = airlineColour(s.callsign);
+        const time_t t = time(nullptr);
+        d.at = t > 1600000000 ? t : 0;
+        for (int i = min(n, InfoScreens::kMaxDepartures - 1); i > 0; --i) { recent[i] = recent[i - 1]; ids[i] = ids[i - 1]; }
+        recent[0] = d;
+        ids[0] = id;
+        n = min(n + 1, InfoScreens::kMaxDepartures);
+        changed = true;
+    }
+    if (changed) g_display.setDepartures(recent, n);
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -541,6 +587,7 @@ void loop()
             g_webConfig.setRunways(arr, dep);
         }
         updateArrivals(g_states, g_flights);
+        updateDepartures(g_states, g_flights);
 
         static String lastIdents;
         String idents;
@@ -587,6 +634,25 @@ void loop()
             {
                 Log.printf("Holding: %d%s%s\n", total, total ? ": " : "", summary);
                 lastTotal = total;
+            }
+        }
+    }
+
+    // The day's round-up at 22:30 local time, once a day.
+    {
+        static unsigned long lastCheckMs = 0;
+        static int sentDay = -1;
+        if (millis() - lastCheckMs >= 30000)
+        {
+            lastCheckMs = millis();
+            const time_t t = time(nullptr);
+            struct tm lt;
+            if (t > 1600000000 && localtime_r(&t, &lt) && lt.tm_hour == 22 && lt.tm_min >= 30 && sentDay != lt.tm_yday)
+            {
+                sentDay = lt.tm_yday;
+                char text[160];
+                g_display.dailySummary(text, sizeof(text));
+                Notify::post(Notify::Daily, 2, "bar_chart", "Today at the airport", "%s", text);
             }
         }
     }

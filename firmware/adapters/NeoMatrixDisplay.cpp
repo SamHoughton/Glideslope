@@ -143,7 +143,11 @@ namespace
 
     uint8_t effectiveBrightness()
     {
-        return isNightActive() ? g_config.night_brightness : g_config.display_brightness;
+        // Screen off at night stays a clean switch; otherwise ease between the two.
+        if (g_config.night_brightness == 0 || !g_config.night_follow_sun)
+            return isNightActive() ? g_config.night_brightness : g_config.display_brightness;
+        const float k = nightLevel();
+        return (uint8_t)lroundf(g_config.display_brightness + (g_config.night_brightness - (int)g_config.display_brightness) * k);
     }
 
     // Ordering for "most worth showing next": aircraft on approach first, then nearest.
@@ -345,6 +349,18 @@ void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
     for (int i = 0; i < _arrivalCount; ++i) _arrivals[i] = rows[i];
 }
 
+void NeoMatrixDisplay::setDepartures(const InfoScreens::Departure *rows, int n)
+{
+    Lock l(_lock);
+    _departureCount = min(n, InfoScreens::kMaxDepartures);
+    for (int i = 0; i < _departureCount; ++i) _departures[i] = rows[i];
+}
+
+bool NeoMatrixDisplay::departuresPage() const
+{
+    return (g_config.screens & 32) && _departureCount > 0;
+}
+
 void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
 {
     const unsigned long now = millis();
@@ -394,6 +410,31 @@ int NeoMatrixDisplay::holdingSummary(char *out, size_t len, int *longestMin)
         strlcat(out, part, len);
     }
     return total;
+}
+
+void NeoMatrixDisplay::dailySummary(char *out, size_t len)
+{
+    Lock l(_lock);
+    int busiestHour = 0, busiestN = 0;
+    for (int h = 0; h < 24; ++h)
+    {
+        const int n = _stats.arrivalsInHour(h) + _stats.departuresInHour(h);
+        if (n > busiestN) { busiestN = n; busiestHour = h; }
+    }
+    int an = 0;
+    const String airline = _stats.busiestAirline(an);
+    const String rare = _stats.rarestType();
+    snprintf(out, len, "%d movements (%d in, %d out). Busiest hour %02d:00 (%d).%s%s%s%s%s",
+             _stats.arrivals() + _stats.departures(), _stats.arrivals(), _stats.departures(),
+             busiestHour, busiestN,
+             airline.length() ? " Top airline " : "", airline.c_str(),
+             rare.length() ? ". Rarest " : "", rare.c_str(), ".");
+    if (_stats.goArounds())
+    {
+        char ga[24];
+        snprintf(ga, sizeof(ga), " %d go-around%s.", _stats.goArounds(), _stats.goArounds() == 1 ? "" : "s");
+        strlcat(out, ga, len);
+    }
 }
 
 void NeoMatrixDisplay::runwaysInUse(char *arr, size_t arrLen, char *dep, size_t depLen)
@@ -808,7 +849,7 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         if (startBreak) _current.breakTaken = true;
         _interludeUntilMs = startBreak ? now + (unsigned long)g_config.interlude_seconds * 1000UL : now;
         nextScreen();
-        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather"};
+        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather", "holding"};
         if (!preview && _mode == Mode::Auto)
             Log.printf("Display: %s, %s\n", _interludeUntilMs != now ? "break after landing" : "screens",
                        kScreenNames[(int)_screen]);
@@ -896,7 +937,7 @@ bool NeoMatrixDisplay::screenAvailable(Screen s) const
     switch (s)
     {
         case Screen::Map:      return !_traffic.empty();
-        case Screen::Arrivals: return _arrivalCount > 0;
+        case Screen::Arrivals: return _arrivalCount > 0 || departuresPage();
         case Screen::Weather:  return _metar.valid;
         case Screen::Holding:  return _holds.total(millis()) > 0;
         default:               return true;
@@ -915,7 +956,22 @@ void NeoMatrixDisplay::nextScreen()
 
 unsigned long NeoMatrixDisplay::screenDwellMs(Screen s) const
 {
+    if (s == Screen::Arrivals && departuresPage() && _arrivalCount > 0)
+        return 2 * kScreenDwellMs - 2000;   // arrivals page, then departures
     return s == Screen::Map ? kMapDwellMs : kScreenDwellMs;
+}
+
+// How long screen s has been on the panel (restarts whenever it changes,
+// previews and button modes included), for entry animations.
+uint32_t NeoMatrixDisplay::shownFor(Screen s, unsigned long now)
+{
+    if (s != _shownScreen || now - _shownScreenLastMs > 1000)
+    {
+        _shownScreen = s;
+        _shownScreenMs = now;
+    }
+    _shownScreenLastMs = now;
+    return now - _shownScreenMs;
 }
 
 // The screen shown when no card is due.
@@ -944,13 +1000,29 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     switch (s)
     {
         case Screen::Arrivals:
-            InfoScreens::renderArrivals(g_workFrame, _arrivals, _arrivalCount, _runwayInUse, _weather, now);
+        {
+            // Departures as a second page (or the only one when nothing is inbound).
+            const uint32_t shown = shownFor(s, now);
+            const uint32_t half = kScreenDwellMs - 1000;
+            const bool dep = departuresPage() && (_arrivalCount == 0 || shown >= half);
+            if (dep)
+            {
+                char rw[12];
+                strlcpy(rw, _runwayDep, sizeof(rw));
+                if (char *sp = strchr(rw, ' ')) *sp = '\0';   // the busiest one
+                InfoScreens::renderDepartures(g_workFrame, _departures, _departureCount, rw,
+                                              _arrivalCount ? shown - half : shown);
+            }
+            else
+                InfoScreens::renderArrivals(g_workFrame, _arrivals, _arrivalCount, _runwayInUse, _weather, now, shown);
             return;
+        }
         case Screen::Stats:
-            InfoScreens::renderStats(g_workFrame, _stats, now);
+            InfoScreens::renderStats(g_workFrame, _stats, now, shownFor(s, now));
             return;
         case Screen::Weather:
-            InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now);
+            InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now,
+                                       s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky);
             return;
         case Screen::Holding:
         {

@@ -112,11 +112,16 @@ public:
     void noteStack(int stack, const std::vector<StateVector> &states);
     // Holding now: "BNN 4 (9 min), OCK 2 (3 min)" ("" if none); returns the total.
     int holdingSummary(char *out, size_t len, int *longestMin = nullptr);
+    // Today in a sentence or two, for the evening round-up.
+    void dailySummary(char *out, size_t len);
     bool statsSnapshot(std::vector<uint8_t> &out);   // false if unchanged
     void loadStats();
 
     // Arrivals board rows, soonest first (call once per fetch).
     void setArrivals(const InfoScreens::Arrival *rows, int n);
+    // Recent departures, newest first: a second page of the board when
+    // switched on (g_config.screens bit 32).
+    void setDepartures(const InfoScreens::Departure *rows, int n);
 
     // Heathrow weather for the weather screen, arrivals board and night clock.
     void setWeather(const Metar &m);
@@ -185,6 +190,9 @@ private:
     // Rotation screens; bit n of g_config.screens enables Screen n.
     enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Count };
     Screen               _screen = Screen::Weather;   // so the first rotation starts with the map
+    Screen               _shownScreen = Screen::Count;
+    unsigned long        _shownScreenMs = 0, _shownScreenLastMs = 0;
+    uint32_t             shownFor(Screen s, unsigned long now);
     unsigned long        _screenSinceMs = 0;
     unsigned long        _interludeUntilMs = 0;      // break after a landing ends
     Mode                 _mode = Mode::Auto;
@@ -201,6 +209,9 @@ private:
     DailyStats           _stats;                  // guarded by _lock
     InfoScreens::Arrival _arrivals[InfoScreens::kMaxArrivals];   // guarded by _lock
     int                  _arrivalCount = 0;
+    InfoScreens::Departure _departures[InfoScreens::kMaxDepartures];   // guarded by _lock
+    int                  _departureCount = 0;
+    bool                 departuresPage() const;
     char                 _weather[24] = "";       // guarded by _lock
     Metar                _metar;                  // guarded by _lock
     Sky::Look            _sky;                    // the light now (refreshed every 30 s)

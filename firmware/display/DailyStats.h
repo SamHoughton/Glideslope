@@ -35,6 +35,11 @@ public:
     // Type seen least often today (the latest wins a tie); empty if none yet.
     String rarestType() const;
 
+    // Yesterday, for comparison: movements in each hour, and by this time of day.
+    bool hasYesterday() const { return _hasYesterday; }
+    int  yesterdayInHour(int h) const { return (h >= 0 && h < 24) ? _yHour[h] : 0; }
+    int  yesterdayUpTo(int hour, int minute) const;
+
     // Persistence (LittleFS must be mounted). serialise() is quick and is
     // called under the display lock; the file write happens outside it.
     bool dirty() const { return _dirty; }
@@ -46,6 +51,8 @@ private:
     int      _year = -1, _day = -1;   // local date the counts belong to
     uint16_t _arrivals = 0, _departures = 0, _goArounds = 0;
     uint16_t _arrHour[24] = {}, _depHour[24] = {};
+    uint16_t _yHour[24] = {};          // yesterday, arrivals + departures
+    bool     _hasYesterday = false;
     bool     _dirty = false;
 
     static constexpr size_t kSeenSlots = 1536;   // 6 KB; up to 1,152 movements a day

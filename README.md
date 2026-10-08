@@ -92,7 +92,9 @@ and a log.
 - **Arrivals board**: the next four arrivals with their type and
   minutes to touchdown (`~` while still a rough guess, before they join
   final), and Heathrow's weather along the bottom, e.g. `310/04 7KM RA 14C`
-  (wind, visibility, rain, temperature).
+  (wind, visibility, rain, temperature). The letters flip into place like
+  an old split-flap board. Optionally, recent departures (time, and the
+  destination when the route is known) as a second page.
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
@@ -101,12 +103,17 @@ and a log.
   go-arounds in turn. Every aircraft in range counts (an arrival once it is
   on final, a departure once it climbs out along a runway), not only the
   ones that get a card, and the tally is saved so a restart keeps the day.
+  The counters count up and the bars rise as the screen appears; a faint
+  line marks yesterday's hour by hour, and the footer says how today
+  compares so far (`VS YESTERDAY +12%`).
   It only sees what is in range: centre the search near the airport (or
   make the radius large enough to cover both approaches) to count every
   movement.
-- **Weather**: Heathrow's wind (with a compass arrow), gusts, visibility,
-  weather, temperature, pressure, and the crosswind and head- or tailwind on
-  the runway in use.
+- **Weather**: a little live scene on the left (the sky as it is now, sun
+  or moon, cloud, rain or snow falling, a windsock blowing in the real wind
+  and the temperature) and on the right the wind and gusts, the runway in
+  use seen from above with the wind crossing it, crosswind and head- or
+  tailwind, visibility and pressure.
 - **Runways in use**, worked out from the traffic itself: every aircraft on
   final or climbing out counts, at any airport, with several runways at once
   (arrivals top left of the map, departures top right; `27L UNTIL 15:00` on
@@ -126,10 +133,14 @@ and a log.
   as a racetrack with its aircraft going round, the count and the longest
   wait.
 - **Phone alerts** through [ntfy](https://ntfy.sh) (free, no account): emergency
-  squawks, rare spots, go-arounds, runway changes and busy stacks, each
+  squawks, rare spots, go-arounds, runway changes, busy stacks and the
+  evening round-up, each
   switchable on the web page's Alerts tab.
-- **Quiet hours**: a dim clock (with the weather) overnight when there's no
-  traffic.
+- **Quiet hours**: a dim clock (with the weather and tonight's moon in its
+  real phase) overnight when there's no traffic. Night dimming can follow
+  the sun instead of fixed times, easing down through dusk and up at dawn.
+- **Evening round-up** on your phone at 22:30 (optional): the day's
+  movements, busiest hour, top airline, rarest type.
 - **Board button** cycles Auto / Map / Arrivals / Stats / Weather.
 - **Scanning screen** when nothing is being tracked.
 

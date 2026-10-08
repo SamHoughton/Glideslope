@@ -180,8 +180,7 @@ void Sky::drawSky(FrameCanvas &c, const Look &l, uint32_t tMs, int horizonY)
         if (l.sunElev < -6)
         {
             const float k = clamp01((-l.sunElev - 6.0f) / 6.0f) * (l.cloud == 2 ? 0.5f : 1.0f);
-            disc(c, 22, 9, 2.6f, Rgb{215, 215, 190}, k);
-            disc(c, 23, 8, 2.2f, l.top, k);   // crescent
+            drawMoon(c, 22, 9, 2.8f, moonPhase(time(nullptr)), Rgb{215, 215, 190}, k);
         }
         else if (l.sunElev > -2)
         {
@@ -215,7 +214,33 @@ void Sky::drawSky(FrameCanvas &c, const Look &l, uint32_t tMs, int horizonY)
     }
 }
 
-void Sky::drawWeather(FrameCanvas &c, const Look &l, uint32_t tMs)
+float Sky::moonPhase(time_t t)
+{
+    // Days since the new moon of 6 January 2000, 18:14 UTC, in synodic months.
+    const double days = t / 86400.0 + 2440587.5 - 2451550.26;
+    const double p = fmod(days / 29.530588853, 1.0);
+    return (float)(p < 0 ? p + 1 : p);
+}
+
+void Sky::drawMoon(FrameCanvas &c, int cx, int cy, float r, float phase, Rgb lit, float k)
+{
+    // Lit where a pixel lies on the sunlit side of the terminator (an
+    // ellipse whose width follows the phase); waxing lights the right.
+    const float ct = cosf(phase * 2 * (float)M_PI);
+    const int ir = (int)ceilf(r);
+    for (int dy = -ir; dy <= ir; ++dy)
+        for (int dx = -ir; dx <= ir; ++dx)
+        {
+            const float d = sqrtf(dx * dx + dy * dy);
+            if (d > r + 0.3f) continue;
+            const float yn = dy / r, xn = dx / r;
+            const float edge = sqrtf(max(0.0f, 1 - yn * yn));
+            const bool on = phase < 0.5f ? xn > ct * edge : xn < -ct * edge;
+            blend(c, cx + dx, cy + dy, on ? lit : FrameCanvas::scale(lit, 0.12f), k * clamp01(r + 0.5f - d));
+        }
+}
+
+void Sky::drawWeather(FrameCanvas &c, const Look &l, uint32_t tMs, int x0, int x1)
 {
     if (!l.known) return;
     if (l.precip == Rain || l.precip == Thunder)
@@ -248,7 +273,7 @@ void Sky::drawWeather(FrameCanvas &c, const Look &l, uint32_t tMs)
         for (int y = 0; y < FrameCanvas::H; ++y)
         {
             const float k = 0.25f + 0.35f * y / FrameCanvas::H;
-            for (int x = 0; x < FrameCanvas::W; ++x)
+            for (int x = max(0, x0); x <= min(FrameCanvas::W - 1, x1); ++x)
             {
                 uint16_t &v = p[y * FrameCanvas::W + x];
                 v = FrameCanvas::pack(mix(FrameCanvas::unpack(v), haze, k));
