@@ -323,7 +323,7 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     }
 
     AircraftSprites::draw(c, sp, (int)lroundf(cx - sp.w / 2.0f), (int)lroundf(top),
-                          livery ? *livery : AircraftSprites::Livery(accent), false, greySprite, true);
+                          livery ? *livery : AircraftSprites::Livery(accent), false, greySprite, false);   // no halo over the sky
 
     if (sky.known && sky.lightsOn)
     {

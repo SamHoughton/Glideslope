@@ -122,8 +122,9 @@ namespace
             case '-': out = FrameCanvas::scale(l.stripe, 0.85f); return true;
             case '+': out = FrameCanvas::scale(l.belly, 0.78f);  return true;
             case '_': out = FrameCanvas::scale(l.belly, 0.55f);  return true;
-            case 'a': out = FrameCanvas::scale(l.body, 0.5f);    return true;
-            case 'b': out = FrameCanvas::scale(l.belly, 0.42f);  return true;
+            // Soft edges: drawn half-blended with what is behind (see draw()).
+            case 'a': out = FrameCanvas::scale(l.body, 0.88f);   return true;
+            case 'b': out = FrameCanvas::scale(l.belly, 0.78f);  return true;
             case 'r': out = l.tail;                              return true;
             case 't': out = FrameCanvas::scale(l.tail, 0.62f);   return true;
             case 'R': out = l.accent;                            return true;
@@ -233,6 +234,9 @@ void AircraftSprites::draw(FrameCanvas &c, const Sprite &s, int x, int y, const 
                 const uint8_t v = (uint8_t)((px.r * 3 + px.g * 4 + px.b) / 8 * 0.75f);
                 px = Rgb{v, v, (uint8_t)min(255, v + 6)};
             }
+            const char ch = at(r, col);
+            if (ch == 'a' || ch == 'b')
+                px = mixTo(FrameCanvas::unpack(c.get(x + col, y + r)), px, 0.55f);
             c.set(x + col, y + r, px);
         }
 }
