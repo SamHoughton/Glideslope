@@ -245,21 +245,20 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
 
     // Visibility, weather, temperature, pressure.
     char row[24], vis[8] = "-";
-    if (m.cavok)             snprintf(vis, sizeof(vis), "CAVOK");
-    else if (m.visM >= 9999) snprintf(vis, sizeof(vis), "10KM+");
-    else if (m.visM >= 5000) snprintf(vis, sizeof(vis), "%dKM", m.visM / 1000);
-    else if (m.visM >= 0)    snprintf(vis, sizeof(vis), "%dM", m.visM);
+    if (m.visText[0]) strlcpy(vis, m.visText, sizeof(vis));
     snprintf(row, sizeof(row), "VIS %s%s%s", vis, m.wx[0] ? " " : "", m.wx);
     c.text(4, 41, row, Rgb{200, 205, 215});
     row[0] = '\0';
     if (m.tempC != -99) snprintf(row, sizeof(row), "%dC", m.tempC);
-    if (m.qnh) snprintf(row + strlen(row), sizeof(row) - strlen(row), "%sQ%d", row[0] ? "  " : "", m.qnh);
+    char pr[10];
+    Weather::pressure(m, pr, sizeof(pr));
+    if (pr[0]) snprintf(row + strlen(row), sizeof(row) - strlen(row), "%s%s", row[0] ? "  " : "", pr);
     c.text(4, 51, row, Rgb{200, 205, 215});
 
     // Wind on the runway in use: crosswind, and head- or tailwind.
     if (runway && runway[0] && m.windDir >= 0 && m.windKt > 0)
     {
-        const int rwyDeg = (runway[0] - '0') * 100 + (runway[1] - '0') * 10;
+        const int rwyDeg = atoi(runway) * 10;   // "27L" -> 270, "1R" -> 10
         int cross = 0, tail = 0;
         Weather::components(m, rwyDeg, cross, tail);
         char rw[16];

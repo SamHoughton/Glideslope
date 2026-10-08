@@ -53,12 +53,37 @@ bool Weather::parse(const char *raw, Metar &m)
     strlcpy(buf, raw, sizeof(buf));
 
     bool haveWind = false;
+    int whole = -1;            // "1" of "1 1/2SM"
     char *save = nullptr;
     for (char *t = strtok_r(buf, " \r\n", &save); t; t = strtok_r(nullptr, " \r\n", &save))
     {
         if (!haveWind) { haveWind = parseWind(t, m); continue; }
-        if (strcmp(t, "CAVOK") == 0) { m.cavok = true; m.visM = 9999; continue; }
-        if (m.visM < 0 && strlen(t) == 4 && allDigits(t, 4)) { m.visM = atoi(t); continue; }
+        if (strcmp(t, "CAVOK") == 0) { m.cavok = true; m.visM = 9999; strlcpy(m.visText, "CAVOK", sizeof(m.visText)); continue; }
+        if (m.visM < 0 && strlen(t) == 4 && allDigits(t, 4))
+        {
+            m.visM = atoi(t);
+            if (m.visM >= 9999)      snprintf(m.visText, sizeof(m.visText), "10KM+");
+            else if (m.visM >= 5000) snprintf(m.visText, sizeof(m.visText), "%dKM", m.visM / 1000);
+            else                     snprintf(m.visText, sizeof(m.visText), "%dM", m.visM);
+            continue;
+        }
+        // US visibility in statute miles: "10SM", "P6SM", "1/2SM", "M1/4SM", "1 1/2SM".
+        const size_t tl = strlen(t);
+        if (m.visM < 0 && tl > 2 && strcmp(t + tl - 2, "SM") == 0)
+        {
+            const char *p = t + ((t[0] == 'P' || t[0] == 'M') ? 1 : 0);
+            float miles = atof(p);
+            const char *slash = strchr(p, '/');
+            if (slash) miles = atof(p) / max(1.0, atof(slash + 1));
+            if (whole > 0) miles += whole;
+            m.visM = miles >= 6 ? 9999 : (int)lroundf(miles * 1609.34f);
+            if (miles == (int)miles) snprintf(m.visText, sizeof(m.visText), "%s%dSM", t[0] == 'P' ? "" : "", (int)miles);
+            else                     snprintf(m.visText, sizeof(m.visText), "%.1fSM", miles);
+            if (t[0] == 'P') strlcat(m.visText, "+", sizeof(m.visText));
+            whole = -1;
+            continue;
+        }
+        whole = (haveWind && m.visM < 0 && tl <= 2 && allDigits(t, tl)) ? atoi(t) : -1;
         if (!m.wx[0] && isWeather(t)) { strlcpy(m.wx, t, sizeof(m.wx)); continue; }
         // Temperature/dew point: "14/12", "M01/M03".
         const char *slash = strchr(t, '/');
@@ -69,6 +94,11 @@ bool Weather::parse(const char *raw, Metar &m)
             m.tempC = atoi(t + (neg ? 1 : 0)) * (neg ? -1 : 1);
         }
         if (t[0] == 'Q' && strlen(t) == 5 && allDigits(t + 1, 4)) m.qnh = atoi(t + 1);
+        if (t[0] == 'A' && strlen(t) == 5 && allDigits(t + 1, 4) && !m.qnh)
+        {
+            m.altInHg100 = atoi(t + 1);
+            m.qnh = (int)lroundf(m.altInHg100 / 100.0f * 33.8639f);
+        }
         if (strncmp(t, "RMK", 3) == 0) break;
     }
     m.valid = haveWind;
@@ -113,10 +143,7 @@ void Weather::line(const Metar &m, char *out, size_t len, int maxChars)
     else                        snprintf(wind, sizeof(wind), "%03d/%02d", m.windDir, m.windKt);
     if (m.gustKt) snprintf(wind + strlen(wind), sizeof(wind) - strlen(wind), "G%d", m.gustKt);
 
-    if (m.cavok)              snprintf(vis, sizeof(vis), "CAVOK");
-    else if (m.visM >= 9999)  snprintf(vis, sizeof(vis), "10KM+");
-    else if (m.visM >= 5000)  snprintf(vis, sizeof(vis), "%dKM", m.visM / 1000);
-    else if (m.visM >= 0)     snprintf(vis, sizeof(vis), "%dM", m.visM);
+    strlcpy(vis, m.visText, sizeof(vis));
     if (m.tempC != -99) snprintf(temp, sizeof(temp), "%dC", m.tempC);
 
     // Most detail first; drop the weather group, then the temperature, to fit.
@@ -128,6 +155,13 @@ void Weather::line(const Metar &m, char *out, size_t len, int maxChars)
                  (level < 2 && temp[0]) ? " " : "", level < 2 ? temp : "");
         if ((int)strlen(out) <= maxChars) return;
     }
+}
+
+void Weather::pressure(const Metar &m, char *out, size_t len)
+{
+    if (m.altInHg100)  snprintf(out, len, "A%d.%02d", m.altInHg100 / 100, m.altInHg100 % 100);
+    else if (m.qnh)    snprintf(out, len, "Q%d", m.qnh);
+    else if (len)      out[0] = '\0';
 }
 
 void Weather::components(const Metar &m, int runwayDeg, int &crossKt, int &tailKt)

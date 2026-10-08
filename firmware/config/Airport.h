@@ -31,7 +31,7 @@ struct Airport
 
     char      icao[5];
     char      iata[4];
-    char      name[13];        // short, upper case: "HEATHROW"
+    char      name[17];        // short, upper case: "HEATHROW", "SAN FRANCISCO"
     double    lat, lon;        // reference point
     char      tz[48];          // POSIX TZ rule for local time
     RunwayEnd runways[kMaxRunways];

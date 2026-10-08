@@ -33,7 +33,9 @@ import json
 import math
 import sys
 import urllib.parse
+import urllib.error
 import urllib.request
+import time
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -91,13 +93,21 @@ def move(lat, lon, course, metres):
             lon + metres * math.sin(c) / (111320.0 * math.cos(math.radians(lat))))
 
 
-def short_name(full, icao):
+NAME_MAX = 16
+
+
+def short_name(full, town, icao):
+    """'London Gatwick Airport' (London) -> GATWICK; 'Amsterdam Airport
+    Schiphol' -> SCHIPHOL; 'San Francisco International' -> SAN FRANCISCO."""
     drop = {'AIRPORT', 'INTERNATIONAL', 'INTL', 'AERODROME', 'AIRFIELD', 'REGIONAL', 'MUNICIPAL', 'FIELD'}
-    words = [w for w in full.upper().replace('-', ' ').split() if w.strip('.') not in drop]
-    name = ' '.join(words)
-    if len(name) > 12 and words:
-        name = words[-1]          # "LONDON GATWICK" -> "GATWICK"
-    return (name or icao)[:12]
+    words = [w for w in full.upper().replace('-', ' ').replace('/', ' ').split() if w.strip('.') not in drop]
+    tw = town.upper().replace('-', ' ').split()
+    if tw and words[:len(tw)] == tw and len(words) > len(tw):
+        words = words[len(tw):]           # the town is already implied
+    name = ' '.join(w.strip('.') for w in words)
+    if len(name) > NAME_MAX and words:
+        name = words[-1]
+    return (name or town.upper() or icao)[:NAME_MAX]
 
 
 def posix_tz(iana):
@@ -150,12 +160,23 @@ def overpass(s, w, n, e):
   relation["natural"="water"]({s},{w},{n},{e});
   way["landuse"="reservoir"]({s},{w},{n},{e});
   way["leisure"="park"]({s},{w},{n},{e});
+  way["natural"="coastline"]({s},{w},{n},{e});
 );
 out geom;'''
-    key = f'osm_{s:.3f}_{w:.3f}_{n:.3f}_{e:.3f}.json'
-    body = fetch('https://overpass-api.de/api/interpreter', key,
-                 data=urllib.parse.urlencode({'data': q}).encode())
-    return json.loads(body)['elements']
+    key = f'osm2_{s:.3f}_{w:.3f}_{n:.3f}_{e:.3f}.json'
+    data = urllib.parse.urlencode({'data': q}).encode()
+    servers = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
+    for attempt in range(6):
+        try:
+            return json.loads(fetch(servers[attempt % 2], key, data=data))['elements']
+        except (urllib.error.URLError, TimeoutError) as e:
+            code = getattr(e, 'code', None)
+            if code is not None and code not in (429, 502, 503, 504):
+                raise
+            wait = 20 * (attempt // 2 + 1)
+            print(f'  Overpass busy ({code or "no answer"}), retrying in {wait} s...')
+            time.sleep(wait)
+    sys.exit('Overpass is not answering; try again later')
 
 
 def classify(tags):
@@ -201,6 +222,86 @@ MIN_LAKE_KM2 = 0.15
 MIN_PARK_KM2 = 0.5
 MIN_RIVER_AREA_KM2 = 0.05
 MAX_RIVERS = 2
+MIN_CANAL_KM2 = 0.4          # the Netherlands has thousands of canals and ditches
+
+
+def join_rings(parts):
+    """Join way pieces (lists of points) end to end into closed rings."""
+    key = lambda p: (round(p['lat'], 7), round(p['lon'], 7))
+    parts = [list(g) for g in parts if len(g) >= 2]
+    rings = []
+    while parts:
+        ring = parts.pop()
+        changed = True
+        while key(ring[0]) != key(ring[-1]) and changed:
+            changed = False
+            for i, g in enumerate(parts):
+                if key(g[0]) == key(ring[-1]):   ring += g[1:]
+                elif key(g[-1]) == key(ring[-1]): ring += g[-2::-1]
+                elif key(g[-1]) == key(ring[0]):  ring = g[:-1] + ring
+                elif key(g[0]) == key(ring[0]):   ring = g[::-1][:-1] + ring
+                else:
+                    continue
+                parts.pop(i)
+                changed = True
+                break
+        if key(ring[0]) == key(ring[-1]) and len(ring) > 3:
+            rings.append(ring)
+    return rings
+
+
+def sea_layer(elements, xy, size):
+    """The sea, from coastline ways (OSM keeps the water on their right-hand
+    side and the land on their left). Coastlines are drawn as walls; every
+    segment seeds sea just to its right and land just to its left, and both
+    grow together (one breadth-first fill), each pixel going to whichever
+    reaches it first. A gap in the walls then only blurs the shore nearby
+    instead of flooding the land."""
+    from collections import deque
+    w, h = size
+    wall = Image.new('1', size, 0)
+    d = ImageDraw.Draw(wall)
+    seeds = []   # (x, y, label): 1 sea, 2 land
+    for el in elements:
+        if el.get('tags', {}).get('natural') != 'coastline' or 'geometry' not in el:
+            continue
+        pts = [xy(p['lat'], p['lon']) for p in el['geometry']]
+        d.line(pts, fill=1, width=2)
+        for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
+            dx, dy = x2 - x1, y2 - y1
+            L = math.hypot(dx, dy)
+            if L < 1:
+                continue
+            mx, my, nx, ny = (x1 + x2) / 2, (y1 + y2) / 2, -dy / L, dx / L   # (nx, ny): right of travel
+            seeds.append((mx + nx * 3, my + ny * 3, 1))
+            seeds.append((mx - nx * 3, my - ny * 3, 2))
+    if not seeds:
+        return None
+    wp = wall.load()
+    label = bytearray(w * h)
+    q = deque()
+    for fx, fy, lab in seeds:
+        x, y = int(fx), int(fy)
+        if 0 <= x < w and 0 <= y < h and not wp[x, y] and not label[y * w + x]:
+            label[y * w + x] = lab
+            q.append((x, y))
+    while q:
+        x, y = q.popleft()
+        lab = label[y * w + x]
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < w and 0 <= ny < h and not wp[nx, ny] and not label[ny * w + nx]:
+                label[ny * w + nx] = lab
+                q.append((nx, ny))
+    # The walls themselves: sea where they border sea (no dark seams on the water).
+    for y in range(h):
+        for x in range(w):
+            if wp[x, y] and not label[y * w + x]:
+                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    if 0 <= nx < w and 0 <= ny < h and label[ny * w + nx] == 1:
+                        label[y * w + x] = 3
+                        break
+    sea = Image.frombytes('L', size, bytes(255 if v in (1, 3) else 0 for v in label)).convert('1')
+    return sea
 
 
 def render_map(elements, bbox, ends):
@@ -229,7 +330,8 @@ def render_map(elements, bbox, ends):
         if el['type'] == 'way' and 'geometry' in el:
             rings.append(el['geometry'])
         elif el['type'] == 'relation':
-            rings += [m['geometry'] for m in el.get('members', []) if m.get('role') == 'outer' and 'geometry' in m]
+            rings += join_rings([m['geometry'] for m in el.get('members', [])
+                                 if m.get('role') == 'outer' and 'geometry' in m])
         is_line = cls in (RUNWAY, MOTORWAY) or (cls == RIVER and tags.get('waterway') == 'river')
         if cls == RIVER and is_line and tags.get('name') not in main_rivers:
             continue
@@ -242,11 +344,18 @@ def render_map(elements, bbox, ends):
                 width = {RUNWAY: SS + 2, MOTORWAY: SS, RIVER: SS}[cls]
                 d.line(pts, fill=1, width=width)
                 continue
+            if len(pts) < 4 or pts[0] != pts[-1]:
+                continue                  # not a closed outline: nothing to fill
             area = ring_area_km2(g)
+            canal = tags.get('water') in ('canal', 'ditch', 'drain', 'stream')
             if (cls == LAKE and area < MIN_LAKE_KM2) or (cls == PARK and area < MIN_PARK_KM2) or \
-               (cls == RIVER and area < MIN_RIVER_AREA_KM2):
+               (cls == RIVER and area < (MIN_CANAL_KM2 if canal else MIN_RIVER_AREA_KM2)):
                 continue
             d.polygon(pts, fill=1)
+
+    sea = sea_layer(elements, xy, (W * SS, H * SS))
+    if sea is not None:
+        layers[LAKE] = Image.composite(Image.new('1', sea.size, 1), layers[LAKE], sea)
 
     # Each map pixel: the highest-priority feature covering enough of it.
     need = {RUNWAY: 2, APRON: 6, MOTORWAY: 3, RIVER: 4, LAKE: 7, PARK: 8}
@@ -279,7 +388,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('icao', help='ICAO airport code, e.g. EGKK')
     ap.add_argument('--tz', help='IANA time zone, e.g. Europe/London')
-    ap.add_argument('--name', help='short name for the panel (max 12 characters)')
+    ap.add_argument('--name', help='short name for the panel (max 16 characters)')
     ap.add_argument('--center', help='map centre as lat,lon (default: the airport)')
     ap.add_argument('--out', help='output folder (default: current)')
     a = ap.parse_args()
@@ -290,7 +399,7 @@ def main():
         sys.exit(f'{icao} not found in OurAirports')
     lat, lon = float(apt['latitude_deg']), float(apt['longitude_deg'])
     iata = (apt.get('iata_code') or '').strip().upper()
-    name = (a.name or short_name(apt['name'], icao)).upper()[:12]
+    name = (a.name or short_name(apt['name'], apt.get('municipality', ''), icao)).upper()[:NAME_MAX]
 
     tz_name = a.tz
     if not tz_name:
