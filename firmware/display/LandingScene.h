@@ -28,5 +28,5 @@ namespace LandingScene
     void render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::Sprite &sprite,
                 Rgb accent, bool greySprite, bool rightward,
                 const char *caption2, const char *runway, Kind kind = Landing,
-                const Sky::Look &sky = Sky::Look());
+                const Sky::Look &sky = Sky::Look(), const AircraftSprites::Livery *livery = nullptr);
 }

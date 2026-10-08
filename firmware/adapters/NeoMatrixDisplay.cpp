@@ -757,7 +757,7 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
             bool known = false;
             const AircraftSprites::Kind kind = AircraftSprites::classify(f.aircraft_code, known);
             FlyAcross::compose(g_workFrame, g_oldFrame, t, AircraftSprites::get(kind),
-                               _current.accent, !known, _path);
+                               AircraftSprites::liveryFor(f, _current.accent), !known, _path);
             present();
             return kAnimFrameMs;
         }
@@ -1312,8 +1312,9 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
         snprintf(caption, sizeof(caption), "%s TO %s", id.c_str(), dest.c_str());
     else
         snprintf(caption, sizeof(caption), "%s", id.c_str());
-    LandingScene::render(g_workFrame, t, AircraftSprites::get(kind), _current.accent, !known,
-                         rightward, caption, _current.runway, _sceneKind, _sceneSky);
+    const AircraftSprites::Livery livery = AircraftSprites::liveryFor(f, _current.accent);
+    LandingScene::render(g_workFrame, t, AircraftSprites::getScene(kind), _current.accent, !known,
+                         rightward, caption, _current.runway, _sceneKind, _sceneSky, &livery);
     present();
     return true;
 }
@@ -1389,12 +1390,19 @@ bool NeoMatrixDisplay::renderSpriteGallery()
         return false;
     }
     g_workFrame.clear();
-    for (int k = 0; k < AircraftSprites::KindCount; ++k)
+    // Nine types a page, a page every 3 s, each in a different airline's colours.
+    static const char *const kAirlines[] = {"BAW", "VIR", "EZY", "RYR", "KLM", "UAE", "DLH", "AFR", "QTR"};
+    const int page = (now / 3000) % ((AircraftSprites::KindCount + 8) / 9);
+    for (int i = 0; i < 9; ++i)
     {
+        const int k = page * 9 + i;
+        if (k >= AircraftSprites::KindCount) break;
         const AircraftSprites::Sprite &sp = AircraftSprites::get((AircraftSprites::Kind)k);
-        const int cx = (k % 3) * 43, cy = (k / 3) * 21;
+        FlightInfo f;
+        f.ident = kAirlines[i];
+        const int cx = (i % 3) * 43, cy = (i / 3) * 21;
         AircraftSprites::draw(g_workFrame, sp, cx + (42 - sp.w) / 2, cy + (21 - sp.h) / 2,
-                              Rgb{90, 170, 255});
+                              AircraftSprites::liveryFor(f, Rgb{90, 170, 255}));
     }
     present();
     return true;

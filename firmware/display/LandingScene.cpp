@@ -185,7 +185,8 @@ namespace
 
 void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::Sprite &sp,
                           Rgb accent, bool greySprite, bool rightward,
-                          const char *ident, const char *runway, Kind kind, const Sky::Look &sky)
+                          const char *ident, const char *runway, Kind kind, const Sky::Look &sky,
+                          const AircraftSprites::Livery *livery)
 {
     const bool goAround = kind == GoAround, takeoff = kind == Takeoff;
     c.clear();
@@ -291,7 +292,8 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     else
     {
         const float u = (float)(tMs - kTouchdownMs) / (kStoppedMs - kTouchdownMs);
-        cx  = kTouchdownX - easeOut(u) * (kTouchdownX - kStopX);
+        const float stopX = max((float)kStopX, sp.w / 2.0f + 3);   // big sprites stop with the nose on screen
+        cx  = kTouchdownX - easeOut(u) * (kTouchdownX - stopX);
         top = groundTop;
     }
 
@@ -301,7 +303,7 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         const float age  = (float)(tMs - kTouchdownMs) / kSmokeMs;
         const float fade = 1.0f - age;
         const int   r    = 1 + (int)(age * 4);
-        const int   wheels = kTouchdownX + sp.w / 6;
+        const int   wheels = kTouchdownX + sp.w / 50;   // main gear, about mid-fuselage
         const int   puffs[][2] = { {0, 0}, {4, -1}, {8, 0}, {11, -2} };
         for (const auto &pf : puffs)
         {
@@ -321,7 +323,7 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     }
 
     AircraftSprites::draw(c, sp, (int)lroundf(cx - sp.w / 2.0f), (int)lroundf(top),
-                          accent, false, greySprite, true);
+                          livery ? *livery : AircraftSprites::Livery(accent), false, greySprite, true);
 
     if (sky.known && sky.lightsOn)
     {

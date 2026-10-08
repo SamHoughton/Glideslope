@@ -152,9 +152,13 @@ and a log.
   brightness, night dimming (UK time, GMT/BST automatic), location and data
   source settings, firmware updates over Wi-Fi, a log and a health endpoint.
 
-Nine aircraft sprites are chosen by ICAO type code: narrowbody, widebody twin,
-A380, 747, regional jet, turboprop, business jet, helicopter and light aircraft.
-Unknown types fall back to a grey narrowbody.
+Twenty aircraft sprites are chosen by ICAO type code (A320, A321, 737, A220,
+E-Jet, CRJ, 757, 767, 787, A330, A350, 777, A340, 747, A380, ATR, Q400,
+business jet, helicopter, light aircraft), shaded and painted in the
+airline's colours for about 45 airlines (colours only, no logos); any other
+airline flies white with its logo colour on the fin. The landing and
+take-off scenes use larger versions with the gear down. Unknown types fall
+back to a grey A320.
 
 ![Aircraft sprites](docs/sprites.png)
 
@@ -304,8 +308,11 @@ sample data, for screenshots or for working on the page without a board.
 
 ## Editing sprites
 
-Sprites are text grids in `tools/sprite_workbench.py`. Run it to render a
-preview image and print the C arrays for `firmware/display/AircraftSprites.cpp`.
+Aircraft are generated from each type's proportions (length, nose, fin,
+engines, upper deck...) by `tools/sprite_gen.py`, which also holds the
+liveries: `python tools/sprite_gen.py sheet out.png` renders a preview sheet
+and `python tools/sprite_gen.py emit` writes `firmware/display/SpriteData.h`.
+The helicopter and light aircraft are hand drawn in `tools/sprite_workbench.py`.
 The landing scene's London skyline is generated the same way by
 `tools/skyline_workbench.py`.
 
