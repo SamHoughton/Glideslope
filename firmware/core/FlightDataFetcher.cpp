@@ -173,11 +173,7 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             Log.printf("FlightDataFetcher: [%u/%u] cache hit for %s\n",
                        stateIdx, totalStates, s.callsign.c_str());
         }
-        else if (!tlsAffordable("route lookup"))
-        {
-            continue;   // not enough heap for TLS now: try this flight next fetch
-        }
-        else
+        else   // (each HTTPS source checks tlsAffordable itself; adsb.im needs no TLS)
         {
             // Cache miss — fetch from hexdb (primary) / AeroAPI (fallback)
             Log.printf("FlightDataFetcher: [%u/%u] fetching %s\n",

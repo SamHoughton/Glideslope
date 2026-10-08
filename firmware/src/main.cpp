@@ -24,6 +24,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "adapters/HexDbFetcher.h"
 #include "adapters/OpenSkyRouteFetcher.h"
 #include "adapters/FallbackFlightFetcher.h"
+#include "adapters/AdsbImRouteFetcher.h"
 #include "adapters/LocalLogoStore.h"
 #include "core/FlightDataFetcher.h"
 #include "adapters/NeoMatrixDisplay.h"
@@ -51,6 +52,9 @@ static OpenSkyRouteFetcher        g_openSkyRoute(g_openSky);
 // Chain: hexdb → AeroAPI (if key set) → OpenSky flights endpoint (if creds set)
 static FallbackFlightFetcher      g_aeroApiFallback(&g_aeroApi, &g_openSkyRoute);
 static FallbackFlightFetcher      g_flightFetcher(&g_hexDb, &g_aeroApiFallback);
+// adsb.im first (plain HTTP, no TLS); the HTTPS chain above only for routes it lacks.
+static AdsbImRouteFetcher         g_adsbIm;
+static FallbackFlightFetcher      g_routes(&g_adsbIm, &g_flightFetcher);
 static LocalLogoStore             g_logoStore;
 static FlightDataFetcher         *g_fetcher = nullptr;
 static NeoMatrixDisplay g_display;
@@ -439,7 +443,8 @@ void setup()
         Log.printf("Flight enrichment: hexdb.io primary%s%s\n",
                    strlen(g_config.aeroapi_key)       > 0 ? " + AeroAPI fallback"       : "",
                    strlen(g_config.opensky_client_id) > 0 ? " + OpenSky route fallback" : "");
-    g_fetcher = new FlightDataFetcher(&g_stateFetcher, &g_flightFetcher, &g_logoStore);
+    Log.println("Flight enrichment: adsb.im routes first (plain HTTP)");
+    g_fetcher = new FlightDataFetcher(&g_stateFetcher, &g_routes, &g_logoStore);
 
     // Force the first fetch to fire on the very first loop() iteration rather
     // than waiting a full FETCH_INTERVAL_SECONDS from boot.

@@ -43,7 +43,7 @@ public:
             return true;   // complete — secondary never touched
 
         // ── Fallback (AeroAPI) ─────────────────────────────────────────────
-        Log.printf("FallbackFlightFetcher: %s — no route from hexdb, trying AeroAPI\n",
+        Log.printf("FallbackFlightFetcher: %s — no route yet, trying the next source\n",
                    callsign.c_str());
 
         FlightInfo secondary;
