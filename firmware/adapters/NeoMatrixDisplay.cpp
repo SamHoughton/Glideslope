@@ -97,9 +97,17 @@ void requestTakeoffDemo() { s_takeoffDemo = true; }
 void requestAlertDemo() { s_alertDemo = true; }
 
 static volatile bool s_runwayDemo = false;
+static char          s_skyPreview[24] = "";
+static volatile unsigned long s_skyPreviewUntil = 0;
+static volatile bool s_showcaseRequest = false;
+void requestSkyPreview(const char *look)
+{
+    strlcpy(s_skyPreview, look, sizeof(s_skyPreview));
+    s_skyPreviewUntil = millis() + 60000;
+    s_showcaseRequest = true;
+}
 void requestRunwayChangeDemo() { s_runwayDemo = true; }
 
-static volatile bool s_showcaseRequest = false;
 void requestShowcase() { s_showcaseRequest = true; }
 
 static char          s_panelMsg[20] = "";
@@ -505,6 +513,12 @@ void NeoMatrixDisplay::showLoading()
 uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
 {
     applyPanelSettings();
+    if (!_skyMs || now - _skyMs > 30000)
+    {
+        _sky = Sky::at(_metar, time(nullptr));
+        _skyMs = now;
+    }
+    if (s_skyPreviewUntil && (long)(now - s_skyPreviewUntil) >= 0) s_skyPreviewUntil = 0;
     pollButton(now);
 
     if (_captionUntilMs && (long)(now - _captionUntilMs) < 0)
@@ -898,7 +912,8 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
     MapRenderer::render(g_workFrame, _traffic, now,
                         homeSet ? g_config.home_lat : g_config.center_lat,
-                        homeSet ? g_config.home_lon : g_config.center_lon, _runwayArr, _runwayDep);
+                        homeSet ? g_config.home_lon : g_config.center_lon, _runwayArr, _runwayDep,
+                        Sky::mapLight(s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky));
 }
 
 // Blend the work frame with `from`: k = 0 shows `from`, 1 shows the work frame.
@@ -1042,6 +1057,7 @@ void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, 
 void NeoMatrixDisplay::startScene(unsigned long now, LandingScene::Kind kind, bool demo)
 {
     _sceneKind      = kind;
+    _sceneSky       = s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky;
     _landingDemo    = demo;
     _landingActive  = true;
     _landingStartMs = now;
@@ -1145,7 +1161,7 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
     else
         snprintf(caption, sizeof(caption), "%s", id.c_str());
     LandingScene::render(g_workFrame, t, AircraftSprites::get(kind), _current.accent, !known,
-                         rightward, caption, _current.runway, _sceneKind);
+                         rightward, caption, _current.runway, _sceneKind, _sceneSky);
     present();
     return true;
 }

@@ -70,14 +70,15 @@ void MapRenderer::project(double lat, double lon, float &x, float &y)
 }
 
 void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned long now,
-                         double homeLat, double homeLon, const char *arrivals, const char *departures)
+                         double homeLat, double homeLon, const char *arrivals, const char *departures,
+                         float light)
 {
     // Base layer: Heathrow's from flash, or the airport pack's.
     for (int y = 0; y < FrameCanvas::H; ++y)
         for (int x = 0; x < FrameCanvas::W; ++x)
         {
             const uint8_t *p = AirportPack::mapColour(AirportPack::mapIndex(x, y));
-            c.set(x, y, Rgb{p[0], p[1], p[2]});
+            c.set(x, y, FrameCanvas::scale(Rgb{p[0], p[1], p[2]}, light));   // dimmer at night
         }
 
     // Home: a small warm plus.

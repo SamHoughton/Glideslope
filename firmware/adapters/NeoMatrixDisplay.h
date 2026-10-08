@@ -13,6 +13,7 @@
 #include "display/Traffic.h"
 #include "display/DailyStats.h"
 #include "display/RunwayTracker.h"
+#include "display/Sky.h"
 #include "display/InfoScreens.h"
 #include "display/LandingScene.h"
 #include "utils/Weather.h"
@@ -56,6 +57,9 @@ void requestTakeoffDemo();
 // Show a sample emergency-squawk alert (demo).
 void requestAlertDemo();
 void requestRunwayChangeDemo();
+// Plays the showcase under a forced sky ("night+rain", see Sky::preview);
+// scenes keep that look for a minute.
+void requestSkyPreview(const char *look);
 
 // Scripted ~35 s showcase (for demos and the README recording): a fictional
 // flight, GS101, flies in on final for 27L with the Glideslope badge, lands,
@@ -189,6 +193,9 @@ private:
     int                  _arrivalCount = 0;
     char                 _weather[24] = "";       // guarded by _lock
     Metar                _metar;                  // guarded by _lock
+    Sky::Look            _sky;                    // the light now (refreshed every 30 s)
+    unsigned long        _skyMs = 0;
+    Sky::Look            _sceneSky;               // the light the current scene is drawn in
 
     // Emergency-squawk alert (guarded by _lock)
     char                 _alertCode[6] = "", _alertMeaning[12] = "", _alertIdent[12] = "", _alertDetail[24] = "";

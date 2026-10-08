@@ -59,8 +59,49 @@ namespace
         "################################################################################################################################",
     };
     constexpr int kSkylineRows = sizeof(kSkyline) / sizeof(kSkyline[0]);
-    const Rgb kSilhouette { 40,  45,  62};
-    const Rgb kWindowLit  {150, 110,  40};
+    const Rgb kSilhouetteNight { 40,  45,  62};
+    const Rgb kWindowLitNight  {150, 110,  40};
+    // This frame's scenery colours (from the sky).
+    Rgb  kSilhouette = kSilhouetteNight;
+    Rgb  kWindowLit  = kWindowLitNight;
+    Rgb  s_hills{26, 30, 42}, s_roof{58, 64, 82};
+    bool s_windows = true;
+
+    // Captions get a dark shadow when there is sky behind them.
+    bool s_shadow = false;
+    void caption(FrameCanvas &c, int y, const char *s, Rgb col)
+    {
+        const int x = (FrameCanvas::W - FrameCanvas::textWidth(s)) / 2;
+        if (s_shadow) c.text(x + 1, y + 1, s, Rgb{0, 0, 0});
+        c.text(x, y, s, col);
+    }
+
+    // Aircraft lights after dark: landing light and its beam ahead of the
+    // nose, a red beacon on top, white strobes. Drawn for leftward travel.
+    void drawAircraftLights(FrameCanvas &c, int left, int top, int w, int h, uint32_t tMs,
+                            float slope, bool landingLight)
+    {
+        const int noseY = top + (h * 3) / 5;
+        if (landingLight)
+        {
+            c.set(left, noseY, Rgb{255, 255, 235});
+            for (int i = 1; i <= 10; ++i)
+            {
+                const float k = 0.55f * (1.0f - i / 11.0f);
+                const int y = noseY + (int)lroundf(i * slope);
+                for (int dy = -(i / 4); dy <= i / 4; ++dy)
+                {
+                    const Rgb under = FrameCanvas::unpack(c.get(left - i, y + dy));
+                    c.set(left - i, y + dy, Rgb{(uint8_t)min(255, under.r + (int)(230 * k)),
+                                                (uint8_t)min(255, under.g + (int)(225 * k)),
+                                                (uint8_t)min(255, under.b + (int)(190 * k))});
+                }
+            }
+        }
+        if ((tMs + 300) % 1200 < 120) c.set(left + w / 2, top, Rgb{255, 40, 30});        // beacon
+        if (tMs % 1000 < 60 || (tMs % 1000 > 140 && tMs % 1000 < 200))
+            c.set(left + w - 2, top + h / 3, Rgb{255, 255, 255});                         // strobe
+    }
     const Rgb kWarning    {230,  40,  40};
 
     // Drawn pre-mirrored when the scene will be mirrored, so London never
@@ -76,7 +117,7 @@ namespace
                 if (ch == '.') continue;
                 const int px = mirrored ? FrameCanvas::W - 1 - x : x;
                 if (ch == 'r')      { if (lightOn) c.set(px, top + r, kWarning); }
-                else if (ch == 'w') c.set(px, top + r, kWindowLit);
+                else if (ch == 'w') c.set(px, top + r, s_windows ? kWindowLit : kSilhouette);
                 else                c.set(px, top + r, kSilhouette);
             }
     }
@@ -92,7 +133,7 @@ namespace
             if (x < 0 || x >= FrameCanvas::W) return;
             c.set(mirrored ? FrameCanvas::W - 1 - x : x, y, col);
         };
-        const Rgb hills{26, 30, 42};
+        const Rgb hills = s_hills;
         for (int x = 0; x < FrameCanvas::W; ++x)
         {
             const int h = 3 + (int)lroundf(2.0f * sinf(x * 0.045f) + 1.5f * sinf(x * 0.11f + 1.3f));
@@ -107,12 +148,13 @@ namespace
         {
             for (int y = base - hg[2]; y < base; ++y)
                 for (int x = hg[0]; x < hg[0] + hg[1]; ++x) put(x, y, kSilhouette);
-            for (int x = hg[0]; x < hg[0] + hg[1]; ++x) put(x, base - hg[2], Rgb{58, 64, 82});
+            for (int x = hg[0]; x < hg[0] + hg[1]; ++x) put(x, base - hg[2], s_roof);
         }
         // Terminal: long and low, two rows of windows.
         for (int y = base - 6; y < base; ++y)
             for (int x = 88; x < 124; ++x) put(x, y, kSilhouette);
-        for (int x = 90; x < 122; x += 2) { put(x, base - 4, kWindowLit); if (x % 6) put(x, base - 2, kWindowLit); }
+        const Rgb win = s_windows ? kWindowLit : FrameCanvas::scale(kSilhouette, 0.8f);
+        for (int x = 90; x < 122; x += 2) { put(x, base - 4, win); if (x % 6) put(x, base - 2, win); }
         // Control tower: shaft, flared cab with windows, beacon on top.
         const int tx = 70;
         for (int y = base - 18; y < base; ++y)
@@ -143,10 +185,17 @@ namespace
 
 void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::Sprite &sp,
                           Rgb accent, bool greySprite, bool rightward,
-                          const char *ident, const char *runway, Kind kind)
+                          const char *ident, const char *runway, Kind kind, const Sky::Look &sky)
 {
     const bool goAround = kind == GoAround, takeoff = kind == Takeoff;
     c.clear();
+    Sky::drawSky(c, sky, tMs, kSurfaceY - 1);
+    kSilhouette = Sky::shade(sky, kSilhouetteNight);
+    kWindowLit  = kWindowLitNight;
+    s_hills     = Sky::shade(sky, Rgb{26, 30, 42});
+    s_roof      = Sky::shade(sky, Rgb{58, 64, 82});
+    s_windows   = !sky.known || sky.lightsOn;
+    s_shadow    = sky.known && sky.night < 0.6f;
     if (g_airport.londonSkyline) drawSkyline(c, tMs, rightward);
     else                         drawGenericSkyline(c, tMs, rightward);
 
@@ -154,7 +203,8 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     for (int y = kSurfaceY; y <= kSurfaceY + 3; ++y)
         for (int x = 0; x < kKeysX + 9; ++x)
             c.set(x, y, kSurface);
-    for (int x = 0; x < kKeysX + 9; x += 2) c.set(x, kSurfaceY - 1, kEdge);
+    const Rgb edge = sky.known && sky.lightsOn ? Rgb{235, 215, 150} : kEdge;
+    for (int x = 0; x < kKeysX + 9; x += (sky.known && sky.lightsOn ? 4 : 2)) c.set(x, kSurfaceY - 1, edge);
     for (int x = 2; x < kKeysX - 4; ++x)
         if ((x / 4) % 2 == 0) c.set(x, kSurfaceY + 2, kCentre);
     for (int x = kKeysX; x <= kKeysX + 8; x += 2)
@@ -263,6 +313,20 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     AircraftSprites::draw(c, sp, (int)lroundf(cx - sp.w / 2.0f), (int)lroundf(top),
                           accent, false, greySprite, true);
 
+    if (sky.known && sky.lightsOn)
+    {
+        // Beam slope: down on the approach, level on the ground, up in a climb.
+        float slope = 0;
+        bool  landingLight = true;
+        if (takeoff)        slope = tMs < kLiftOffMs ? 0.0f : -0.35f;
+        else if (goAround)  slope = tMs < kGoAroundAtMs ? 0.45f : -0.4f;
+        else if (tMs < kTouchdownMs) slope = 0.45f;
+        else landingLight = tMs < kStoppedMs - 300;   // off as it slows to taxi
+        drawAircraftLights(c, (int)lroundf(cx - sp.w / 2.0f), (int)lroundf(top), sp.w, sp.h, tMs,
+                           slope, landingLight);
+    }
+    Sky::drawWeather(c, sky, tMs);
+
     if (rightward) mirror(c);
 
     // Go-around caption: flashing red once it starts to climb.
@@ -271,8 +335,8 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         char line1[16];
         snprintf(line1, sizeof(line1), "GO AROUND");
         const Rgb red = (tMs / 250) % 2 ? Rgb{255, 70, 60} : Rgb{255, 255, 255};
-        c.text((FrameCanvas::W - FrameCanvas::textWidth(line1)) / 2, 6, line1, red);
-        c.text((FrameCanvas::W - FrameCanvas::textWidth(ident)) / 2, 17, ident, kText);
+        caption(c, 6, line1, red);
+        caption(c, 17, ident, kText);
         return;
     }
 
@@ -282,8 +346,8 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         const float k = min(1.0f, (float)(tMs - kLiftOffMs) / 250.0f);
         char line1[16];
         snprintf(line1, sizeof(line1), runway && runway[0] ? "DEPARTED %s" : "DEPARTED", runway);
-        c.text((FrameCanvas::W - FrameCanvas::textWidth(line1)) / 2, 6, line1, FrameCanvas::scale(accent, k));
-        c.text((FrameCanvas::W - FrameCanvas::textWidth(ident)) / 2, 17, ident, FrameCanvas::scale(kText, k));
+        caption(c, 6, line1, FrameCanvas::scale(accent, k));
+        caption(c, 17, ident, FrameCanvas::scale(kText, k));
         return;
     }
 
@@ -293,7 +357,7 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         const float k = min(1.0f, (float)(tMs - kTouchdownMs) / 250.0f);
         char line1[16];
         snprintf(line1, sizeof(line1), runway && runway[0] ? "LANDED %s" : "LANDED", runway);
-        c.text((FrameCanvas::W - FrameCanvas::textWidth(line1)) / 2, 6, line1, FrameCanvas::scale(accent, k));
-        c.text((FrameCanvas::W - FrameCanvas::textWidth(ident)) / 2, 17, ident, FrameCanvas::scale(kText, k));
+        caption(c, 6, line1, FrameCanvas::scale(accent, k));
+        caption(c, 17, ident, FrameCanvas::scale(kText, k));
     }
 }
