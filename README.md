@@ -6,7 +6,8 @@
   <b>An LED flight board for the planes landing over your house.</b><br>
   Live ADS-B on a 128×64 LED panel: each arrival flies in, counts down to the
   runway and lands; departures take off; between them, a map, an arrivals
-  board and the weather.
+  board and the weather.<br>
+  Heathrow out of the box, and around fifty more airports a click away.
 </p>
 
 <p align="center">
@@ -40,7 +41,9 @@ repository (see [Airline logos](#airline-logos)).
 ### The web page
 
 Every board serves a page at `http://glideslope.local/`: a live mirror of the
-panel, the animations on demand, every setting, firmware updates and a log.
+panel drawn as glowing LEDs, what's on it now, the animations on demand, every
+setting in tabs (display, airport, night, data, system, log), firmware updates
+and a log.
 
 | Desktop | Phone |
 | --- | --- |
@@ -81,8 +84,9 @@ panel, the animations on demand, every setting, firmware updates and a log.
   round even at a busy Heathrow (skipped if the next plane is under 45
   seconds out). Lead time, break length and which screens rotate are set on
   the web page.
-- **London map**: the Thames, reservoirs, M25 and
-  Heathrow's runways (pre-rendered into flash), with every tracked aircraft as
+- **Map**: the airport's surroundings at 128×64, generated from
+  OpenStreetMap (around Heathrow: the Thames, the reservoirs, the M4 and
+  M25), with every tracked aircraft as
   a small plane icon pointing the way it is flying, in its airline colour; the
   one on final blinks. A home marker can be set in the web page.
 - **Arrivals board**: the next four arrivals with their type and
@@ -103,7 +107,13 @@ panel, the animations on demand, every setting, firmware updates and a log.
 - **Weather**: Heathrow's wind (with a compass arrow), gusts, visibility,
   weather, temperature, pressure, and the crosswind and head- or tailwind on
   the runway in use.
-- **Runway in use**, e.g. `27L UNTIL 15:00` (westerly ops alternate at 15:00).
+- **Runways in use**, worked out from the traffic itself: every aircraft on
+  final or climbing out counts, at any airport, with several runways at once
+  (arrivals top left of the map, departures top right; `27L UNTIL 15:00` on
+  the arrivals board). When the landing direction changes (a westerly to
+  easterly switch, confirmed by two aircraft) the panel announces
+  `RUNWAY CHANGE · NOW LANDING 09L`. With nothing landing for 30 minutes,
+  no runway is shown.
 - **Quiet hours**: a dim clock (with the weather) overnight when there's no
   traffic.
 - **Board button** cycles Auto / Map / Arrivals / Stats / Weather.
@@ -217,15 +227,53 @@ Without a logo, the card shows a tile in a default colour with the airline code.
 
 ## Other airports
 
-The approach logic is Heathrow-specific: runway thresholds live in
-`firmware/display/ApproachModel.cpp`. Replace them with your airport's thresholds
-and courses, and change `LHR` in the labels.
+Heathrow is built in. For another airport, install an **airport pack** from
+the board's web page: under **Airport**, pick one from the list and press
+**Install airport**. Your browser downloads it from this repository and
+hands it to the board, which restarts watching that airport. **Centre
+search on airport** moves the search area there too, and **Back to
+Heathrow** removes the pack.
+
+There are [ready-made packs](packs/) for around fifty of the busiest
+airports, from Gatwick, Manchester and Dublin to Schiphol, JFK, Dubai and
+Sydney:
+
+![Airport maps on the panel](docs/airports.png)
+
+For any other airport, make one yourself:
+
+```bash
+python tools/airport_pack.py EGNM --tz Europe/London
+```
+
+This writes `EGNM.airport` and a preview PNG; choose it under **…or a pack
+file** on the web page. `python tools/build_packs.py` rebuilds the
+ready-made set from [`packs/airports.txt`](packs/airports.txt).
+
+The pack holds the airport's position, IATA code, short name, local time
+zone, every runway end (threshold, landing direction, displaced thresholds)
+and a 128×64 map: the main river or two, large lakes and parks, motorways,
+runways, aprons and approach lanes. Runways come from
+[OurAirports](https://ourairports.com/data/) (public domain) and the map from
+[OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL) via the
+Overpass API. Options: `--name` sets the panel name (12 characters),
+`--center lat,lon` centres the map elsewhere (your home, say), and `--tz` can
+be left out if the `timezonefinder` package is installed.
+
+Everything follows the pack: approach and departure runway detection, the
+arrivals board, the weather station (the airport's own METAR), the map, local
+time and the labels. Outside London the landing and take-off scenes use a
+generic skyline (hills, hangars, a terminal and a control tower with a
+flashing beacon); Heathrow's 15:00 runway alternation applies only to
+Heathrow.
 
 ## Brand
 
 The logo, wordmark, favicon and social preview are drawn on an LED grid like
 the panel, by `tools/brand_workbench.py` (`python tools/brand_workbench.py a`
 for the marks, `social` for the preview card); the files are in `brand/`.
+The board's web page is `firmware/web/index.html`; the build turns it into
+`utils/WebPage.h` (`firmware/scripts/gen_webpage.py`), filling in the logo.
 `tools/webui_preview.py` serves the board's web page on your computer with
 sample data, for screenshots or for working on the page without a board.
 

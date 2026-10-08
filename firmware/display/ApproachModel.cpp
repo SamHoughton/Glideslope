@@ -1,18 +1,9 @@
 #include "display/ApproachModel.h"
+#include "config/Airport.h"
 #include <math.h>
 
 namespace
 {
-    // Heathrow (EGLL) runway thresholds. Positions are approximate (within ~100 m);
-    // good enough to pick a runway and estimate time to touchdown.
-    struct Threshold { const char *name; double lat, lon; float course; };
-    const Threshold kThresholds[] = {
-        {"27R", 51.4777, -0.4332, 269.7f},   // north runway, east end, landing westbound
-        {"27L", 51.4649, -0.4340, 269.7f},   // south runway, east end
-        {"09L", 51.4775, -0.4850,  89.7f},   // north runway, west end, landing eastbound
-        {"09R", 51.4647, -0.4826,  89.7f},   // south runway, west end
-    };
-    constexpr double kAirportLat = 51.4700, kAirportLon = -0.4543;
 
     constexpr float kApproachMaxKm   = 40.0f;   // beyond this it's "inbound", not on final
     constexpr float kApproachMaxFt   = 8000.0f;
@@ -32,7 +23,6 @@ namespace
         y = (float)((lat - lat0) * 110.574);
     }
 
-    bool isEgll(const AirportInfo &a) { return a.code_icao == "EGLL" || a.code_iata == "LHR"; }
 
     float clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 }
@@ -44,11 +34,11 @@ ApproachStatus ApproachModel::evaluate(const FlightInfo &f)
         return s;
 
     float ax, ay;
-    offsetKm(kAirportLat, kAirportLon, f.lat, f.lon, ax, ay);
+    offsetKm(g_airport.lat, g_airport.lon, f.lat, f.lon, ax, ay);
     const float airportKm = sqrtf(ax * ax + ay * ay);
 
-    const bool  arriving  = isEgll(f.destination);
-    const bool  departing = isEgll(f.origin);
+    const bool  arriving  = AirportPack::isHome(f.destination);
+    const bool  departing = AirportPack::isHome(f.origin);
     const float alt       = isnan(f.baro_altitude) ? NAN : (float)f.baro_altitude;
     const float vr        = isnan(f.vertical_rate) ? 0.0f : (float)f.vertical_rate;
     const float gsKt      = isnan(f.velocity) ? NAN : (float)f.velocity;
@@ -59,10 +49,11 @@ ApproachStatus ApproachModel::evaluate(const FlightInfo &f)
     const bool maybeArrival = arriving || (!departing && !isnan(alt) && alt < 4000 && vr < -300);
     if (maybeArrival && !isnan(track) && (isnan(alt) || alt < kApproachMaxFt))
     {
-        const Threshold *best = nullptr;
+        const RunwayEnd *best = nullptr;
         float bestAlong = 0, bestCross = 1e9f;
-        for (const Threshold &t : kThresholds)
+        for (int k = 0; k < g_airport.runwayCount; ++k)
         {
+            const RunwayEnd &t = g_airport.runways[k];
             if (angleDiff(track, t.course) > kAlignedDeg)
                 continue;
             float x, y;
@@ -104,17 +95,29 @@ ApproachStatus ApproachModel::evaluate(const FlightInfo &f)
     if (departing)
     {
         s.phase = ApproachStatus::Outbound;
-        // Departure runway: the runway whose far end the aircraft is beyond,
-        // picked by which centreline it is closest to.
+        // Departure runway: climbing out along a runway's extended centreline,
+        // in that runway's direction and ahead of its threshold (it took off
+        // from that end). The closest centreline wins.
         if (!isnan(track) && airportKm < 20 && vr > 200)
         {
-            const bool westbound = angleDiff(track, 270) <= 45;
-            const bool eastbound = angleDiff(track, 90) <= 45;
-            if (westbound || eastbound)
+            const RunwayEnd *best = nullptr;
+            float bestCross = 1e9f;
+            for (int k = 0; k < g_airport.runwayCount; ++k)
             {
-                const bool north = ay > (float)((51.4712 - kAirportLat) * 110.574); // midway between runways
-                const char *rwy = westbound ? (north ? "27R" : "27L") : (north ? "09L" : "09R");
-                strlcpy(s.runway, rwy, sizeof(s.runway));
+                const RunwayEnd &t = g_airport.runways[k];
+                if (angleDiff(track, t.course) > 45) continue;
+                float x, y;
+                offsetKm(t.lat, t.lon, f.lat, f.lon, x, y);
+                const float crs   = t.course * (float)M_PI / 180.0f;
+                const float along = x * sinf(crs) + y * cosf(crs);          // ahead of the threshold
+                const float cross = fabsf(x * cosf(crs) - y * sinf(crs));
+                if (along < 0 || along > 20) continue;
+                if (cross > 2.0f + along * 0.25f) continue;
+                if (cross < bestCross) { best = &t; bestCross = cross; }
+            }
+            if (best)
+            {
+                strlcpy(s.runway, best->name, sizeof(s.runway));
                 s.phase = ApproachStatus::Departed;
             }
         }
@@ -145,10 +148,11 @@ bool ApproachModel::climbingOut(const FlightInfo &f, char *runway, size_t len)
 {
     if (isnan(f.lat) || isnan(f.lon) || isnan(f.heading) || isnan(f.vertical_rate) || f.vertical_rate < 300)
         return false;
-    const Threshold *best = nullptr;
+    const RunwayEnd *best = nullptr;
     float bestCross = 1e9f;
-    for (const Threshold &t : kThresholds)
+    for (int k = 0; k < g_airport.runwayCount; ++k)
     {
+        const RunwayEnd &t = g_airport.runways[k];
         if (angleDiff((float)f.heading, t.course) > 30) continue;
         float x, y;
         offsetKm(t.lat, t.lon, f.lat, f.lon, x, y);
@@ -170,9 +174,9 @@ void ApproachModel::label(const ApproachStatus &s, char *buf, size_t len)
     {
         case ApproachStatus::Approach:   snprintf(buf, len, "APPROACH %s", s.runway); break;
         case ApproachStatus::Landing:    snprintf(buf, len, "LANDING %s", s.runway);  break;
-        case ApproachStatus::Inbound:    snprintf(buf, len, "INBOUND LHR");           break;
+        case ApproachStatus::Inbound:    snprintf(buf, len, "INBOUND %s", g_airport.iata[0] ? g_airport.iata : g_airport.icao); break;
         case ApproachStatus::Departed:   snprintf(buf, len, "DEPARTED %s", s.runway); break;
-        case ApproachStatus::Outbound:   snprintf(buf, len, "DEPARTED LHR");          break;
+        case ApproachStatus::Outbound:   snprintf(buf, len, "DEPARTED %s", g_airport.iata[0] ? g_airport.iata : g_airport.icao); break;
         case ApproachStatus::Overflight: snprintf(buf, len, "OVERFLIGHT");            break;
         default:                         if (len) buf[0] = '\0';                      break;
     }

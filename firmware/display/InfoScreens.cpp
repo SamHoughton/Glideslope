@@ -1,6 +1,7 @@
 #include "display/InfoScreens.h"
 #include <math.h>
 #include <time.h>
+#include "config/Airport.h"
 
 namespace
 {
@@ -29,11 +30,13 @@ void InfoScreens::runwaySummary(const char *runway, char *out, size_t len, bool 
     if (!runway || !runway[0]) { if (len) out[0] = '\0'; return; }
     const bool westerly = runway[0] == '2';
     struct tm lt;
-    // Westerly ops alternate the landing runway at 15:00 (27L <-> 27R).
-    if (withSwap && westerly && localNow(lt) && lt.tm_hour >= 6 && lt.tm_hour < 15)
+    // Heathrow's westerly ops alternate the landing runway at 15:00 (27L <-> 27R).
+    if (withSwap && westerly && g_airport.lhrAlternation && localNow(lt) && lt.tm_hour >= 6 && lt.tm_hour < 15)
         snprintf(out, len, "%s UNTIL 15:00", runway);
-    else
+    else if (g_airport.lhrAlternation)
         snprintf(out, len, "%s %s ARR", westerly ? "WEST" : "EAST", runway);
+    else
+        snprintf(out, len, "%s ARRIVALS", runway);
 }
 
 namespace
@@ -196,7 +199,10 @@ void InfoScreens::renderArrivals(FrameCanvas &c, const Arrival *rows, int n, con
 void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runway, unsigned long nowMs)
 {
     c.clear();
-    centred(c, 2, "HEATHROW WEATHER", kTitle);
+    char title[24];
+    snprintf(title, sizeof(title), "%s WEATHER", g_airport.name);
+    if (FrameCanvas::textWidth(title) > FrameCanvas::W - 4) snprintf(title, sizeof(title), "%s WEATHER", g_airport.icao);
+    centred(c, 2, title, kTitle);
     for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 11, kDim);
     if (!m.valid) { centred(c, 30, "NO REPORT YET", kDim); return; }
 
@@ -239,21 +245,20 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
 
     // Visibility, weather, temperature, pressure.
     char row[24], vis[8] = "-";
-    if (m.cavok)             snprintf(vis, sizeof(vis), "CAVOK");
-    else if (m.visM >= 9999) snprintf(vis, sizeof(vis), "10KM+");
-    else if (m.visM >= 5000) snprintf(vis, sizeof(vis), "%dKM", m.visM / 1000);
-    else if (m.visM >= 0)    snprintf(vis, sizeof(vis), "%dM", m.visM);
+    if (m.visText[0]) strlcpy(vis, m.visText, sizeof(vis));
     snprintf(row, sizeof(row), "VIS %s%s%s", vis, m.wx[0] ? " " : "", m.wx);
     c.text(4, 41, row, Rgb{200, 205, 215});
     row[0] = '\0';
     if (m.tempC != -99) snprintf(row, sizeof(row), "%dC", m.tempC);
-    if (m.qnh) snprintf(row + strlen(row), sizeof(row) - strlen(row), "%sQ%d", row[0] ? "  " : "", m.qnh);
+    char pr[10];
+    Weather::pressure(m, pr, sizeof(pr));
+    if (pr[0]) snprintf(row + strlen(row), sizeof(row) - strlen(row), "%s%s", row[0] ? "  " : "", pr);
     c.text(4, 51, row, Rgb{200, 205, 215});
 
     // Wind on the runway in use: crosswind, and head- or tailwind.
     if (runway && runway[0] && m.windDir >= 0 && m.windKt > 0)
     {
-        const int rwyDeg = (runway[0] - '0') * 100 + (runway[1] - '0') * 10;
+        const int rwyDeg = atoi(runway) * 10;   // "27L" -> 270, "1R" -> 10
         int cross = 0, tail = 0;
         Weather::components(m, rwyDeg, cross, tail);
         char rw[16];
@@ -309,6 +314,26 @@ void InfoScreens::renderRareBanner(FrameCanvas &c, const char *line1, const char
     const int w2 = FrameCanvas::textWidth(line2, 2, 11);
     if (w2 <= FrameCanvas::W - 4) c.text((FrameCanvas::W - w2) / 2, 28, line2, kGold, 2, 11);
     else                         centred(c, 32, line2, kGold);
+}
+
+void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const char *to, uint32_t tMs)
+{
+    c.clear();
+    // An amber frame that pulses, the new runway large in the middle.
+    const float k = 0.55f + 0.45f * sinf(tMs / 160.0f);
+    const Rgb frame = FrameCanvas::scale(kValue, k);
+    for (int x = 0; x < FrameCanvas::W; ++x) { c.set(x, 0, frame); c.set(x, FrameCanvas::H - 1, frame); }
+    for (int y = 0; y < FrameCanvas::H; ++y) { c.set(0, y, frame); c.set(FrameCanvas::W - 1, y, frame); }
+    centred(c, 5, "RUNWAY CHANGE", (tMs / 400) % 2 ? kValue : kTitle);
+    centred(c, 16, "NOW LANDING", kLabel);
+    const int w = FrameCanvas::textWidth(to, 2, 11);
+    c.text((FrameCanvas::W - w) / 2, 27, to, kValue, 2, 11);
+    if (from && from[0])
+    {
+        char was[12];
+        snprintf(was, sizeof(was), "WAS %s", from);
+        centred(c, 52, was, Rgb{140, 146, 160});
+    }
 }
 
 void InfoScreens::renderCaption(FrameCanvas &c, const char *text)

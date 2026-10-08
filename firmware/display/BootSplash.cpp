@@ -1,5 +1,6 @@
 #include "display/BootSplash.h"
 #include "display/InfoScreens.h"
+#include "config/Airport.h"
 #include <math.h>
 
 namespace
@@ -56,6 +57,6 @@ void BootSplash::render(FrameCanvas &c, uint32_t tMs, const char *runway)
     // Runway in use, e.g. "WEST 27L ARR" or "27L UNTIL 15:00".
     char label[20];
     InfoScreens::runwaySummary(runway, label, sizeof(label), true);
-    if (!label[0]) snprintf(label, sizeof(label), "LHR");
+    if (!label[0]) snprintf(label, sizeof(label), "%s", g_airport.iata[0] ? g_airport.iata : g_airport.icao);
     c.text((FrameCanvas::W - FrameCanvas::textWidth(label)) / 2, 50, label, kLabel);
 }

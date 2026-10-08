@@ -19,6 +19,8 @@ struct Metar
     bool  cavok   = false;
     int   tempC   = -99;      // -99 = unknown
     int   qnh     = 0;        // hPa; 0 = unknown
+    int   altInHg100 = 0;     // US altimeter setting (A2989 -> 2989); 0 = given in hPa
+    char  visText[8] = "";    // visibility as the panel shows it: "10KM+", "7KM", "800M", "10SM", "1.5SM"
     char  wx[8]   = "";       // present weather, e.g. "RA", "+TSRA" (first group only)
     char  raw[112] = "";
 };
@@ -30,6 +32,8 @@ namespace Weather
     bool parse(const char *raw, Metar &out);
     // Panel line, at most maxChars characters (drops detail to fit).
     void line(const Metar &m, char *out, size_t len, int maxChars = 21);
+    // Pressure as the panel shows it: "Q1012", or "A29.89" where the report uses inches.
+    void pressure(const Metar &m, char *out, size_t len);
     // Wind component across / along a runway heading (kt; tail > 0 = tailwind).
     void components(const Metar &m, int runwayDeg, int &crossKt, int &tailKt);
 }

@@ -54,7 +54,9 @@ bool Tar1090Fetcher::fetchStateVectors(double centerLat,
         return false;
     }
 
-    const int tracked = ReadsbParser::parse(aircraft, centerLat, centerLon, radiusKm, outStateVectors);
+    std::vector<StateVector> fresh;
+    const int tracked = ReadsbParser::parse(aircraft, centerLat, centerLon, radiusKm, fresh);
+    outStateVectors.swap(fresh);
     Log.printf("Tar1090Fetcher: %d tracked, %u within %.0f km\n",
                tracked, (unsigned)outStateVectors.size(), radiusKm);
     return true;

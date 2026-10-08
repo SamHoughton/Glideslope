@@ -7,8 +7,9 @@ WebServer library to avoid framework include-path issues.
 #include "utils/TelnetLogger.h"
 #include "utils/WifiProvisioner.h"
 #include "utils/StageTrace.h"
-#include "utils/BrandMark.h"
 #include "config/RuntimeConfig.h"
+#include "config/Airport.h"
+#include <LittleFS.h>
 #include "adapters/NeoMatrixDisplay.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -95,7 +96,7 @@ void WebConfig::loop()
             int bodyLen = raw.substring(clIdx + 16, clEnd).toInt();
             r.contentLength = bodyLen;
             // A firmware image is streamed straight to flash by its handler.
-            if (r.path == "/api/update") bodyLen = 0;
+            if (r.path == "/api/update" || r.path == "/api/airport") bodyLen = 0;
             if (bodyLen > 0 && bodyLen < 8192)
             {
                 r.body.reserve(bodyLen + 1);
@@ -124,9 +125,12 @@ void WebConfig::loop()
     else if (r.path == "/api/frame"         && r.method == "GET")  handleGetFrame(client);
     else if (r.path == "/api/status"        && r.method == "GET")  handleGetStatus(client);
     else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength);
+    else if (r.path == "/api/airport"       && r.method == "POST") handleAirport(client, r.contentLength);
+    else if (r.path == "/api/airport/reset" && r.method == "POST") handleAirportReset(client);
     else if (r.path == "/api/demo/showcase" && r.method == "POST") { requestShowcase(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/takeoff"  && r.method == "POST") { requestTakeoffDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/squawk"   && r.method == "POST") { requestAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/runway"   && r.method == "POST") { requestRunwayChangeDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/weather"  && r.method == "POST") { requestScreenPreview(4, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/arrivals" && r.method == "POST") { requestScreenPreview(3, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/sprites"  && r.method == "POST") { requestSpriteGallery(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -207,9 +211,9 @@ String WebConfig::qparam(const String &query, const char *key)
 // Route handlers
 // ---------------------------------------------------------------------------
 
-// Declared at the bottom of this file as a raw string literal
-extern const char kHtmlPage[];
-extern const size_t kHtmlPageLen;
+// The page: web/index.html, turned into a header at build time
+// (scripts/gen_webpage.py).
+#include "utils/WebPage.h"
 
 void WebConfig::handleRoot(WiFiClient &c)
 {
@@ -440,10 +444,25 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["web_requests"]   = (uint32_t)_requests;
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
     doc["metar"]          = _metar;
+    doc["runways_arr"]    = _rwyArr;
+    doc["runways_dep"]    = _rwyDep;
+    doc["airport"]        = g_airport.icao;
+    doc["airport_name"]   = g_airport.name;
+    doc["airport_lat"]    = g_airport.lat;
+    doc["airport_lon"]    = g_airport.lon;
+    doc["airport_pack"]   = !g_airport.builtIn;
     if (_displayMutex) xSemaphoreGive(_displayMutex);
     String out;
     serializeJson(doc, out);
     sendHttp(c, 200, "application/json", out);
+}
+
+void WebConfig::setRunways(const char *arrivals, const char *departures)
+{
+    if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
+    strlcpy(_rwyArr, arrivals, sizeof(_rwyArr));
+    strlcpy(_rwyDep, departures, sizeof(_rwyDep));
+    if (_displayMutex) xSemaphoreGive(_displayMutex);
 }
 
 void WebConfig::setWeather(const char *metar)
@@ -544,6 +563,82 @@ void WebConfig::handleUpdate(WiFiClient &c, int length)
     ESP.restart();
 }
 
+// Airport pack: streamed to a temporary file, checked (header parses, map is
+// the right size), then swapped in; the board restarts to load it.
+void WebConfig::handleAirport(WiFiClient &c, int length)
+{
+    auto reply = [&](bool ok, const String &msg) {
+        String body = ok ? String("{\"ok\":true,\"airport\":\"") + msg + "\"}"
+                         : String("{\"ok\":false,\"error\":\"") + msg + "\"}";
+        sendHttp(c, ok ? 200 : 400, "application/json", body);
+    };
+    if (length <= (int)AirportPack::kMapBytes || length > 8192)
+    {
+        // Read the upload first: replying with unread data resets the
+        // connection and the browser never sees the reason.
+        uint8_t sink[256];
+        int left = length;
+        const unsigned long t0 = millis();
+        while (left > 0 && c.connected() && millis() - t0 < 10000)
+        {
+            const int n = c.read(sink, min((int)sizeof(sink), left));
+            if (n > 0) left -= n; else delay(2);
+        }
+        reply(false, "not an airport pack (wrong size)");
+        return;
+    }
+
+    const char *tmp = "/airport.tmp";
+    File f = LittleFS.open(tmp, "w");
+    if (!f) { reply(false, "cannot write to the file system"); return; }
+    uint8_t buf[512];
+    int got = 0;
+    unsigned long lastData = millis();
+    while (got < length && c.connected() && millis() - lastData < 10000)
+    {
+        const int n = c.read(buf, min((int)sizeof(buf), length - got));
+        if (n <= 0) { delay(2); continue; }
+        f.write(buf, n);
+        got += n;
+        lastData = millis();
+    }
+    f.close();
+    if (got != length) { LittleFS.remove(tmp); reply(false, "upload interrupted"); return; }
+
+    // Check it before replacing the current pack.
+    f = LittleFS.open(tmp, "r");
+    const String header = f.readStringUntil((char)10);   // newline ends the header
+    const size_t rest = f.size() - f.position();
+    f.close();
+    Airport a;
+    String error;
+    if (!AirportPack::parseHeader(header.c_str(), a, error) || rest != AirportPack::kMapBytes)
+    {
+        LittleFS.remove(tmp);
+        reply(false, error.length() ? error : String("map is the wrong size"));
+        return;
+    }
+    LittleFS.remove(AirportPack::kPath);
+    LittleFS.rename(tmp, AirportPack::kPath);
+    Log.printf("WebConfig: airport pack %s (%s) installed, restarting\n", a.name, a.icao);
+    reply(true, a.icao);
+    c.flush();
+    c.stop();
+    delay(500);
+    ESP.restart();
+}
+
+void WebConfig::handleAirportReset(WiFiClient &c)
+{
+    LittleFS.remove(AirportPack::kPath);
+    Log.println("WebConfig: airport pack removed, back to Heathrow; restarting");
+    sendHttp(c, 200, "application/json", "{\"ok\":true}");
+    c.flush();
+    c.stop();
+    delay(500);
+    ESP.restart();
+}
+
 // Raw 128x64 RGB565 frame currently on the panel (little-endian, row-major).
 void WebConfig::handleGetFrame(WiFiClient &c)
 {
@@ -566,9 +661,9 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
     // Built in a static buffer (only the web task calls this): a log reply
     // every 1.5 s used to allocate and free several KB, fragmenting the heap.
     // Sub-steps for hang reports: 82 building, 83 sending.
-    static char s_json[4 * 1024];
+    static char s_json[3 * 1024];
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 82);
-    size_t n = Log.linesJson(cursor, 32, s_json, sizeof(s_json));
+    size_t n = Log.linesJson(cursor, 24, s_json, sizeof(s_json));
     if (n == 0) n = snprintf(s_json, sizeof(s_json), "{\"cursor\":%lu,\"lines\":[]}", (unsigned long)cursor);
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 83);
     c.printf("HTTP/1.1 200 OK\r\n"
@@ -579,299 +674,3 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
     sendChunked(c, (const uint8_t *)s_json, n, 1024);
 }
 
-// ---------------------------------------------------------------------------
-// Embedded single-page UI
-// ---------------------------------------------------------------------------
-
-// Attribute values and JS strings use single quotes so the C string needs no escaping.
-const char kHtmlPage[] =
-"<!DOCTYPE html>"
-"<html lang='en'>"
-"<head>"
-"<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-"<title>Glideslope</title>"
-"<link rel='icon' type='image/svg+xml' href=\"" GS_FAVICON_URI "\">"
-"<meta name='theme-color' content='#0d1117'>"
-"<style>"
-"*{box-sizing:border-box;margin:0;padding:0}"
-"body{background:#0d1117;color:#c9d1d9;font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif}"
-"header{padding:12px 18px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:12px}"
-"header svg{width:28px;height:28px;flex:none}header b{letter-spacing:.08em}header b i{font-style:normal;color:#ffb93c}"
-"header b{font-size:16px;color:#f0f6fc}header span{color:#8b949e;font-size:13px}"
-".wrap{display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);gap:18px;padding:18px;max-width:1200px}"
-"@media(max-width:900px){.wrap{grid-template-columns:minmax(0,1fr);padding:12px;gap:12px}}"
-".card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px 16px;margin-bottom:16px}"
-"h2{color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}"
-"#dmp{display:block;width:100%;height:auto;background:#050608;border-radius:4px;image-rendering:pixelated}"
-"#now{margin-top:8px;color:#8b949e;font-size:13px;min-height:20px}#now b{color:#f0f6fc}"
-".row{display:grid;grid-template-columns:1fr 1fr;gap:10px}"
-".f{margin-bottom:10px}"
-"label{display:block;color:#8b949e;font-size:12px;margin-bottom:4px}"
-"small{color:#6e7681;font-size:11px}"
-"input,select{width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 8px;border-radius:5px;font:inherit}"
-"input:focus,select:focus{outline:2px solid #388bfd;border-color:#388bfd}"
-"input[type=range]{padding:0;accent-color:#388bfd}"
-".ck{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;color:#c9d1d9;font-size:13px;cursor:pointer}"
-".ck input{width:auto;margin-top:3px;accent-color:#238636}"
-".btns{display:flex;flex-wrap:wrap;gap:8px}"
-"button{border:1px solid #30363d;background:#21262d;color:#c9d1d9;padding:8px 14px;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;min-height:36px}"
-"button:hover{border-color:#8b949e}"
-"button.go{background:#238636;border-color:#2ea043;color:#fff}"
-"details summary{cursor:pointer;color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.06em}"
-"details[open] summary{margin-bottom:10px}"
-".bar{position:sticky;bottom:0;background:#0d1117;padding:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}"
-"#st{color:#8b949e;font-size:13px}"
-"#lb{height:260px;background:#0d1117;border:1px solid #21262d;border-radius:4px;overflow-y:auto;padding:8px;font:11px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}"
-"input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.7)}"
-"</style>"
-"</head>"
-"<body>"
-"<header>" GS_BRAND_SVG "<b>GLIDE<i>SLOPE</i></b><span id='hdr'></span></header>"
-"<div class='wrap'>"
-
-// ── Left: live panel, animations, log ───────────────────────────────────────
-"<div>"
-"<div class='card'>"
-"<h2>On the panel now</h2>"
-"<canvas id='dmp' width='512' height='256'></canvas>"
-"<div id='now'>&nbsp;</div>"
-"</div>"
-"<div class='card'>"
-"<h2>Animations</h2>"
-"<div class='btns'>"
-"<button data-demo='showcase' class='go'>Showcase (35 s)</button>"
-"<button data-demo='flyacross'>Replay fly-across</button>"
-"<button data-demo='landing'>Replay landing</button>"
-"<button data-demo='rare'>Rare spot</button>"
-"<button data-demo='goaround'>Go-around</button>"
-"<button data-demo='takeoff'>Take-off</button>"
-"<button data-demo='squawk'>Emergency squawk</button>"
-"<button data-demo='arrivals'>Arrivals board (10 s)</button>"
-"<button data-demo='weather'>Weather (10 s)</button>"
-"<button data-demo='sprites'>Aircraft sprites (10 s)</button>"
-"<button data-demo='splash'>Scanning screen (10 s)</button>"
-"<button data-demo='map'>London map (30 s)</button>"
-"<button data-demo='stats'>Today's stats (10 s)</button>"
-"<button data-demo='clock'>Night clock (10 s)</button>"
-"</div>"
-"</div>"
-"<div class='card'>"
-"<h2>Log</h2>"
-"<div id='lb'></div>"
-"</div>"
-"</div>"
-
-// ── Right: settings ─────────────────────────────────────────────────────────
-"<div>"
-"<div class='card'>"
-"<h2>Display</h2>"
-"<div class='f'><label for='display_brightness'>Brightness <small id='bv'></small></label>"
-"<input type='range' min='5' max='255' id='display_brightness'></div>"
-"<div class='f'><label for='screen_facing'>Window faces <small>(the way you look out; sets which way planes fly across)</small></label>"
-"<select id='screen_facing'>"
-"<option>N</option><option>NNE</option><option>NE</option><option>ENE</option>"
-"<option>E</option><option>ESE</option><option>SE</option><option>SSE</option>"
-"<option>S</option><option>SSW</option><option>SW</option><option>WSW</option>"
-"<option>W</option><option>WNW</option><option>NW</option><option>NNW</option>"
-"</select></div>"
-"<div class='row'>"
-"<div class='f'><label for='card_lead_seconds'>Card before landing (s) <small>(when an approach flies in)</small></label>"
-"<input type='number' min='30' max='600' id='card_lead_seconds'></div>"
-"<div class='f'><label for='interlude_seconds'>Break after a landing (s) <small>(0 = none)</small></label>"
-"<input type='number' min='0' max='120' id='interlude_seconds'></div>"
-"</div>"
-"<div class='f'><label>Screens between planes <small>(each comes round in turn)</small></label>"
-"<div class='btns'>"
-"<label class='ck'><input type='checkbox' data-scr='1'>Map</label>"
-"<label class='ck'><input type='checkbox' data-scr='2'>Arrivals</label>"
-"<label class='ck'><input type='checkbox' data-scr='4'>Stats</label>"
-"<label class='ck'><input type='checkbox' data-scr='8'>Weather</label>"
-"</div></div>"
-"<div class='f'><label for='display_cycle_seconds'>Minimum time per approach card (s)</label>"
-"<input type='number' min='3' id='display_cycle_seconds'></div>"
-"<label class='ck'><input type='checkbox' id='display_border'>Airline-coloured border</label>"
-"<label class='ck'><input type='checkbox' id='display_nearest_only'><span>Nearest aircraft only <small>(one lookup per fetch; a new card when the nearest plane changes)</small></span></label>"
-"<label class='ck'><input type='checkbox' id='display_flip'>Rotate 180&#176;</label>"
-"</div>"
-
-"<div class='card'>"
-"<h2>Location</h2>"
-"<div class='row'>"
-"<div class='f'><label for='center_lat'>Latitude</label><input type='number' step='any' id='center_lat'></div>"
-"<div class='f'><label for='center_lon'>Longitude</label><input type='number' step='any' id='center_lon'></div>"
-"</div>"
-"<div class='row'>"
-"<div class='f'><label for='home_lat'>Home marker lat <small>(map; 0 = centre)</small></label><input type='number' step='any' id='home_lat'></div>"
-"<div class='f'><label for='home_lon'>Home marker lon</label><input type='number' step='any' id='home_lon'></div>"
-"</div>"
-"<div class='row'>"
-"<div class='f'><label for='radius_km'>Radius (km)</label><input type='number' step='1' min='1' id='radius_km'></div>"
-"<div class='f'><label for='min_altitude_ft'>Ignore below (ft)</label><input type='number' step='1' min='0' placeholder='no filter' id='min_altitude_ft'></div>"
-"</div>"
-"</div>"
-
-"<div class='card'>"
-"<h2>Night mode</h2>"
-"<label class='ck'><input type='checkbox' id='night_mode_enabled'><span>Dim at night <small>(UK time, GMT/BST automatic)</small></span></label>"
-"<div class='row'>"
-"<div class='f'><label for='night_start_time'>From</label><input type='time' id='night_start_time'></div>"
-"<div class='f'><label for='night_end_time'>Until</label><input type='time' id='night_end_time'></div>"
-"</div>"
-"<div class='row'>"
-"<div class='f'><label for='night_brightness'>Night brightness <small>(0 = off)</small></label><input type='number' min='0' max='255' id='night_brightness'></div>"
-"</div>"
-"</div>"
-
-"<div class='card'>"
-"<details>"
-"<summary>Data sources &amp; advanced</summary>"
-"<label class='ck'><input type='checkbox' id='use_community_feeds'><span>Live positions from adsb.lol / adsb.fi <small>(free, ~1 s fresh; OpenSky is the fallback)</small></span></label>"
-"<div class='f'><label for='opensky_client_id'>OpenSky client ID</label>"
-"<input id='opensky_client_id' autocomplete='off' spellcheck='false'></div>"
-"<div class='f'><label for='opensky_client_secret'>OpenSky client secret</label>"
-"<input type='password' id='opensky_client_secret' autocomplete='new-password' placeholder='leave blank to keep current'></div>"
-"<div class='f'><label for='tar1090_host'>Local ADS-B receiver (tar1090) <small>(blank = OpenSky only)</small></label>"
-"<input id='tar1090_host' autocomplete='off' spellcheck='false' placeholder='e.g. 192.168.1.10'></div>"
-"<div class='f'><label for='aeroapi_key'>FlightAware AeroAPI key <small>(optional, paid)</small></label>"
-"<input type='password' id='aeroapi_key' autocomplete='new-password' placeholder='leave blank to keep current'></div>"
-"<label class='ck'><input type='checkbox' id='opensky_priority'>Use OpenSky first for routes <small>(after restart)</small></label>"
-"<div class='row'>"
-"<div class='f'><label for='fetch_interval_seconds'>OpenSky fetch (s)</label><input type='number' min='30' id='fetch_interval_seconds'></div>"
-"<div class='f'><label for='local_fetch_interval_seconds'>Live feed / receiver fetch (s)</label><input type='number' min='1' id='local_fetch_interval_seconds'></div>"
-"</div>"
-"<div class='row'>"
-"<div class='f'><label for='aeroapi_cache_ttl_seconds'>Route cache (s)</label><input type='number' min='60' id='aeroapi_cache_ttl_seconds'></div>"
-"<div class='f'><label for='aeroapi_fail_cache_ttl_seconds'>Retry unknown routes after (s)</label><input type='number' min='30' id='aeroapi_fail_cache_ttl_seconds'></div>"
-"</div>"
-"<div class='btns'>"
-"<button id='wifi'>Change Wi-Fi network&hellip;</button>"
-"<button id='bak'>Back up settings</button>"
-"<button id='res'>Restore settings&hellip;</button><input type='file' id='resf' accept='.json' style='display:none'>"
-"<button id='rst'>Reset to defaults</button>"
-"<button id='reboot'>Restart</button>"
-"</div>"
-"</details>"
-"</div>"
-
-"<div class='card'>"
-"<h2>Firmware</h2>"
-"<div id='ver' class='f'><small>&nbsp;</small></div>"
-"<div class='f'><label for='fw'>Install an update <small>(firmware.bin from a release or your own build)</small></label>"
-"<input type='file' id='fw' accept='.bin'></div>"
-"<div class='btns'><button id='upd'>Install update</button><span id='ust' style='align-self:center;color:#8b949e;font-size:13px'></span></div>"
-"</div>"
-
-"<div class='bar'><button class='go' id='save'>Save</button><span id='st' role='status'></span></div>"
-"</div>"
-"</div>"
-
-"<script>"
-"var $=function(id){return document.getElementById(id);};"
-"var cur=0,lines=0,lb=$('lb');"
-"function status(t,ms){$('st').textContent=t;if(ms)setTimeout(function(){$('st').textContent='';},ms);}"
-"function post(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});}"
-"var toTime=function(m){var h=Math.floor(m/60),n=m%60;return(h<10?'0':'')+h+':'+(n<10?'0':'')+n;};"
-"var toMin=function(t){var p=(t||'00:00').split(':');return parseInt(p[0])*60+(parseInt(p[1])||0);};"
-
-"function load(){"
-"fetch('/api/config').then(function(r){return r.json();}).then(function(d){"
-"Object.keys(d).forEach(function(k){var e=$(k);if(!e)return;if(e.type==='checkbox')e.checked=!!d[k];else e.value=d[k];});"
-"if(d.min_altitude_ft===-1)$('min_altitude_ft').value='';"
-"$('night_start_time').value=toTime(d.night_start_minutes||0);"
-"$('night_end_time').value=toTime(d.night_end_minutes||0);"
-"['opensky_client_secret','aeroapi_key'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});"
-"$('bv').textContent=d.display_brightness;"
-"document.querySelectorAll('[data-scr]').forEach(function(e){e.checked=!!(d.screens&parseInt(e.dataset.scr));});"
-"$('hdr').textContent=d.center_lat.toFixed(3)+', '+d.center_lon.toFixed(3)+' · '+d.radius_km+' km';"
-"});"
-"}"
-
-"function save(){"
-"var d={};"
-"['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});"
-"d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});"
-"['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',"
-"'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});"
-"['display_nearest_only','display_border','display_flip','night_mode_enabled','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});"
-"d.screen_facing=$('screen_facing').value;"
-"d.tar1090_host=$('tar1090_host').value;"
-"var ma=$('min_altitude_ft').value;d.min_altitude_ft=ma===''?-1:parseInt(ma);"
-"d.night_start_minutes=toMin($('night_start_time').value);"
-"d.night_end_minutes=toMin($('night_end_time').value);"
-"['opensky_client_id','opensky_client_secret','aeroapi_key'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});"
-"status('Saving…');"
-"post('/api/config',d).then(function(r){return r.json();})"
-".then(function(j){status(j.ok?'Saved':'Error: '+(j.error||'?'),3000);load();})"
-".catch(function(){status('Could not reach the board',4000);});"
-"}"
-
-// Brightness applies as you drag (debounced), without needing Save.
-"var bt;$('display_brightness').addEventListener('input',function(e){"
-"$('bv').textContent=e.target.value;clearTimeout(bt);"
-"bt=setTimeout(function(){post('/api/config',{display_brightness:parseInt(e.target.value)});},250);});"
-
-"$('save').addEventListener('click',save);"
-"$('rst').addEventListener('click',function(){if(!confirm('Reset all settings to the firmware defaults?'))return;"
-"post('/api/config/reset').then(function(){load();status('Reset to defaults',3000);});});"
-"$('reboot').addEventListener('click',function(){if(!confirm('Restart the board now?'))return;"
-"post('/api/restart').catch(function(){});status('Restarting…');setTimeout(function(){location.reload();},7000);});"
-"$('wifi').addEventListener('click',function(){if(!confirm('Forget the saved Wi-Fi and restart as the Glideslope-Setup hotspot? You will need to join that network to set it up again.'))return;"
-"post('/api/wifi/reset').catch(function(){});status('Wi-Fi cleared: join Glideslope-Setup');});"
-"document.querySelectorAll('[data-demo]').forEach(function(b){b.addEventListener('click',function(){post('/api/demo/'+b.dataset.demo);});});"
-
-"function poll(){if(document.hidden){setTimeout(poll,3000);return;}"
-"fetch('/api/log?cursor='+cur).then(function(r){return r.json();}).then(function(d){"
-"if(d.lines&&d.lines.length){var atEnd=lb.scrollHeight-lb.scrollTop<=lb.clientHeight+8;"
-"d.lines.forEach(function(l){var v=document.createElement('div');v.textContent=l;lb.appendChild(v);"
-"if(++lines>400)lb.removeChild(lb.firstChild);});cur=d.cursor;if(atEnd)lb.scrollTop=lb.scrollHeight;}"
-"}).catch(function(){}).finally(function(){setTimeout(poll,1500);});"
-"}"
-
-// Exact panel frame (GET /api/frame, RGB565) drawn as LED dots. All polling
-// is gentle (every request costs the board heap) and stops in a hidden tab.
-"function pollFrame(){if(document.hidden){setTimeout(pollFrame,3000);return;}"
-"fetch('/api/frame',{cache:'no-store'}).then(function(r){return r.arrayBuffer();}).then(function(ab){"
-"var px=new Uint16Array(ab),g=$('dmp').getContext('2d');if(px.length<8192)return;"
-"g.fillStyle='#050608';g.fillRect(0,0,512,256);"
-"for(var i=0;i<8192;i++){var v=px[i],x=(i&127)*4,y=(i>>7)*4;"
-"if(!v){g.fillStyle='#14171d';g.fillRect(x+1,y+1,2,2);continue;}"
-"var r=(v>>11)&31,gg=(v>>5)&63,b=v&31;"
-"g.fillStyle='rgb('+((r<<3)|(r>>2))+','+((gg<<2)|(gg>>4))+','+((b<<3)|(b>>2))+')';g.fillRect(x,y,3,3);}"
-"}).catch(function(){}).finally(function(){setTimeout(pollFrame,800);});"
-"}"
-
-"function pollNow(){if(document.hidden){setTimeout(pollNow,3000);return;}"
-"fetch('/api/display').then(function(r){return r.json();}).then(function(d){"
-"var n=$('now');if(!d.active){n.textContent='Scanning for traffic';return;}"
-"n.innerHTML='';var b=document.createElement('b');b.textContent=d.flight+(d.flight!==d.ident?' ('+d.ident+')':'');n.appendChild(b);"
-"n.appendChild(document.createTextNode('  '+(d.origin||'?')+' → '+(d.dest||'?')+'  ·  '+(d.aircraft_name||'')+"
-"'  ·  '+d.altitude_ft+' ft'+(d.registration?'  ·  '+d.registration:'')));"
-"}).catch(function(){}).finally(function(){setTimeout(pollNow,3000);});"
-"}"
-
-"fetch('/api/status').then(function(r){return r.json();}).then(function(s){"
-"var v=$('ver').firstChild;v.textContent='Running '+s.version+' (built '+s.built+')'+(s.metar?' · '+s.metar:'');});"
-"$('upd').addEventListener('click',function(){var f=$('fw').files[0],u=$('ust');"
-"if(!f){u.textContent='Choose a .bin file first';return;}"
-"if(!confirm('Install '+f.name+' and restart the board?'))return;"
-"var x=new XMLHttpRequest();x.open('POST','/api/update');"
-"x.upload.onprogress=function(e){if(e.lengthComputable)u.textContent='Uploading '+Math.round(e.loaded*100/e.total)+'%';};"
-"x.onload=function(){var j={};try{j=JSON.parse(x.responseText);}catch(e){}"
-"if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}"
-"else u.textContent='Failed: '+(j.error||x.status);};"
-"x.onerror=function(){u.textContent='Upload failed (connection lost)';};"
-"x.setRequestHeader('Content-Type','application/octet-stream');x.send(f);});"
-"$('bak').addEventListener('click',function(){fetch('/api/config').then(function(r){return r.text();}).then(function(t){"
-"var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'application/json'}));"
-"a.download='glideslope-settings.json';a.click();status('Saved (API secrets are not included)',4000);});});"
-"$('res').addEventListener('click',function(){$('resf').click();});"
-"$('resf').addEventListener('change',function(e){var f=e.target.files[0];if(!f)return;f.text().then(function(t){"
-"var d;try{d=JSON.parse(t);}catch(x){status('Not a settings file',4000);return;}"
-"if(!confirm('Restore settings from '+f.name+'?'))return;"
-"post('/api/config',d).then(function(r){return r.json();}).then(function(j){status(j.ok?'Restored':'Error',3000);load();});});e.target.value='';});"
-"load();poll();pollFrame();pollNow();"
-"</script>"
-"</body>"
-"</html>";
-
-const size_t kHtmlPageLen = sizeof(kHtmlPage) - 1;  // exclude null terminator

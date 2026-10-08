@@ -14,6 +14,8 @@ Routes:
   GET  /api/frame         — raw 128x64 RGB565 frame currently on the panel
   GET  /api/status        — version, uptime, memory, weather
   POST /api/update        — new firmware image (raw .bin body); installs and restarts
+  POST /api/airport       — airport pack (tools/airport_pack.py); installs and restarts
+  POST /api/airport/reset — back to the built-in Heathrow; restarts
 
 Usage:
   Call g_webConfig.begin() once after WiFi connects.
@@ -50,6 +52,7 @@ public:
 
     // Latest raw METAR, reported by /api/status (main loop).
     void setWeather(const char *metar);
+    void setRunways(const char *arrivals, const char *departures);
 
     // Requests accepted so far (heartbeat diagnostics).
     uint32_t requestsServed() const { return _requests; }
@@ -62,6 +65,7 @@ private:
     // by the web task; guarded by _displayMutex.
     String                  _displayJson = "{\"active\":false}";
     String                  _metar;               // guarded by _displayMutex
+    char                    _rwyArr[12] = "", _rwyDep[12] = "";   // guarded by _displayMutex
     SemaphoreHandle_t       _displayMutex = nullptr;
     volatile uint32_t       _requests = 0;
 
@@ -93,6 +97,8 @@ private:
     void handleGetFrame(WiFiClient &c);
     void handleGetStatus(WiFiClient &c);
     void handleUpdate(WiFiClient &c, int length);
+    void handleAirport(WiFiClient &c, int length);
+    void handleAirportReset(WiFiClient &c);
 };
 
 extern WebConfig g_webConfig;

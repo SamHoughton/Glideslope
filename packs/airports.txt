@@ -1,0 +1,59 @@
+# Ready-made airport packs: ICAO, IANA time zone, optional panel name.
+# Build with: python tools/build_packs.py   (Heathrow is built into the firmware)
+
+# UK and Ireland
+EGKK  Europe/London
+EGSS  Europe/London
+EGGW  Europe/London
+EGLC  Europe/London     LONDON CITY
+EGCC  Europe/London
+EGBB  Europe/London
+EGPH  Europe/London
+EGPF  Europe/London
+EGGD  Europe/London
+EGNX  Europe/London     EAST MIDLANDS
+EGAA  Europe/London     BELFAST
+EIDW  Europe/Dublin
+
+# Europe
+LFPG  Europe/Paris      PARIS CDG
+LFPO  Europe/Paris      ORLY
+EHAM  Europe/Amsterdam
+EDDF  Europe/Berlin     FRANKFURT
+EDDM  Europe/Berlin     MUNICH
+EDDB  Europe/Berlin     BERLIN
+LEMD  Europe/Madrid     MADRID
+LEBL  Europe/Madrid     BARCELONA
+LIRF  Europe/Rome       FIUMICINO
+LSZH  Europe/Zurich     ZURICH
+LOWW  Europe/Vienna     VIENNA
+EKCH  Europe/Copenhagen COPENHAGEN
+ESSA  Europe/Stockholm  ARLANDA
+ENGM  Europe/Oslo       OSLO
+LPPT  Europe/Lisbon     LISBON
+LTFM  Europe/Istanbul   ISTANBUL
+
+# North America
+KJFK  America/New_York
+KEWR  America/New_York  NEWARK
+KBOS  America/New_York  BOSTON
+KATL  America/New_York  ATLANTA
+KMIA  America/New_York  MIAMI
+KORD  America/Chicago   O'HARE
+KDFW  America/Chicago   DALLAS FT WORTH
+KDEN  America/Denver    DENVER
+KLAX  America/Los_Angeles LOS ANGELES
+KSFO  America/Los_Angeles
+KSEA  America/Los_Angeles SEATTLE
+CYYZ  America/Toronto   TORONTO
+CYVR  America/Vancouver VANCOUVER
+
+# Middle East, Asia, Oceania
+OMDB  Asia/Dubai        DUBAI
+OTHH  Asia/Qatar        DOHA
+VHHH  Asia/Hong_Kong    HONG KONG
+WSSS  Asia/Singapore    CHANGI
+RJTT  Asia/Tokyo        HANEDA
+RKSI  Asia/Seoul        INCHEON
+YSSY  Australia/Sydney  SYDNEY
+NZAA  Pacific/Auckland  AUCKLAND

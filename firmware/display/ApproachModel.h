@@ -1,6 +1,6 @@
 #pragma once
 /*
-Purpose: Work out what an aircraft is doing relative to Heathrow's runways —
+Purpose: Work out what an aircraft is doing relative to the airport's runways —
 approach to a specific threshold, inbound, departed or overflight — plus the
 distance to go, an ETA, and a 0..1 progress value for the card's strip.
 Inputs come from FlightInfo (position, track, altitude, groundspeed,

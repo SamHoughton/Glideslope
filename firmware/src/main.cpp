@@ -36,6 +36,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/GeoUtils.h"
 #include "utils/HeapWatch.h"
 #include "config/RuntimeConfig.h"
+#include "config/Airport.h"
 
 static OpenSkyFetcher             g_openSky;
 static Tar1090Fetcher             g_tar1090;
@@ -165,7 +166,7 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
 // descending and pointing at Heathrow; its ETA is a rough guess.
 static void updateArrivals(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
 {
-    constexpr double kLhrLat = 51.4700, kLhrLon = -0.4543;
+    const double kLhrLat = g_airport.lat, kLhrLon = g_airport.lon;
     InfoScreens::Arrival rows[16];
     int n = 0;
     for (const StateVector &s : states)
@@ -261,6 +262,7 @@ void setup()
     // Mount LittleFS for local logo storage. Failure is non-fatal.
     g_logoStore.initialize();
     RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
+    AirportPack::load();    // Heathrow, or the airport pack on LittleFS
     g_display.loadStats();  // today's tally survives a restart
 
     // Resolve WiFi credentials: NVS-saved (provisioner) overrides compile-time constants.
@@ -309,7 +311,7 @@ void setup()
 
             // Synchronise the clock for night-mode scheduling. SNTP syncs in the
             // background; the TZ rule makes localtime() follow GMT/BST.
-            configTzTime(kLocalTimeZone, "pool.ntp.org", "time.nist.gov");
+            configTzTime(g_airport.tz, "pool.ntp.org", "time.nist.gov");
             Log.println("NTP sync started (pool.ntp.org)");
 
             g_webConfig.begin(80);  // start HTTP config + log UI
@@ -498,6 +500,11 @@ void loop()
         heapCheckpoint("fetch cycle");
         checkSquawks(g_states);
         g_display.noteTraffic(g_states);
+        {
+            char arr[12], dep[12];
+            g_display.runwaysInUse(arr, sizeof(arr), dep, sizeof(dep));
+            g_webConfig.setRunways(arr, dep);
+        }
         updateArrivals(g_states, g_flights);
 
         static String lastIdents;

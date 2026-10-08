@@ -6,8 +6,8 @@ screenshots and for working on the page without a board.
   python tools/webui_preview.py                 # http://127.0.0.1:8765/
   python tools/webui_preview.py --shots         # docs/webui-desktop.png, docs/webui-phone.png
 
-The page is extracted from firmware/utils/WebConfig.cpp (the C string the
-board serves), so it is exactly what the board shows. The API answers with
+The page is firmware/web/index.html with the brand mark filled in, exactly as
+the board serves it. The API answers with
 sample settings (Heathrow, no keys), a sample flight and log, and a panel
 frame from the last tools/record_demo.py recording (else a blank panel).
 Screenshots use Chrome or Edge in headless mode.
@@ -26,24 +26,15 @@ ROOT = Path(__file__).resolve().parent.parent
 PORT = 8765
 
 
-def c_string(lit):
-    return bytes(lit, 'utf-8').decode('unicode_escape').encode('latin-1').decode('utf-8')
-
-
 def page_html():
-    macros = {}
-    for name, val in re.findall(r'#define (\w+) "(.*)"', (ROOT / 'firmware/utils/BrandMark.h').read_text(encoding='utf-8')):
-        macros[name] = val
-    src = (ROOT / 'firmware/utils/WebConfig.cpp').read_text(encoding='utf-8')
-    body = src[src.index('const char kHtmlPage[] ='):]
-    body = body[:body.index(';\n')]
-    out = []
-    for m in re.finditer(r'"((?:[^"\\]|\\.)*)"|\b(GS_[A-Z_]+)\b|//[^\n]*', body):
-        if m.group(1) is not None:
-            out.append(c_string(m.group(1)))
-        elif m.group(2):
-            out.append(macros[m.group(2)])
-    return ''.join(out)
+    """The page exactly as the board serves it (scripts/gen_webpage.py)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('gen_webpage', ROOT / 'firmware' / 'scripts' / 'gen_webpage.py')
+    mod = importlib.util.module_from_spec(spec)
+    import io, contextlib
+    with contextlib.redirect_stdout(io.StringIO()):
+        spec.loader.exec_module(mod)
+    return mod.page()
 
 
 CONFIG = {
@@ -116,9 +107,23 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/api/display':    self.send(DISPLAY)
         elif p == '/api/frame':      self.send(self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
+        elif p.startswith('/packs/') and (ROOT / p.lstrip('/')).is_file():
+            # The repo's packs/, for trying the airport picker locally
+            # (in the browser console: PACKS='/packs/' then reload the list).
+            self.send((ROOT / p.lstrip('/')).read_bytes(),
+                      'application/json' if p.endswith('.json') else 'application/octet-stream')
         else:                        self.send_error(404)
 
     def do_POST(self):
+        n = int(self.headers.get('Content-Length') or 0)
+        body = self.rfile.read(n) if n else b''
+        if self.path == '/api/airport':
+            head = body.split(b'\n', 1)[0]
+            try:
+                self.send({'ok': True, 'airport': json.loads(head)['icao'], 'bytes': len(body)})
+            except Exception:
+                self.send({'ok': False, 'error': 'header is not JSON'})
+            return
         self.send({'ok': True})
 
 
@@ -152,8 +157,9 @@ def main():
         srv.serve_forever()
         return
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    shoot(url, str(ROOT / 'docs' / 'webui-desktop.png'), 1280, 1180, 1)
-    shoot(url, str(ROOT / 'docs' / 'webui-phone.png'), 390, 1500, 2)
+    shoot(url, str(ROOT / 'docs' / 'webui-desktop.png'), 1280, 820, 1)
+    # Headless Chrome won't make a window narrower than ~500 px, so the phone
+    # shot is taken by hand (a browser's device mode at 375 px).
     srv.shutdown()
 
 
