@@ -8,6 +8,7 @@ the map and the scanning screen.
 #include <Arduino.h>
 #include "display/FrameCanvas.h"
 #include "display/DailyStats.h"
+#include "display/HoldTracker.h"
 #include "utils/Weather.h"
 
 namespace InfoScreens
@@ -44,6 +45,8 @@ namespace InfoScreens
     void renderClock(FrameCanvas &c, uint32_t animMs, const char *weather = "");
     void renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs);
     void renderCaption(FrameCanvas &c, const char *text);
+    // Holding stacks: one row per stack, its aircraft circling a racetrack.
+    void renderHolding(FrameCanvas &c, const HoldTracker::Row *rows, int n, uint32_t animMs);
     // The landing direction has changed (from may be "").
     void renderRunwayChange(FrameCanvas &c, const char *from, const char *to, uint32_t tMs);
 }

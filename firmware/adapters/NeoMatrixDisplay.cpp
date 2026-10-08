@@ -21,6 +21,7 @@ Responsibilities:
 #include "config/Airport.h"
 #include "display/DemoLogo.h"
 #include "utils/TelnetLogger.h"
+#include "utils/Notify.h"
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
 
@@ -340,16 +341,50 @@ void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
     const unsigned long now = millis();
     Lock l(_lock);
     _stats.noteTraffic(states);
+    _holds.noteStates(states, now);
     if (_runways.update(states, now))
     {
         strlcpy(_rwyFrom, _runways.changeFrom(), sizeof(_rwyFrom));
         strlcpy(_rwyTo, _runways.changeTo(), sizeof(_rwyTo));
         _rwyChangeMs = now;
         _rwyChangeActive = true;
+        Notify::post(Notify::Runway, 3, "airplane_arriving", "Runway change",
+                     "%s now landing on %s (was %s)", g_airport.name, _rwyTo, _rwyFrom);
     }
     strlcpy(_runwayInUse, _runways.mainArrival(), sizeof(_runwayInUse));
     _runways.arrivals(_runwayArr, sizeof(_runwayArr));
     _runways.departures(_runwayDep, sizeof(_runwayDep));
+}
+
+void NeoMatrixDisplay::noteStack(int stack, const std::vector<StateVector> &states)
+{
+    const unsigned long now = millis();
+    Lock l(_lock);
+    _holds.noteStack(stack, states, now);
+}
+
+int NeoMatrixDisplay::holdingSummary(char *out, size_t len, int *longestMin)
+{
+    HoldTracker::Row rows[Airport::kMaxHolds + 1];
+    int n, total;
+    {
+        Lock l(_lock);
+        n = _holds.rows(rows, Airport::kMaxHolds + 1, millis());
+    }
+    out[0] = '\0';
+    total = 0;
+    if (longestMin) *longestMin = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        if (!rows[i].count) continue;
+        total += rows[i].count;
+        if (longestMin && rows[i].longestMin > *longestMin) *longestMin = rows[i].longestMin;
+        char part[32];
+        snprintf(part, sizeof(part), "%s%s %u (%u min)", out[0] ? ", " : "", rows[i].name,
+                 (unsigned)rows[i].count, (unsigned)rows[i].longestMin);
+        strlcat(out, part, len);
+    }
+    return total;
 }
 
 void NeoMatrixDisplay::runwaysInUse(char *arr, size_t arrLen, char *dep, size_t depLen)
@@ -854,6 +889,7 @@ bool NeoMatrixDisplay::screenAvailable(Screen s) const
         case Screen::Map:      return !_traffic.empty();
         case Screen::Arrivals: return _arrivalCount > 0;
         case Screen::Weather:  return _metar.valid;
+        case Screen::Holding:  return _holds.total(millis()) > 0;
         default:               return true;
     }
 }
@@ -882,6 +918,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     else if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now, _weather); return; }
     else if (s_screenPreview == 3) s = Screen::Arrivals;
     else if (s_screenPreview == 4) s = Screen::Weather;
+    else if (s_screenPreview == 5) s = Screen::Holding;
     else if (s_mapPreviewUntil)    s = Screen::Map;
     else if (_mode == Mode::Map)      s = Screen::Map;
     else if (_mode == Mode::Arrivals) s = Screen::Arrivals;
@@ -906,6 +943,22 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
         case Screen::Weather:
             InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now);
             return;
+        case Screen::Holding:
+        {
+            HoldTracker::Row rows[Airport::kMaxHolds + 1];
+            int n = _holds.rows(rows, Airport::kMaxHolds + 1, now);
+            if (s_screenPreview == 5 && _holds.total(now) == 0)
+            {
+                // Preview with nothing holding: a busy morning at Heathrow.
+                static const HoldTracker::Row kDemo[] = {
+                    {"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7},
+                };
+                n = 4;
+                for (int i = 0; i < n; ++i) rows[i] = kDemo[i];
+            }
+            InfoScreens::renderHolding(g_workFrame, rows, n, now);
+            return;
+        }
         default:
             break;
     }
@@ -955,6 +1008,12 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
         _flourishActive  = true;
         _flourishStartMs = now;
         Log.printf("Display: rare spot %s: %s %s\n", _current.flight.ident.c_str(), _flourishLine1, _flourishLine2);
+        const FlightInfo &f = _current.flight;
+        Notify::post(Notify::Rare, 3, "star", _flourishLine1, "%s %s %s, %s to %s",
+                     (f.ident_iata.length() ? f.ident_iata : f.ident).c_str(), _flourishLine2,
+                     f.registration.c_str(),
+                     (f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao).c_str(),
+                     (f.destination.code_iata.length() ? f.destination.code_iata : f.destination.code_icao).c_str());
     }
     // A departure just off the ground gets the take-off scene instead of the
     // fly-across (renderLanding starts it on the next frame).
@@ -1049,6 +1108,9 @@ void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, 
         _stats.noteGoAround();
         Log.printf("Display: %s GO-AROUND (%.0f ft, +%.0f fpm)\n", f.ident.c_str(),
                    f.baro_altitude, f.vertical_rate);
+        Notify::post(Notify::GoAround, 4, "arrows_counterclockwise", "Go-around",
+                     "%s went around at %.0f ft%s%s", (f.ident_iata.length() ? f.ident_iata : f.ident).c_str(),
+                     f.baro_altitude, e.runway[0] ? " off " : "", e.runway);
         return;
     }
     if (onFinal && descending) e.finalMs = now;

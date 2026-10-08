@@ -55,6 +55,8 @@ static void applyDefaults(RuntimeConfig &c)
 
     c.opensky_priority               = false;
     c.use_community_feeds            = true;
+    c.ntfy_topic[0]                  = '\0';
+    c.notify_mask                    = 0x1F;   // all events (once a topic is set)
     c.min_altitude_ft                = 100;
 
     c.fetch_interval_seconds        = TimingConfiguration::FETCH_INTERVAL_SECONDS;
@@ -62,7 +64,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.display_cycle_seconds         = TimingConfiguration::DISPLAY_CYCLE_SECONDS;
     c.card_lead_seconds             = 120;
     c.interlude_seconds             = 15;
-    c.screens                       = 0x0F;   // map, arrivals, stats, weather
+    c.screens                       = 0x1F;   // map, arrivals, stats, weather, holding
     c.aeroapi_cache_ttl_seconds     = TimingConfiguration::AEROAPI_CACHE_TTL_SECONDS;
     c.aeroapi_fail_cache_ttl_seconds = TimingConfiguration::AEROAPI_FAIL_CACHE_TTL_SECONDS;
 }
@@ -109,6 +111,11 @@ void loadConfig()
 
     g_config.opensky_priority              = p.getBool("osky_pri",  g_config.opensky_priority);
     g_config.use_community_feeds           = p.getBool("community", g_config.use_community_feeds);
+    g_config.notify_mask                   = (uint8_t)p.getUInt("ntfy_m", g_config.notify_mask);
+    {
+        String v = p.getString("ntfy", String(g_config.ntfy_topic));
+        strlcpy(g_config.ntfy_topic, v.c_str(), sizeof(g_config.ntfy_topic));
+    }
     g_config.min_altitude_ft               = p.getInt("min_alt",   g_config.min_altitude_ft);
 
     g_config.fetch_interval_seconds        = p.getUInt("fetch_iv",   g_config.fetch_interval_seconds);
@@ -117,6 +124,7 @@ void loadConfig()
     g_config.card_lead_seconds             = p.getUInt("card_lead",  g_config.card_lead_seconds);
     g_config.interlude_seconds             = p.getUInt("interlude",  g_config.interlude_seconds);
     g_config.screens                       = (uint8_t)p.getUInt("screens", g_config.screens);
+    if (!p.isKey("scr_v3")) g_config.screens |= 0x10;   // holding screen (3.0): on for older settings too
     g_config.aeroapi_cache_ttl_seconds     = p.getUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     g_config.aeroapi_fail_cache_ttl_seconds = p.getUInt("api_fttl", g_config.aeroapi_fail_cache_ttl_seconds);
 
@@ -179,6 +187,8 @@ void saveConfig()
 
     p.putBool("osky_pri",  g_config.opensky_priority);
     p.putBool("community", g_config.use_community_feeds);
+    p.putUInt("ntfy_m",    g_config.notify_mask);
+    p.putString("ntfy",    g_config.ntfy_topic);
     p.putInt("min_alt",    g_config.min_altitude_ft);
 
     p.putUInt("fetch_iv",  g_config.fetch_interval_seconds);
@@ -187,6 +197,7 @@ void saveConfig()
     p.putUInt("card_lead", g_config.card_lead_seconds);
     p.putUInt("interlude", g_config.interlude_seconds);
     p.putUInt("screens",   g_config.screens);
+    p.putBool("scr_v3",    true);
     p.putUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     p.putUInt("api_fttl",  g_config.aeroapi_fail_cache_ttl_seconds);
 

@@ -6,6 +6,7 @@ Responsibilities:
 Configuration: UserConfiguration (location/filters/colors), TimingConfiguration (intervals),
                WiFiConfiguration (SSID/password), HardwareConfiguration (display specs).
 */
+#include "utils/Notify.h"
 #include <vector>
 #include <map>
 #include <esp_task_wdt.h>
@@ -78,6 +79,31 @@ static const char *squawkMeaning(const String &sq)
 // Raise the panel alert for an emergency squawk once it has been seen in two
 // fetches running (a single garbled reply is ignored), then not again for
 // that aircraft and code for 30 minutes.
+// Holding stacks (Airport::holds): whose turn, and the sample itself.
+static unsigned long g_lastStackMs = 0;
+static int           g_nextStack = 0;
+
+static bool stackDue(unsigned long now)
+{
+    return g_airport.holdCount && g_config.use_community_feeds && !g_feeds.holdOffMs() &&
+           (!g_lastStackMs || now - g_lastStackMs >= 45000UL) && ESP.getFreeHeap() > 60000;
+}
+
+static void sampleStack()
+{
+    g_lastStackMs = millis();
+    const HoldFix &fix = g_airport.holds[g_nextStack];
+    std::vector<StateVector> around;
+    bool ok;
+    {
+        NetBusy busy;
+        ok = g_feeds.fetchArea(fix.lat, fix.lon, 9.0, around);
+    }
+    if (ok) g_display.noteStack(g_nextStack, around);
+    g_nextStack = (g_nextStack + 1) % g_airport.holdCount;
+    heapCheckpoint("stack sample");
+}
+
 static void checkSquawks(const std::vector<StateVector> &states)
 {
     static std::map<String, int>           streak;    // icao24+code -> fetches in a row
@@ -105,6 +131,8 @@ static void checkSquawks(const std::vector<StateVector> &states)
         const String ident = s.callsign.length() ? s.callsign : s.icao24;
         Log.printf("SQUAWK %s (%s): %s, %s\n", s.squawk.c_str(), meaning, ident.c_str(), detail);
         g_display.raiseAlert(s.squawk.c_str(), meaning, ident.c_str(), detail);
+        Notify::post(Notify::Emergency, 5, "rotating_light", "Emergency squawk",
+                     "%s squawking %s (%s), %s", ident.c_str(), s.squawk.c_str(), meaning, detail);
     }
     streak.swap(seen);
     for (auto it = alerted.begin(); it != alerted.end(); )
@@ -462,6 +490,12 @@ void loop()
         {
             Log.println("Skipping fetch — no WiFi");
         }
+        else if (stackDue(now))
+        {
+            // Holding stacks: every 45 s one fix's airspace takes this fetch
+            // slot, so adsb.lol sees no extra requests (each fix every 3 min).
+            sampleStack();
+        }
         else
         {
         size_t enriched;
@@ -529,6 +563,35 @@ void loop()
         (void)enriched;
         } // else (ensureWiFi)
     }
+
+    {
+        static unsigned long lastHoldMs = 0;
+        if (millis() - lastHoldMs >= 20000)
+        {
+            lastHoldMs = millis();
+            char summary[96];
+            int longest = 0;
+            const int total = g_display.holdingSummary(summary, sizeof(summary), &longest);
+            // Busy: eight or more holding, or someone holding for 15 minutes.
+            static unsigned long lastBusyMs = 0;
+            if ((total >= 8 || longest >= 15) && (!lastBusyMs || millis() - lastBusyMs > 3600000UL))
+            {
+                lastBusyMs = millis();
+                Notify::post(Notify::Holding, 3, "hourglass_flowing_sand", "Busy holding stacks",
+                             "%d holding at %s: %s", total, g_airport.name, summary);
+            }
+            g_webConfig.setHolding(summary);
+            static int lastTotal = 0;
+            if (total != lastTotal)
+            {
+                Log.printf("Holding: %d%s%s\n", total, total ? ": " : "", summary);
+                lastTotal = total;
+            }
+        }
+    }
+
+    // Phone notifications: one queued message per pass.
+    if (WiFi.status() == WL_CONNECTED) Notify::loop();
 
     // Heathrow weather for the arrivals board and the night clock.
     if (WiFi.status() == WL_CONNECTED && millis() > 20000 &&

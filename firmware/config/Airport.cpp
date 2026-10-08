@@ -27,6 +27,14 @@ namespace
             {"09R", 51.4647, -0.4826,  89.7f},   // south runway, west end
         };
         for (const RunwayEnd &r : kRunways) a.runways[a.runwayCount++] = r;
+        // The four arrival stacks (VOR holding fixes).
+        static const HoldFix kHolds[] = {
+            {"BNN", 51.7262, -0.5500},   // Bovingdon, north-west
+            {"LAM", 51.6461,  0.1517},   // Lambourne, north-east
+            {"BIG", 51.3311,  0.0347},   // Biggin Hill, south-east
+            {"OCK", 51.3050, -0.4472},   // Ockham, south-west
+        };
+        for (const HoldFix &h : kHolds) a.holds[a.holdCount++] = h;
         a.lhrAlternation = true;
         a.londonSkyline  = true;
         a.mapN = MapBase::LAT_N;  a.mapS = MapBase::LAT_S;
@@ -65,6 +73,14 @@ bool AirportPack::parseHeader(const char *json, Airport &a, String &error)
         copyUpper(e.name, sizeof(e.name), r["n"] | "");
         e.lat = r["lat"] | NAN;  e.lon = r["lon"] | NAN;  e.course = r["crs"] | NAN;
         if (e.name[0] && !isnan(e.lat) && !isnan(e.lon) && !isnan(e.course)) ++a.runwayCount;
+    }
+    for (JsonObject h : doc["holds"].as<JsonArray>())
+    {
+        if (a.holdCount >= Airport::kMaxHolds) break;
+        HoldFix &f = a.holds[a.holdCount];
+        copyUpper(f.name, sizeof(f.name), h["n"] | "");
+        f.lat = h["lat"] | NAN;  f.lon = h["lon"] | NAN;
+        if (f.name[0] && !isnan(f.lat) && !isnan(f.lon)) ++a.holdCount;
     }
     a.builtIn = false;
 

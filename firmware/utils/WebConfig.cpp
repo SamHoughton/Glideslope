@@ -3,6 +3,7 @@ Purpose: WebConfig — minimal HTTP server, config API, and log streaming.
 Uses WiFiServer/WiFiClient (already a project dependency) instead of the
 WebServer library to avoid framework include-path issues.
 */
+#include "utils/Notify.h"
 #include "utils/WebConfig.h"
 #include "utils/TelnetLogger.h"
 #include "utils/WifiProvisioner.h"
@@ -138,6 +139,12 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/map"      && r.method == "POST") { requestMapPreview(30000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/stats"    && r.method == "POST") { requestScreenPreview(1, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/notify/test"   && r.method == "POST")
+    {
+        Notify::post(Notify::Test, 3, "white_check_mark", "Glideslope", "Test from %s: notifications are working.", g_airport.name);
+        sendHttp(client, 200, "application/json", g_config.ntfy_topic[0] ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"no topic set\"}");
+    }
+    else if (r.path == "/api/demo/holding"  && r.method == "POST") { requestScreenPreview(5, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/clock"    && r.method == "POST") { requestScreenPreview(2, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/landing"  && r.method == "POST") { requestLandingReplay(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/rare"     && r.method == "POST") { requestRareSpotDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -263,6 +270,8 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["opensky_client_secret"] = (strlen(g_config.opensky_client_secret) > 0) ? "***" : "";
     doc["opensky_priority"]      = g_config.opensky_priority;
     doc["use_community_feeds"]   = g_config.use_community_feeds;
+    doc["ntfy_topic"]            = g_config.ntfy_topic;
+    doc["notify_mask"]           = g_config.notify_mask;
     doc["aeroapi_key"]           = (strlen(g_config.aeroapi_key)           > 0) ? "***" : "";
 
     String out;
@@ -323,6 +332,14 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
 
     g_config.opensky_priority              = doc["opensky_priority"]              | g_config.opensky_priority;
     g_config.use_community_feeds           = doc["use_community_feeds"]           | g_config.use_community_feeds;
+    g_config.notify_mask                   = doc["notify_mask"]                   | g_config.notify_mask;
+    if (doc["ntfy_topic"].is<const char *>())
+    {
+        // Trimmed: a topic pasted with a stray space would silently go nowhere.
+        String t = doc["ntfy_topic"].as<const char *>();
+        t.trim();
+        strlcpy(g_config.ntfy_topic, t.c_str(), sizeof(g_config.ntfy_topic));
+    }
 
     g_config.fetch_interval_seconds        = doc["fetch_interval_seconds"]        | g_config.fetch_interval_seconds;
     g_config.local_fetch_interval_seconds  = doc["local_fetch_interval_seconds"]  | g_config.local_fetch_interval_seconds;
@@ -447,6 +464,7 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["metar"]          = _metar;
     doc["runways_arr"]    = _rwyArr;
     doc["runways_dep"]    = _rwyDep;
+    doc["holding"]        = _holding;
     doc["airport"]        = g_airport.icao;
     doc["airport_name"]   = g_airport.name;
     doc["airport_lat"]    = g_airport.lat;
@@ -463,6 +481,13 @@ void WebConfig::setRunways(const char *arrivals, const char *departures)
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
     strlcpy(_rwyArr, arrivals, sizeof(_rwyArr));
     strlcpy(_rwyDep, departures, sizeof(_rwyDep));
+    if (_displayMutex) xSemaphoreGive(_displayMutex);
+}
+
+void WebConfig::setHolding(const char *summary)
+{
+    if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
+    strlcpy(_holding, summary, sizeof(_holding));
     if (_displayMutex) xSemaphoreGive(_displayMutex);
 }
 

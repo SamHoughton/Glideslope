@@ -94,6 +94,19 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
     return true;
 }
 
+bool AdsbAggregatorFetcher::fetchArea(double lat, double lon, double radiusKm, std::vector<StateVector> &out)
+{
+    if (!g_config.use_community_feeds) return false;
+    if (_restUntil[0] && (long)(millis() - _restUntil[0]) < 0) return false;
+    const int nm = max(1, (int)ceil(radiusKm / 1.852));
+    char url[80];
+    snprintf(url, sizeof(url), "http://api.adsb.lol/v2/point/%.4f/%.4f/%d", lat, lon, nm);
+    const char *source = _lastSource;
+    const bool ok = fetchFrom(0, String(url), "adsb.lol", lat, lon, radiusKm, out);
+    _lastSource = source;
+    return ok;
+}
+
 unsigned long AdsbAggregatorFetcher::holdOffMs() const
 {
     const unsigned long now = millis();

@@ -108,6 +108,10 @@ public:
     void noteTraffic(const std::vector<StateVector> &states);
     // Runways in use from that traffic ("27L", "26R 26L"; "" if none).
     void runwaysInUse(char *arr, size_t arrLen, char *dep, size_t depLen);
+    // The aircraft around named holding stack i (Airport::holds), once a minute.
+    void noteStack(int stack, const std::vector<StateVector> &states);
+    // Holding now: "BNN 4 (9 min), OCK 2 (3 min)" ("" if none); returns the total.
+    int holdingSummary(char *out, size_t len, int *longestMin = nullptr);
     bool statsSnapshot(std::vector<uint8_t> &out);   // false if unchanged
     void loadStats();
 
@@ -152,6 +156,7 @@ private:
     std::deque<Entry>    _queue;
     std::map<String, unsigned long> _seenMs;   // ident -> last time in a fetch
     RunwayTracker        _runways;               // from every aircraft in range
+    HoldTracker          _holds;                 // aircraft in holding patterns
     char                 _runwayInUse[4] = "";  // main arrival runway, e.g. "27L"
     char                 _runwayArr[12] = "", _runwayDep[12] = "";   // all in use
     bool                 _rwyChangeActive = false;   // RUNWAY CHANGE on the panel
@@ -173,7 +178,7 @@ private:
     // Button-selected mode (display task only)
     enum class Mode : uint8_t { Auto, Map, Arrivals, Stats, Weather };
     // Rotation screens; bit n of g_config.screens enables Screen n.
-    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Count };
+    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Count };
     Screen               _screen = Screen::Weather;   // so the first rotation starts with the map
     unsigned long        _screenSinceMs = 0;
     unsigned long        _interludeUntilMs = 0;      // break after a landing ends

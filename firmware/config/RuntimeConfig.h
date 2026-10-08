@@ -58,6 +58,11 @@ struct RuntimeConfig
     char     opensky_client_secret[64];
     char     aeroapi_key[64];
 
+    // Phone notifications (utils/Notify.h): ntfy topic ("" = off) or a full
+    // URL, and which events (Notify::Kind bits).
+    char     ntfy_topic[64];
+    uint8_t  notify_mask;
+
     // Route lookup source priority
     // false (default): hexdb → AeroAPI → OpenSky
     // true:            OpenSky → AeroAPI → hexdb  (useful when hexdb is rate-limited)
@@ -74,7 +79,7 @@ struct RuntimeConfig
     uint32_t display_cycle_seconds;
     // Screen rhythm: an approach card comes in this long before touchdown;
     // after each landing, one rotation screen for interlude_seconds; screens
-    // is a bit mask of the rotation (1 map, 2 arrivals, 4 stats, 8 weather).
+    // is a bit mask of the rotation (1 map, 2 arrivals, 4 stats, 8 weather, 16 holding).
     uint32_t card_lead_seconds;
     uint32_t interlude_seconds;
     uint8_t  screens;

@@ -142,6 +142,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="arrivals">Arrivals</button>
         <button data-demo="stats">Today's stats</button>
         <button data-demo="weather">Weather</button>
+        <button data-demo="holding">Holding stacks</button>
         <button data-demo="clock">Night clock</button>
         <button data-demo="splash">Scanning</button>
         <button data-demo="rare">Rare spot</button>
@@ -165,6 +166,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <button data-tab="airport">Airport</button>
       <button data-tab="night">Night</button>
       <button data-tab="data">Data</button>
+      <button data-tab="alerts">Alerts</button>
       <button data-tab="system">System</button>
       <button data-tab="log">Log</button>
     </div>
@@ -180,7 +182,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <div class="f"><label for="interlude_seconds">Break after a landing <small>(s, 0 = none)</small></label><input type="number" min="0" max="120" id="interlude_seconds"></div>
       </div>
       <div class="f"><label>Screens between planes <small>&mdash; each comes round in turn</small></label>
-        <div class="pills"><label><input type="checkbox" data-scr="1">Map</label><label><input type="checkbox" data-scr="2">Arrivals</label><label><input type="checkbox" data-scr="4">Stats</label><label><input type="checkbox" data-scr="8">Weather</label></div></div>
+        <div class="pills"><label><input type="checkbox" data-scr="1">Map</label><label><input type="checkbox" data-scr="2">Arrivals</label><label><input type="checkbox" data-scr="4">Stats</label><label><input type="checkbox" data-scr="8">Weather</label><label><input type="checkbox" data-scr="16">Holding</label></div></div>
       <div class="f"><label for="display_cycle_seconds">Minimum time per approach card <small>(s)</small></label><input type="number" min="3" id="display_cycle_seconds"></div>
       <h3>Look</h3>
       <label class="sw"><input type="checkbox" id="display_border"><span>Airline-coloured border</span></label>
@@ -239,6 +241,14 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       </div>
     </section>
 
+    <section class="tab" id="t-alerts">
+      <p class="hint">Alerts on your phone through <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>: free, no account. Install the ntfy app and subscribe to the topic below. Anyone who knows a topic can read it, so keep it long and random.</p>
+      <div class="f"><label for="ntfy_topic">ntfy topic <small>(or a full URL for your own server; blank = off)</small></label><input id="ntfy_topic" autocomplete="off" spellcheck="false" placeholder="e.g. glideslope-k3x9q2m7w1"></div>
+      <div class="btns"><button id="ntr">Random topic</button><button id="ntt">Save and send a test</button><span class="msg" id="ntst"></span></div>
+      <div class="f"><label>Tell me about</label>
+        <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label></div></div>
+    </section>
+
     <section class="tab" id="t-system">
       <dl class="kv" id="sys"></dl>
       <h3>Firmware update</h3>
@@ -283,6 +293,7 @@ function load(){fetch('/api/config').then(function(r){return r.json();}).then(fu
   $('night_start_time').value=toTime(d.night_start_minutes||0);$('night_end_time').value=toTime(d.night_end_minutes||0);
   ['opensky_client_secret','aeroapi_key'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});
   document.querySelectorAll('[data-scr]').forEach(function(e){e.checked=!!(d.screens&parseInt(e.dataset.scr));});
+  document.querySelectorAll('[data-ntf]').forEach(function(e){e.checked=!!(d.notify_mask&parseInt(e.dataset.ntf));});
   $('bv').textContent=d.display_brightness;});}
 function save(){var d={};
   ['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
@@ -291,12 +302,21 @@ function save(){var d={};
   ['display_nearest_only','display_border','display_flip','night_mode_enabled','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
   d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});
   d.screen_facing=$('screen_facing').value;d.tar1090_host=$('tar1090_host').value;
+  d.ntfy_topic=$('ntfy_topic').value.trim();d.notify_mask=ntfMask();
   var ma=$('min_altitude_ft').value;d.min_altitude_ft=ma===''?-1:parseInt(ma);
   d.night_start_minutes=toMin($('night_start_time').value);d.night_end_minutes=toMin($('night_end_time').value);
   ['opensky_client_id','opensky_client_secret','aeroapi_key'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});
   status('Saving…');post('/api/config',d).then(function(r){return r.json();})
     .then(function(j){status(j.ok?'Saved':'Error: '+(j.error||'?'),3000);load();}).catch(function(){status('Could not reach the board',4000);});}
 $('save').addEventListener('click',save);
+function ntfMask(){var m=0;document.querySelectorAll('[data-ntf]').forEach(function(e){if(e.checked)m|=parseInt(e.dataset.ntf);});return m;}
+$('ntr').addEventListener('click',function(){var a=new Uint8Array(8),s='';crypto.getRandomValues(a);
+  a.forEach(function(b){s+='abcdefghijkmnpqrstuvwxyz23456789'[b%32];});$('ntfy_topic').value='glideslope-'+s;});
+$('ntt').addEventListener('click',function(){var t=$('ntfy_topic').value.trim();if(!t){$('ntst').textContent='Set a topic first';return;}
+  $('ntst').textContent='Sending…';post('/api/config',{ntfy_topic:t,notify_mask:ntfMask()})
+  .then(function(){return post('/api/notify/test');}).then(function(r){return r.json();})
+  .then(function(j){$('ntst').textContent=j.ok?'Sent: check your phone (subscribed to '+t+')':'Failed: '+(j.error||'?');})
+  .catch(function(){$('ntst').textContent='Could not reach the board';});});
 var bt;$('display_brightness').addEventListener('input',function(e){$('bv').textContent=e.target.value;clearTimeout(bt);
   bt=setTimeout(function(){post('/api/config',{display_brightness:parseInt(e.target.value)});},250);});
 document.querySelectorAll('[data-demo]').forEach(function(b){b.addEventListener('click',function(){post('/api/demo/'+b.dataset.demo);});});
@@ -340,6 +360,7 @@ function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
     $('apt').textContent=(s.airport_name||'')+' ('+(s.airport||'')+')'+(s.airport_pack?' from an airport pack':', built in');
     $('sys').innerHTML='<dt>Firmware</dt><dd>'+esc(s.version)+' <small>'+esc(s.built)+'</small></dd>'+
       (s.runways_arr||s.runways_dep?'<dt>Runways</dt><dd>'+(s.runways_arr?'Landing '+esc(s.runways_arr):'')+(s.runways_arr&&s.runways_dep?' · ':'')+(s.runways_dep?'Departing '+esc(s.runways_dep):'')+'</dd>':'')+
+      (s.holding?'<dt>Holding</dt><dd>'+esc(s.holding)+'</dd>':'')+
       '<dt>Up</dt><dd>'+fmtUp(s.uptime_s)+'</dd><dt>Memory</dt><dd>'+Math.round(s.heap_free/1024)+' KB free, low '+Math.round(s.heap_min_free/1024)+' KB</dd>'+
       (s.metar?'<dt>Weather</dt><dd class="mono" style="font-size:12px">'+esc(s.metar)+'</dd>':'');
     $('livedot').className='dot on';$('livetxt').textContent='live';

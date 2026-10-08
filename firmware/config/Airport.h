@@ -10,7 +10,8 @@ bytes of 4-bit palette indices (row-major, high nibble = left pixel):
   {"v":1,"icao":"EGKK","iata":"LGW","name":"GATWICK","lat":51.148,"lon":-0.190,
    "tz":"GMT0BST,M3.5.0/1,M10.5.0","skyline":"generic","alternation":false,
    "runways":[{"n":"26L","lat":51.15,"lon":-0.17,"crs":257.8}, ...],
-   "map":{"n":51.25,"s":51.05,"w":-0.51,"e":0.13}}
+   "map":{"n":51.25,"s":51.05,"w":-0.51,"e":0.13},
+   "holds":[{"n":"WILLO","lat":50.985,"lon":-0.191}, ...]}      (holds optional)
 
 Map palette (fixed): 0 empty, 1 river, 2 lakes/reservoirs, 3 runways,
 4 aprons, 5 motorways, 6 parks, 7 approach lanes.
@@ -25,9 +26,16 @@ struct RunwayEnd
     float  course;      // landing direction, degrees true
 };
 
+struct HoldFix
+{
+    char   name[6];     // "BNN"
+    double lat, lon;
+};
+
 struct Airport
 {
     static constexpr int kMaxRunways = 16;
+    static constexpr int kMaxHolds = 6;
 
     char      icao[5];
     char      iata[4];
@@ -36,6 +44,8 @@ struct Airport
     char      tz[48];          // POSIX TZ rule for local time
     RunwayEnd runways[kMaxRunways];
     uint8_t   runwayCount;
+    HoldFix   holds[kMaxHolds];   // named holding stacks (optional)
+    uint8_t   holdCount;
     bool      lhrAlternation;  // Heathrow's westerly 15:00 landing-runway swap
     bool      londonSkyline;   // London skyline in the scenes, else a generic one
     double    mapN, mapS, mapW, mapE;

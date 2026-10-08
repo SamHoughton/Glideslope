@@ -336,6 +336,70 @@ void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const cha
     }
 }
 
+void InfoScreens::renderHolding(FrameCanvas &c, const HoldTracker::Row *rows, int n, uint32_t animMs)
+{
+    c.clear();
+    int total = 0;
+    for (int i = 0; i < n; ++i) total += rows[i].count;
+    char title[20];
+    snprintf(title, sizeof(title), total == 1 ? "1 HOLDING" : "%d HOLDING", total);
+    centred(c, 1, title, kTitle);
+    for (int x = 4; x < FrameCanvas::W - 4; ++x) c.set(x, 10, kDim);
+
+    const int pitch = n > 4 ? 10 : 12;
+    const int y0 = n > 4 ? 13 : 14;
+    for (int i = 0; i < n && i < 5; ++i)
+    {
+        const HoldTracker::Row &r = rows[i];
+        const int y = y0 + i * pitch;
+        const bool any = r.count > 0;
+        c.text(2, y, r.name, any ? kLabel : kDim);
+        char num[6];
+        snprintf(num, sizeof(num), "%u", (unsigned)r.count);
+        c.text(42 - FrameCanvas::textWidth(num), y, num, any ? kValue : kDim);
+
+        // The racetrack: two straights and two half circles, aircraft
+        // spaced evenly around it, all going round once every 8 s.
+        const float cx = 72, cy = y + 3, L = 26, rad = 3;
+        const float P = 2 * L + 2 * (float)M_PI * rad;
+        auto at = [&](float p, int &px, int &py) {
+            float s = fmodf(p, 1.0f) * P;
+            float x, yy;
+            if (s < L)                      { x = cx - L / 2 + s; yy = cy - rad; }
+            else if (s < L + M_PI * rad)    { const float t = -M_PI / 2 + (s - L) / rad; x = cx + L / 2 + rad * cosf(t); yy = cy + rad * sinf(t); }
+            else if (s < 2 * L + M_PI * rad){ x = cx + L / 2 - (s - L - M_PI * rad); yy = cy + rad; }
+            else                            { const float t = M_PI / 2 + (s - 2 * L - M_PI * rad) / rad; x = cx - L / 2 + rad * cosf(t); yy = cy + rad * sinf(t); }
+            px = (int)lroundf(x); py = (int)lroundf(yy);
+        };
+        for (int k = 0; k < 64; ++k)
+        {
+            int px, py;
+            at(k / 64.0f, px, py);
+            c.set(px, py, any ? Rgb{34, 40, 54} : Rgb{20, 23, 30});
+        }
+        const int shown = min((int)r.count, 8);
+        for (int k = 0; k < shown; ++k)
+        {
+            int px, py;
+            const float p = animMs / 8000.0f + (float)k / shown;
+            for (int t = 3; t >= 1; --t)   // a short fading trail behind each aircraft
+            {
+                at(p + 1.0f - t * 0.012f, px, py);
+                c.set(px, py, FrameCanvas::scale(kValue, 0.5f - t * 0.12f));
+            }
+            at(p, px, py);
+            c.set(px, py, Rgb{255, 235, 190});
+        }
+
+        if (any)
+        {
+            char mins[8];
+            snprintf(mins, sizeof(mins), r.longestMin ? "%uM" : "<1M", (unsigned)r.longestMin);
+            c.text(FrameCanvas::W - 2 - FrameCanvas::textWidth(mins), y, mins, kTitle);
+        }
+    }
+}
+
 void InfoScreens::renderCaption(FrameCanvas &c, const char *text)
 {
     c.clear();
