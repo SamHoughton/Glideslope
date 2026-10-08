@@ -12,7 +12,7 @@ for a self-hosted server works too, when there is room for TLS.
 
 Events (each can be switched off on the web page): emergency squawks, rare
 spots, go-arounds, runway changes and busy holding stacks. post() is safe
-from any task and only queues (4 deep); the main loop sends one at a time
+from any task and only queues (3 deep); the main loop sends one at a time
 between fetches. Each kind is sent at most once every 2 minutes, emergencies
 excepted.
 */

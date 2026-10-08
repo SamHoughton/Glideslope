@@ -30,6 +30,14 @@ bool LocalLogoStore::initialize()
     return true;
 }
 
+bool LocalLogoStore::hasAirlineLogo(const String &airlineIcao)
+{
+    if (!_mounted || airlineIcao.length() == 0) return false;
+    String icao = airlineIcao;
+    icao.toUpperCase();
+    return LittleFS.exists(String("/logos/") + icao + ".bin");
+}
+
 bool LocalLogoStore::getAirlineLogo(const String &airlineIcao,
                                     std::vector<uint16_t> &outPixels)
 {

@@ -7,6 +7,7 @@ Responsibilities:
   only the pixels that changed to the panel.
 */
 #include "adapters/NeoMatrixDisplay.h"
+#include "interfaces/BaseLogoStore.h"
 #include "config/HardwareConfiguration.h"
 #include "config/RuntimeConfig.h"
 #include "display/ApproachModel.h"
@@ -275,7 +276,10 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
         if (_hasCurrent && f.ident == _current.flight.ident)
         {
             const double prevAlt = _current.flight.baro_altitude;
+            std::vector<uint16_t> logo;   // keep the card's logo across the update
+            logo.swap(_current.flight.airline_logo_rgb565);
             _current.flight = f;
+            logo.swap(_current.flight.airline_logo_rgb565);
             _current.dataMs = now;
             noteApproachProgress(_current, st, prevAlt, now);
         }
@@ -297,7 +301,6 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
                     Entry e;
                     e.flight = f;
                     e.dataMs = now;
-                    e.accent = CardRenderer::accentFor(f);
                     _queue.push_back(e);
                     Log.printf("Display: new contact %s queued (%u waiting)\n",
                                f.ident.c_str(), (unsigned)_queue.size());
@@ -325,8 +328,14 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
     for (auto it = _seenMs.begin(); it != _seenMs.end(); )
         it = (now - it->second > 2 * kSeenCooldownMs) ? _seenMs.erase(it) : std::next(it);
 
-    if (_hasNextApproach)
-        _nextApproach.accent = CardRenderer::accentFor(_nextApproach.flight);
+}
+
+// The card coming on screen: its logo from flash, and the accent colour from it.
+void NeoMatrixDisplay::loadLogo(Entry &e)
+{
+    if (e.flight.airline_logo_rgb565.empty() && _logos && e.flight.logo_code.length())
+        _logos->getAirlineLogo(e.flight.logo_code, e.flight.airline_logo_rgb565);
+    e.accent = CardRenderer::accentFor(e.flight);
 }
 
 void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
@@ -995,6 +1004,7 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
     _ambientActive = false;
     _current    = _queue.front();
     _queue.pop_front();
+    loadLogo(_current);
     _hasCurrent = true;
     _inTransition = true;
     _transStartMs = now;

@@ -233,9 +233,8 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             }
         }
 
-        // Load logo fresh from LittleFS on every cycle (cache hit or miss).
-        // This keeps logo pixels out of the heap-resident cache and avoids the
-        // fragmentation that causes MBEDTLS_ERR_SSL_ALLOC_FAILED (-32512).
+        // Which airline's logo to show: only the code is kept here; the
+        // display loads the 2 KB of pixels for the card on screen alone.
         // The callsign prefix names the airline actually flying the flight; the
         // hexdb operator code is the aircraft's registered owner, which is
         // wrong for leased and sub-fleet aircraft, so it is only a fallback.
@@ -246,8 +245,11 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                 info.operator_icao = prefix;
             const String candidates[] = { prefix, logoAlias(prefix), info.operator_icao };
             for (const String &code : candidates)
-                if (code.length() && _logoStore->getAirlineLogo(code, info.airline_logo_rgb565))
+                if (code.length() && _logoStore->hasAirlineLogo(code))
+                {
+                    info.logo_code = code;
                     break;
+                }
         }
 
         // Flight-number style ident for the card: the API's IATA flight number

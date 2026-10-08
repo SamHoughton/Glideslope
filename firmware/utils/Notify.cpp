@@ -12,10 +12,10 @@ namespace
     {
         uint8_t kind, priority;
         char    title[48];
-        char    body[112];
+        char    body[96];
         char    tags[28];
     };
-    constexpr int kQueue = 4;
+    constexpr int kQueue = 3;
     Msg           s_q[kQueue];
     int           s_head = 0, s_count = 0;
     portMUX_TYPE  s_mux = portMUX_INITIALIZER_UNLOCKED;

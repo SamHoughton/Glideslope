@@ -39,7 +39,7 @@ public:
     int total(unsigned long nowMs) const;
 
 private:
-    static constexpr int kMax = 40;
+    static constexpr int kMax = 28;
     struct Entry
     {
         uint32_t      id = 0;

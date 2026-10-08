@@ -289,6 +289,7 @@ void setup()
 
     // Mount LittleFS for local logo storage. Failure is non-fatal.
     g_logoStore.initialize();
+    g_display.setLogoStore(&g_logoStore);
     RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
     AirportPack::load();    // Heathrow, or the airport pack on LittleFS
     g_display.loadStats();  // today's tally survives a restart

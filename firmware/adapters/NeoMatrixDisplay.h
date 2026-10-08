@@ -124,6 +124,9 @@ public:
     // Emergency squawk: takes over the panel for a few seconds. Safe from any task.
     void raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail);
 
+    // Where card logos come from (loaded only for the card on screen).
+    void setLogoStore(class BaseLogoStore *store) { _logos = store; }
+
 private:
     struct Entry
     {
@@ -144,6 +147,8 @@ private:
         unsigned long altMs = 0;           // when shownAltFt was last updated
     };
 
+    class BaseLogoStore *_logos = nullptr;
+    void                 loadLogo(Entry &e);
     MatrixPanel_I2S_DMA *_matrix = nullptr;
     SemaphoreHandle_t    _lock   = nullptr;
     TaskHandle_t         _task   = nullptr;
