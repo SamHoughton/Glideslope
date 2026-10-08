@@ -102,11 +102,12 @@ static volatile bool s_runwayDemo = false;
 static char          s_skyPreview[24] = "";
 static volatile unsigned long s_skyPreviewUntil = 0;
 static volatile bool s_showcaseRequest = false;
-void requestSkyPreview(const char *look, bool showcase)
+static volatile bool s_skyDemo = false;
+void requestSkyPreview(const char *look, bool landing)
 {
     strlcpy(s_skyPreview, look, sizeof(s_skyPreview));
-    s_skyPreviewUntil = millis() + (showcase ? 60000 : 12000);
-    if (showcase) s_showcaseRequest = true;
+    s_skyPreviewUntil = millis() + (landing ? 45000 : 12000);
+    if (landing) s_skyDemo = true;   // a landing in that sky, straight away
 }
 void requestRunwayChangeDemo() { s_runwayDemo = true; }
 
@@ -604,6 +605,13 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         _skyMs = now;
     }
     if (s_skyPreviewUntil && (long)(now - s_skyPreviewUntil) >= 0) s_skyPreviewUntil = 0;
+    if (s_skyDemo)
+    {
+        // Replay the card's landing in the previewed sky, or the showcase if no card.
+        s_skyDemo = false;
+        if (_hasCurrent && !_inTransition && !_landingActive) requestLandingReplay();
+        else                                                  s_showcaseRequest = true;
+    }
     pollButton(now);
 
     if (_captionUntilMs && (long)(now - _captionUntilMs) < 0)
@@ -1201,7 +1209,7 @@ void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, 
 void NeoMatrixDisplay::startScene(unsigned long now, LandingScene::Kind kind, bool demo)
 {
     _sceneKind      = kind;
-    _sceneSky       = s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky;
+    _sceneSky       = (s_skyPreviewUntil && (demo || _showcaseActive)) ? Sky::preview(s_skyPreview) : _sky;
     _landingDemo    = demo;
     _landingActive  = true;
     _landingStartMs = now;

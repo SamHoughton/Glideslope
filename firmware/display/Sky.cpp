@@ -227,6 +227,7 @@ void Sky::drawMoon(FrameCanvas &c, int cx, int cy, float r, float phase, Rgb lit
     // Lit where a pixel lies on the sunlit side of the terminator (an
     // ellipse whose width follows the phase); waxing lights the right.
     const float ct = cosf(phase * 2 * (float)M_PI);
+    if ((1 - ct) / 2 < 0.06f) return;   // under 6% lit: nothing to see
     const int ir = (int)ceilf(r);
     for (int dy = -ir; dy <= ir; ++dy)
         for (int dx = -ir; dx <= ir; ++dx)
@@ -236,7 +237,7 @@ void Sky::drawMoon(FrameCanvas &c, int cx, int cy, float r, float phase, Rgb lit
             const float yn = dy / r, xn = dx / r;
             const float edge = sqrtf(max(0.0f, 1 - yn * yn));
             const bool on = phase < 0.5f ? xn > ct * edge : xn < -ct * edge;
-            blend(c, cx + dx, cy + dy, on ? lit : FrameCanvas::scale(lit, 0.12f), k * clamp01(r + 0.5f - d));
+            blend(c, cx + dx, cy + dy, on ? lit : FrameCanvas::scale(lit, 0.05f), k * clamp01(r + 0.5f - d));
         }
 }
 

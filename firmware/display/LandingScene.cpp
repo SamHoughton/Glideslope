@@ -254,7 +254,10 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
             {
                 const int px = tail + 2 + i * 3 + (int)((tMs / 40 + i) % 3);
                 const int py = kSurfaceY - 2 - (i % 2);
-                c.set(px, py, FrameCanvas::scale(Rgb{170, 170, 175}, k * (1.0f - i / 6.0f) * 0.7f));
+                const Rgb under = FrameCanvas::unpack(c.get(px, py));
+                const float a = k * (1.0f - i / 6.0f) * 0.7f;
+                c.set(px, py, Rgb{(uint8_t)(under.r + (170 - under.r) * a), (uint8_t)(under.g + (170 - under.g) * a),
+                                  (uint8_t)(under.b + (175 - under.b) * a)});
             }
         }
     }
@@ -306,7 +309,14 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
             for (int dy = -r; dy <= r; ++dy)
                 for (int dx = -r; dx <= r; ++dx)
                     if (dx * dx + dy * dy <= r * r)
-                        c.set(px + dx, py + dy, FrameCanvas::scale(Rgb{210, 210, 215}, fade * 0.8f));
+                    {
+                        // Blended with what is behind, so it stays pale against a bright sky.
+                        const Rgb under = FrameCanvas::unpack(c.get(px + dx, py + dy));
+                        const float k = fade * 0.75f;
+                        c.set(px + dx, py + dy, Rgb{(uint8_t)(under.r + (210 - under.r) * k),
+                                                    (uint8_t)(under.g + (210 - under.g) * k),
+                                                    (uint8_t)(under.b + (215 - under.b) * k)});
+                    }
         }
     }
 

@@ -57,9 +57,9 @@ void requestTakeoffDemo();
 // Show a sample emergency-squawk alert (demo).
 void requestAlertDemo();
 void requestRunwayChangeDemo();
-// Plays the showcase under a forced sky ("night+rain", see Sky::preview);
-// scenes keep that look for a minute.
-void requestSkyPreview(const char *look, bool showcase = true);
+// Previews a sky ("night+rain", see Sky::preview): replays the card's landing
+// in it (or the showcase when there is no card). Real flights keep the real sky.
+void requestSkyPreview(const char *look, bool landing = true);
 
 // Scripted ~35 s showcase (for demos and the README recording): a fictional
 // flight, GS101, flies in on final for 27L with the Glideslope badge, lands,
