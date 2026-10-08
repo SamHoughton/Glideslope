@@ -94,7 +94,7 @@ private:
     void handleWifiReset(WiFiClient &c);
     void handleGetLog(WiFiClient &c, const Req &r);
     void handleGetDisplay(WiFiClient &c);
-    void handleGetFrame(WiFiClient &c);
+    void handleGetFrame(WiFiClient &c, const Req &r);
     void handleGetStatus(WiFiClient &c);
     void handleUpdate(WiFiClient &c, int length);
     void handleAirport(WiFiClient &c, int length);

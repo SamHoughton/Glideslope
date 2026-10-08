@@ -353,6 +353,7 @@ function pollNow(){if(document.hidden){setTimeout(pollNow,3000);return;}
 // The panel, drawn as round LEDs with a soft glow.
 var off=document.createElement('canvas');off.width=128;off.height=64;var ox=off.getContext('2d'),img=ox.createImageData(128,64);
 var dots=document.createElement('canvas');dots.width=768;dots.height=384;var dx=dots.getContext('2d');
+var glow=document.createElement('canvas');glow.width=64;glow.height=32;var gx=glow.getContext('2d');gx.imageSmoothingEnabled=true;
 var cv=$('dmp'),g=cv.getContext('2d'),C=6;
 var mask=(function(){var t=document.createElement('canvas');t.width=C;t.height=C;var c=t.getContext('2d');c.fillStyle='#fff';c.beginPath();c.arc(C/2,C/2,C*0.42,0,7);c.fill();return g.createPattern(t,'repeat');})();
 var unlit=(function(){var t=document.createElement('canvas');t.width=C;t.height=C;var c=t.getContext('2d');c.fillStyle='#121821';c.beginPath();c.arc(C/2,C/2,C*0.18,0,7);c.fill();return g.createPattern(t,'repeat');})();
@@ -360,16 +361,22 @@ function draw(px){var a=img.data;
   for(var i=0;i<8192;i++){var v=px[i],r=(v>>11)&31,gg=(v>>5)&63,b=v&31,k=i*4;
     a[k]=(r<<3)|(r>>2);a[k+1]=(gg<<2)|(gg>>4);a[k+2]=(b<<3)|(b>>2);a[k+3]=v?255:0;}
   ox.putImageData(img,0,0);
-  g.globalCompositeOperation='source-over';g.globalAlpha=1;g.filter='none';
+  g.globalCompositeOperation='source-over';g.globalAlpha=1;
   g.fillStyle='#05070a';g.fillRect(0,0,768,384);g.fillStyle=unlit;g.fillRect(0,0,768,384);
   dx.globalCompositeOperation='source-over';dx.clearRect(0,0,768,384);dx.imageSmoothingEnabled=false;dx.drawImage(off,0,0,768,384);
   dx.globalCompositeOperation='destination-in';dx.fillStyle=mask;dx.fillRect(0,0,768,384);
   g.drawImage(dots,0,0);
-  g.globalCompositeOperation='lighter';g.globalAlpha=0.45;g.filter='blur(6px)';g.imageSmoothingEnabled=true;g.drawImage(off,0,0,768,384);
-  g.globalCompositeOperation='source-over';g.globalAlpha=1;g.filter='none';}
+  gx.clearRect(0,0,64,32);gx.drawImage(off,0,0,64,32);
+  g.globalCompositeOperation='lighter';g.globalAlpha=0.4;g.imageSmoothingEnabled=true;g.drawImage(glow,0,0,768,384);
+  g.globalCompositeOperation='source-over';g.globalAlpha=1;}
+var lastPx=null,still=0;
+function same(a,b){if(!b)return false;for(var i=0;i<8192;i+=1)if(a[i]!==b[i])return false;return true;}
 function pollFrame(){if(document.hidden){setTimeout(pollFrame,3000);return;}
-  fetch('/api/frame',{cache:'no-store'}).then(function(r){return r.arrayBuffer();}).then(function(ab){if(ab.byteLength>=16384)draw(new Uint16Array(ab));})
-  .catch(function(){}).finally(function(){setTimeout(pollFrame,800);});}
+  fetch('/api/frame?z=1',{cache:'no-store'}).then(function(r){return r.arrayBuffer();}).then(function(ab){var u=new Uint8Array(ab),px=new Uint16Array(8192),o=0;
+    for(var j=0;j+2<u.length&&o<8192;j+=3){var v=u[j+1]|(u[j+2]<<8);for(var k=u[j];k>0&&o<8192;k--)px[o++]=v;}
+    if(o<8192)return;
+    if(same(px,lastPx)){still++;return;}still=0;lastPx=px;requestAnimationFrame(function(){draw(px);});})
+  .catch(function(){}).finally(function(){setTimeout(pollFrame,still>3?1000:250);});}
 
 // Log, timestamps in amber.
 function poll(){if(document.hidden){setTimeout(poll,3000);return;}

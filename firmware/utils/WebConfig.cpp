@@ -122,7 +122,7 @@ void WebConfig::loop()
     else if (r.path == "/api/wifi/reset"    && r.method == "POST") handleWifiReset(client);
     else if (r.path == "/api/log"           && r.method == "GET")  handleGetLog(client, r);
     else if (r.path == "/api/display"       && r.method == "GET")  handleGetDisplay(client);
-    else if (r.path == "/api/frame"         && r.method == "GET")  handleGetFrame(client);
+    else if (r.path == "/api/frame"         && r.method == "GET")  handleGetFrame(client, r);
     else if (r.path == "/api/status"        && r.method == "GET")  handleGetStatus(client);
     else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength);
     else if (r.path == "/api/airport"       && r.method == "POST") handleAirport(client, r.contentLength);
@@ -639,10 +639,42 @@ void WebConfig::handleAirportReset(WiFiClient &c)
     ESP.restart();
 }
 
-// Raw 128x64 RGB565 frame currently on the panel (little-endian, row-major).
-void WebConfig::handleGetFrame(WiFiClient &c)
+// The 128x64 RGB565 frame currently on the panel (little-endian, row-major).
+// With ?z=1, run-length encoded: [count 1-255][pixel lo][pixel hi] per run.
+// Most of a frame is black or flat colour, so it is usually 1-4 KB instead of
+// 16 KB, which keeps the page's live mirror smooth while the panel animates.
+void WebConfig::handleGetFrame(WiFiClient &c, const Req &r)
 {
     const size_t len = FrameCanvas::W * FrameCanvas::H * sizeof(uint16_t);
+    if (qparam(r.query, "z") == "1")
+    {
+        // No length up front (the frame can change while it is encoded):
+        // the reply ends when the connection closes.
+        c.print("HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/octet-stream\r\n"
+                "Cache-Control: no-store\r\n"
+                "Connection: close\r\n\r\n");
+        const uint16_t *px = g_shownFrame.pixels();
+        const int n = FrameCanvas::W * FrameCanvas::H;
+        uint8_t buf[768];
+        size_t used = 0;
+        for (int i = 0; i < n; )
+        {
+            const uint16_t v = px[i];
+            int run = 1;
+            while (i + run < n && run < 255 && px[i + run] == v) ++run;
+            buf[used++] = (uint8_t)run;
+            buf[used++] = v & 0xFF;
+            buf[used++] = v >> 8;
+            i += run;
+            if (used + 3 > sizeof(buf) || i >= n)
+            {
+                sendChunked(c, buf, used, used);
+                used = 0;
+            }
+        }
+        return;
+    }
     c.printf("HTTP/1.1 200 OK\r\n"
              "Content-Type: application/octet-stream\r\n"
              "Cache-Control: no-store\r\n"

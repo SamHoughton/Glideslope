@@ -73,6 +73,19 @@ LOG = [
 ]
 
 
+def rle(frame):
+    """The board's ?z=1 frame encoding: [count 1-255][pixel lo][pixel hi] per run."""
+    px = [frame[i:i + 2] for i in range(0, len(frame), 2)]
+    out, i = bytearray(), 0
+    while i < len(px):
+        run = 1
+        while i + run < len(px) and run < 255 and px[i + run] == px[i]:
+            run += 1
+        out += bytes([run]) + px[i]
+        i += run
+    return bytes(out)
+
+
 def sample_frame():
     cache = ROOT / 'tools' / '.cache' / 'showcase_samples.pickle'
     if cache.exists():
@@ -105,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/api/config':     self.send(CONFIG)
         elif p == '/api/status':     self.send(STATUS)
         elif p == '/api/display':    self.send(DISPLAY)
-        elif p == '/api/frame':      self.send(self.frame, 'application/octet-stream')
+        elif p == '/api/frame':      self.send(rle(self.frame) if 'z=1' in self.path else self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
         elif p.startswith('/packs/') and (ROOT / p.lstrip('/')).is_file():
             # The repo's packs/, for trying the airport picker locally
