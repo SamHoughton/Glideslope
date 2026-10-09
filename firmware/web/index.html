@@ -291,7 +291,7 @@ function showTab(n){document.querySelectorAll('#tabs button').forEach(function(b
   $('savebar').style.display=(n==='system'||n==='log')?'none':'';
   try{localStorage.setItem('gs-tab',n);}catch(e){}}
 document.querySelectorAll('#tabs button').forEach(function(b){b.addEventListener('click',function(){showTab(b.dataset.tab);});});
-try{var lt=localStorage.getItem('gs-tab');if(lt&&$('t-'+lt))showTab(lt);}catch(e){}
+try{var lt=location.hash.slice(1)||localStorage.getItem('gs-tab');if(lt&&$('t-'+lt))showTab(lt);}catch(e){}
 
 // Settings.
 function load(){fetch('/api/config').then(function(r){return r.json();}).then(function(d){

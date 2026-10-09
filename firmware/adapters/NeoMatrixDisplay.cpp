@@ -111,7 +111,18 @@ void requestSkyPreview(const char *look, bool landing)
 }
 void requestRunwayChangeDemo() { s_runwayDemo = true; }
 
-void requestShowcase() { s_showcaseRequest = true; }
+void requestShowcase(const char *look)
+{
+    if (look && look[0])
+    {
+        strlcpy(s_skyPreview, look, sizeof(s_skyPreview));
+        s_skyPreviewUntil = millis() + 50000;
+    }
+    s_showcaseRequest = true;
+}
+
+static volatile uint32_t s_frameShowMs = UINT32_MAX;
+uint32_t showcaseFrameMs() { return s_frameShowMs; }
 
 static char          s_panelMsg[20] = "";
 static volatile bool s_panelMsgPending = false;
@@ -532,10 +543,12 @@ void NeoMatrixDisplay::stepShowcase(unsigned long now)
     switch (_showcaseStep)
     {
         case 0: if (t >= 9000)  { startLanding(now, false); ++_showcaseStep; } break;
-        case 1: if (t >= 16500) { s_mapPreviewUntil = now + 5000; ++_showcaseStep; } break;
-        case 2: if (t >= 21500) { s_mapPreviewUntil = 0; s_screenPreviewUntil = now + 4000; s_screenPreview = 3; ++_showcaseStep; } break;
-        case 3: if (t >= 25500) { s_screenPreviewUntil = now + 4000; s_screenPreview = 4; ++_showcaseStep; } break;
-        case 4: if (t >= 29500)
+        case 1: if (t >= 15500) { s_mapPreviewUntil = now + 5000; ++_showcaseStep; } break;
+        case 2: if (t >= 20500) { s_mapPreviewUntil = 0; s_screenPreviewUntil = now + 5000; s_screenPreview = 3; ++_showcaseStep; } break;
+        case 3: if (t >= 25500) { s_screenPreviewUntil = now + 5000; s_screenPreview = 4; ++_showcaseStep; } break;
+        case 4: if (t >= 30500) { s_screenPreviewUntil = now + 4500; s_screenPreview = 1; ++_showcaseStep; } break;
+        case 5: if (t >= 35000) { s_screenPreviewUntil = now + 4500; s_screenPreview = 5; ++_showcaseStep; } break;
+        case 6: if (t >= 39500)
                 {
                     s_screenPreview = 0;
                     _ambientActive = false;
@@ -544,7 +557,7 @@ void NeoMatrixDisplay::stepShowcase(unsigned long now)
                 }
                 break;
         default:
-            if (t >= 29500 + LandingScene::DURATION_MS + 1500)
+            if (t >= 39500 + LandingScene::DURATION_MS + 1500)
             {
                 _showcaseActive = false;
                 _hasCurrent = false;   // back to normal service
@@ -1053,8 +1066,8 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     }
     const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
     MapRenderer::render(g_workFrame, _traffic, now,
-                        homeSet ? g_config.home_lat : g_config.center_lat,
-                        homeSet ? g_config.home_lon : g_config.center_lon, _runwayArr, _runwayDep,
+                        _showcaseActive ? NAN : homeSet ? g_config.home_lat : g_config.center_lat,
+                        _showcaseActive ? NAN : homeSet ? g_config.home_lon : g_config.center_lon, _runwayArr, _runwayDep,
                         Sky::mapLight(s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky));
 }
 
@@ -1372,6 +1385,7 @@ void NeoMatrixDisplay::present()
         _matrix->drawPixel(i % FrameCanvas::W, i / FrameCanvas::W, next[i]);
     }
     _forceFull = false;
+    s_frameShowMs = _showcaseActive ? (uint32_t)(millis() - _showcaseStartMs) : UINT32_MAX;
 }
 
 // 3x3 grid of every aircraft sprite, tails in the default accent.

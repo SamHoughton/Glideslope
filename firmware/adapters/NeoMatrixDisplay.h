@@ -64,7 +64,12 @@ void requestSkyPreview(const char *look, bool landing = true);
 // Scripted ~35 s showcase (for demos and the README recording): a fictional
 // flight, GS101, flies in on final for 27L with the Glideslope badge, lands,
 // then the map, arrivals board and weather, and a take-off. Safe from the web task.
-void requestShowcase();
+// The showcase (for the README GIF too): the board stops fetching while it
+// runs, the map hides the home marker, and look ("golden", see Sky::preview)
+// sets the sky, "" for the real one.
+void requestShowcase(const char *look = "");
+// Showcase time (ms) of the frame on the panel; UINT32_MAX outside the showcase.
+uint32_t showcaseFrameMs();
 
 // Short status text on the panel for a few seconds (e.g. update progress). Safe from the web task.
 void requestPanelMessage(const char *text);
@@ -99,6 +104,8 @@ public:
 
     // Frames drawn by the display task so far (heartbeat diagnostics).
     uint32_t framesDrawn() const { return _frames; }
+
+    bool showcaseRunning() const { return _showcaseActive; }
 
     // Copy of the flight on screen, without its logo; false when none (scanning screen).
     bool currentFlight(FlightInfo &out);

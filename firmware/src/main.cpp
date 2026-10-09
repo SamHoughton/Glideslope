@@ -530,7 +530,12 @@ void loop()
         if (hold) g_lastFetchMs = now - intervalMs + min(hold, 30000UL);
     }
 
-    if (now - g_lastFetchMs >= intervalMs)
+    if (g_display.showcaseRunning())
+    {
+        // The showcase owns the panel (and may be recorded): no fetches, no
+        // web pauses, no real flights cutting in.
+    }
+    else if (now - g_lastFetchMs >= intervalMs)
     {
         g_lastFetchMs = now;
 
@@ -666,7 +671,7 @@ void loop()
     if (WiFi.status() == WL_CONNECTED) Notify::loop();
 
     // Heathrow weather for the arrivals board and the night clock.
-    if (WiFi.status() == WL_CONNECTED && millis() > 20000 &&
+    if (WiFi.status() == WL_CONNECTED && millis() > 20000 && !g_display.showcaseRunning() &&
         (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= kMetarEveryMs))
     {
         g_lastMetarMs = millis();

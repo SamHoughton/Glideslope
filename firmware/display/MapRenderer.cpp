@@ -81,14 +81,17 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
             c.set(x, y, FrameCanvas::scale(Rgb{p[0], p[1], p[2]}, light));   // dimmer at night
         }
 
-    // Home: a small warm plus.
-    float hx, hy;
-    project(homeLat, homeLon, hx, hy);
-    const int ix = (int)lroundf(hx), iy = (int)lroundf(hy);
-    const Rgb dimHome = FrameCanvas::scale(kHome, 0.4f);
-    plot(c, ix, iy, kHome);
-    plot(c, ix - 1, iy, dimHome); plot(c, ix + 1, iy, dimHome);
-    plot(c, ix, iy - 1, dimHome); plot(c, ix, iy + 1, dimHome);
+    // Home: a small warm plus (none when homeLat is NAN, as in the showcase).
+    if (!isnan(homeLat))
+    {
+        float hx, hy;
+        project(homeLat, homeLon, hx, hy);
+        const int ix = (int)lroundf(hx), iy = (int)lroundf(hy);
+        const Rgb dimHome = FrameCanvas::scale(kHome, 0.4f);
+        plot(c, ix, iy, kHome);
+        plot(c, ix - 1, iy, dimHome); plot(c, ix + 1, iy, dimHome);
+        plot(c, ix, iy - 1, dimHome); plot(c, ix, iy + 1, dimHome);
+    }
 
     // Runways in use: arrivals top left, departures top right (dimmer amber).
     int arrW = 0;

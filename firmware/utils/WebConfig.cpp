@@ -128,7 +128,7 @@ void WebConfig::loop()
     else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength);
     else if (r.path == "/api/airport"       && r.method == "POST") handleAirport(client, r.contentLength);
     else if (r.path == "/api/airport/reset" && r.method == "POST") handleAirportReset(client);
-    else if (r.path == "/api/demo/showcase" && r.method == "POST") { requestShowcase(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/showcase" && r.method == "POST") { requestShowcase(qparam(r.query, "look").c_str()); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/takeoff"  && r.method == "POST") { requestTakeoffDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/squawk"   && r.method == "POST") { requestAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/sky"      && r.method == "POST") { const String look = qparam(r.query, "look"); requestSkyPreview(look.length() ? look.c_str() : "night"); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -678,10 +678,12 @@ void WebConfig::handleGetFrame(WiFiClient &c, const Req &r)
     {
         // No length up front (the frame can change while it is encoded):
         // the reply ends when the connection closes.
-        c.print("HTTP/1.1 200 OK\r\n"
-                "Content-Type: application/octet-stream\r\n"
-                "Cache-Control: no-store\r\n"
-                "Connection: close\r\n\r\n");
+        // X-Show-Ms: the showcase time this frame was drawn at (recording).
+        c.printf("HTTP/1.1 200 OK\r\n"
+                 "Content-Type: application/octet-stream\r\n"
+                 "Cache-Control: no-store\r\n"
+                 "X-Show-Ms: %lu\r\n"
+                 "Connection: close\r\n\r\n", (unsigned long)showcaseFrameMs());
         const uint16_t *px = g_shownFrame.pixels();
         const int n = FrameCanvas::W * FrameCanvas::H;
         uint8_t buf[768];
