@@ -29,8 +29,11 @@ struct FlightInfo
     String airline_display_name_full;
     String aircraft_display_name_short;
 
-    // Airline logo as RGB565 pixels (AirlineLogo::WIDTH * HEIGHT entries); empty if unavailable
+    // Airline logo as RGB565 pixels (AirlineLogo::WIDTH * HEIGHT entries); empty if unavailable.
+    // Only the card on screen carries the pixels (2 KB): everywhere else just
+    // logo_code, the airline whose logo file to load (the display loads it).
     std::vector<uint16_t> airline_logo_rgb565;
+    String logo_code;
 
     // Flight parameters (display-ready units: ft, kts, deg, fpm)
     double baro_altitude = NAN;

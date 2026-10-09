@@ -4,19 +4,20 @@ Record the board's showcase (Animations -> Showcase on its web page) as an
 animated GIF for the README, rendered as a lit LED panel.
 
   python tools/record_demo.py 192.168.0.244            -> docs/showcase.gif
-  python tools/record_demo.py glideslope.local --runs 3
+  python tools/record_demo.py glideslope.local --look golden
 
-The showcase is scripted (the fictional flight GS101, which carries the
-Glideslope badge, so no airline's logo is ever recorded), so several runs can
-be interleaved: grabbing a frame over Wi-Fi takes ~80 ms, and three runs give
-smooth animation. The map / arrivals / weather part shows live data, so it is
-taken from the first run only.
+The showcase is scripted around the fictional flight GS101 (which carries the
+Glideslope badge, so no airline's logo is recorded). While it runs the board
+stops fetching (no web pauses, no real flights cutting in) and hides the home
+marker. Each frame comes back run-length encoded (?z=1, usually 1-4 KB, ~25 ms)
+with X-Show-Ms, the showcase time it was drawn at, so one run is placed
+exactly on the timeline: no interleaving, no guessed timestamps.
 
 Needs only Pillow.
 """
 import argparse
+import http.client
 import pickle
-import struct
 import time
 import urllib.request
 from pathlib import Path
@@ -27,38 +28,58 @@ ROOT = Path(__file__).resolve().parent.parent
 W, H = 128, 64
 
 # Showcase timeline (s), matching NeoMatrixDisplay::stepShowcase.
-SCREENS_FROM, SCREENS_TO, END = 16.5, 29.5, 32.8   # END: the take-off's last frame
+END = 39.5 + 3.4         # the end of the take-off scene
+
+
+def decode(raw):
+    """[count][lo][hi] runs -> 8192 RGB565 pixels."""
+    px = []
+    for i in range(0, len(raw) - 2, 3):
+        px.extend([raw[i + 1] | (raw[i + 2] << 8)] * raw[i])
+    return tuple(px[:W * H]) if len(px) >= W * H else None
 
 
 def grab(base):
-    """One frame, or None: the board's web server pauses while it fetches
-    flight data, so a request can wait or time out; other runs fill the gap."""
+    """(showcase ms, frame), or (None, frame) outside the showcase, or (None, None)."""
+    host = base.split('//', 1)[1]
     try:
-        raw = urllib.request.urlopen(base + '/api/frame', timeout=4).read()
-        return struct.unpack('<8192H', raw) if len(raw) == 16384 else None
-    except OSError:
-        return None
+        c = http.client.HTTPConnection(host, timeout=4)
+        c.request('GET', '/api/frame?z=1')
+        r = c.getresponse()
+        raw = r.read()
+        ms = r.getheader('X-Show-Ms')
+        c.close()
+        px = decode(raw)
+        ms = int(ms) if ms is not None and int(ms) < 4_000_000_000 else None
+        return ms, px
+    except (OSError, ValueError, http.client.HTTPException):
+        return None, None
 
 
-def start(base):
-    urllib.request.urlopen(urllib.request.Request(base + '/api/demo/showcase', data=b'', method='POST'),
-                           timeout=5).read()
+def start(base, look):
+    url = base + '/api/demo/showcase' + (f'?look={look}' if look else '')
+    for _ in range(3):
+        try:
+            urllib.request.urlopen(urllib.request.Request(url, data=b'', method='POST'), timeout=10).read()
+            return
+        except OSError:
+            time.sleep(2)
+    raise SystemExit('board not answering')
 
 
-def record(base, runs):
-    samples = []   # (seconds since start, run, frame)
-    for run in range(runs):
-        start(base)
-        t0 = time.time()
-        time.sleep(run * 0.027)   # stagger the runs so their samples interleave
-        while time.time() - t0 < END:
-            ts = time.time() - t0
-            px = grab(base)
-            if px and time.time() - t0 - ts < 0.4:          # skip answers delayed by a fetch
-                samples.append((ts + 0.04, run, px))         # stamp mid-request
-        print(f'run {run + 1}: {sum(1 for s in samples if s[1] == run)} frames')
-        time.sleep(4)
-    return samples
+def record(base, look):
+    start(base, look)
+    samples = {}   # showcase ms -> frame
+    t0 = time.time()
+    while time.time() - t0 < END + 10:
+        ms, px = grab(base)
+        if px is None: continue
+        if ms is None:
+            if samples: break      # the showcase is over
+            continue               # not started yet
+        samples[ms] = px
+    print(f'{len(samples)} frames over {max(samples) / 1000:.1f} s')
+    return sorted(samples.items())
 
 
 def to_image(px):
@@ -93,38 +114,41 @@ def led_render(im, cell=4, pad=14):
     return out
 
 
-def nearest(samples, t, runs=None):
-    pool = [s for s in samples if runs is None or s[1] in runs]
-    return min(pool, key=lambda s: abs(s[0] - t))[2]
+def at(samples, t):
+    """The frame on the panel at showcase time t (s): the latest drawn by then."""
+    ms = t * 1000
+    best = samples[0][1]
+    for m, px in samples:
+        if m > ms: break
+        best = px
+    return best
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('host', help='board address, e.g. glideslope.local or 192.168.0.244')
-    ap.add_argument('--runs', type=int, default=3)
+    ap.add_argument('--look', default='golden', help='sky for the landing and take-off ("" for the real one)')
     ap.add_argument('--out', default=str(ROOT / 'docs' / 'showcase.gif'))
-    ap.add_argument('--fps', type=float, default=15)
+    ap.add_argument('--fps', type=float, default=20)   # 50 ms: GIF times are in 10 ms steps
     ap.add_argument('--reuse', action='store_true', help='re-render the last recording')
     a = ap.parse_args()
     base = 'http://' + a.host
-    cache = ROOT / 'tools' / '.cache' / 'showcase_samples.pickle'
+    cache = ROOT / 'tools' / '.cache' / 'showcase_frames.pickle'
     if a.reuse and cache.exists():
         samples = pickle.loads(cache.read_bytes())
     else:
-        samples = record(base, a.runs)
+        samples = record(base, a.look)
         cache.parent.mkdir(exist_ok=True)
         cache.write_bytes(pickle.dumps(samples))
 
+    end = min(END, samples[-1][0] / 1000)
     frames, durs = [], []
     step = 1.0 / a.fps
-    t = 0.0
-    while t < END:
-        live = SCREENS_FROM <= t < SCREENS_TO
-        px = nearest(samples, t, {0} if live else None)
-        frames.append(px)
-        dt = 0.2 if live else step   # the screens tour barely moves: 5 fps is plenty
-        durs.append(int(dt * 1000))
-        t += dt
+    t = 0.3
+    while t < end:
+        frames.append(at(samples, t))
+        durs.append(int(step * 1000))
+        t += step
     durs[-1] = 1500
 
     # Merge identical neighbours, then render.
@@ -142,13 +166,18 @@ def main():
     mosaic = Image.new('RGB', (picks[0].width, picks[0].height * len(picks)))
     for i, im in enumerate(picks):
         mosaic.paste(im, (0, i * im.height))
-    pal = mosaic.quantize(colors=128, method=Image.Quantize.MEDIANCUT)
+    pal = mosaic.quantize(colors=192, method=Image.Quantize.MEDIANCUT)
     images = [im.quantize(palette=pal, dither=Image.Dither.NONE) for im in rendered]
     images[0].save(a.out, save_all=True, append_images=images[1:], duration=mdur, loop=0, optimize=True, disposal=1)
     print(f'{a.out}: {len(images)} frames, {Path(a.out).stat().st_size // 1024} KB')
 
     # A still of the approach card for social previews and the like.
-    led_render(to_image(nearest(samples, 6.0)), cell=6, pad=20).save(Path(a.out).with_name('showcase-card.png'))
+    # The route line cross-fades with the airline name: take the moment it is brightest.
+    def route_lit(px):
+        return sum(((v >> 11) & 31) + ((v >> 5) & 63) // 2 + (v & 31)
+                   for y in range(13, 22) for v in px[y * W + 62:y * W + 128])
+    card = max((px for ms, px in samples if 2500 <= ms <= 8500), key=route_lit)
+    led_render(to_image(card), cell=6, pad=20).save(Path(a.out).with_name('showcase-card.png'))
 
 
 if __name__ == '__main__':

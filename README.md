@@ -5,8 +5,9 @@
 <p align="center">
   <b>An LED flight board for the planes landing over your house.</b><br>
   Live ADS-B on a 128×64 LED panel: each arrival flies in, counts down to the
-  runway and lands; departures take off; between them, a map, an arrivals
-  board and the weather.<br>
+  runway and lands in the real sky, day or night, rain or shine; departures
+  take off; between them, a map, an arrivals board, the weather, today's
+  stats and the holding stacks, with alerts on your phone.<br>
   Heathrow out of the box, and around fifty more airports a click away.
 </p>
 
@@ -18,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/showcase.gif" alt="Glideslope on the panel: a flight flies in, counts down to runway 27L and lands, then the map, arrivals board, weather and a take-off" width="680">
+  <img src="docs/showcase.gif" alt="Glideslope on the panel: a flight flies in, counts down to runway 27L and lands at golden hour, then the map, arrivals board, weather, today's stats, holding stacks and a take-off" width="680">
 </p>
 
 Recorded from the board's own frames with its built-in showcase (the
@@ -34,20 +35,26 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Take-off](docs/takeoff.gif) | ![Arrivals board](docs/arrivals.png) |
 
-| Weather | Emergency squawk |
+| Weather | Today's stats |
 | --- | --- |
-| ![Weather](docs/weather.png) | ![Squawk alert](docs/squawk.png) |
+| ![Weather](docs/weather.png) | ![Today's stats](docs/stats.png) |
+
+| Holding stacks | Emergency squawk |
+| --- | --- |
+| ![Holding stacks](docs/holding.png) | ![Squawk alert](docs/squawk.png) |
 
 ### The web page
 
 Every board serves a page at `http://glideslope.local/`: a live mirror of the
 panel drawn as glowing LEDs, what's on it now, the animations on demand, every
-setting in tabs (display, airport, night, data, system, log), firmware updates
-and a log.
+setting in tabs (display with a switch for each screen, airport, night, data,
+phone alerts, system, log), firmware updates and a log.
 
 | Desktop | Phone |
 | --- | --- |
 | <img src="docs/webui-desktop.png" alt="The Glideslope web page on a desktop" width="560"> | <img src="docs/webui-phone.png" alt="The Glideslope web page on a phone" width="220"> |
+
+<p align="center"><img src="docs/webui-alerts.png" alt="The Alerts tab: an ntfy topic and the events to be told about" width="560"></p>
 
 ## What it shows
 
@@ -64,7 +71,8 @@ and a log.
   behind it.
 - **Landing**: when the aircraft reaches the threshold it flares, touches down
   with tyre smoke and rolls out in front of a London skyline (with the Shard's
-  warning light blinking); the card then reads `LANDED 27L`. It only plays
+  warning light blinking) under the living sky (below); the card then reads
+  `LANDED 27L`. It only plays
   once the aircraft is really down: low, level and at the threshold.
 - **Go-arounds**: an aircraft on final that climbs away instead of landing
   gets its own scene and a flashing `GO AROUND 27L` card, and is counted on
@@ -77,7 +85,7 @@ and a log.
   with a flashing red alert, and shows red on the map. It must be seen in two
   fetches running, so a single garbled reply doesn't trigger it.
 - **The rhythm**: between planes the board rotates through its screens (map,
-  arrivals, stats, weather). A plane's card is the event: an approach flies in
+  arrivals, stats, weather, holding), each switchable on the web page. A plane's card is the event: an approach flies in
   about two minutes before touchdown and stays until it has landed; a
   departure or overflight gets a short card. After every landing comes a
   15-second break showing the next screen in the rotation, so they all come
@@ -92,7 +100,9 @@ and a log.
 - **Arrivals board**: the next four arrivals with their type and
   minutes to touchdown (`~` while still a rough guess, before they join
   final), and Heathrow's weather along the bottom, e.g. `310/04 7KM RA 14C`
-  (wind, visibility, rain, temperature).
+  (wind, visibility, rain, temperature). The letters flip into place like
+  an old split-flap board. Optionally, recent departures (time, and the
+  destination when the route is known) as a second page.
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
@@ -101,12 +111,17 @@ and a log.
   go-arounds in turn. Every aircraft in range counts (an arrival once it is
   on final, a departure once it climbs out along a runway), not only the
   ones that get a card, and the tally is saved so a restart keeps the day.
+  The counters count up and the bars rise as the screen appears; a faint
+  line marks yesterday's hour by hour, and the footer says how today
+  compares so far (`VS YESTERDAY +12%`).
   It only sees what is in range: centre the search near the airport (or
   make the radius large enough to cover both approaches) to count every
   movement.
-- **Weather**: Heathrow's wind (with a compass arrow), gusts, visibility,
-  weather, temperature, pressure, and the crosswind and head- or tailwind on
-  the runway in use.
+- **Weather**: a little live scene on the left (the sky as it is now, sun
+  or moon, cloud, rain or snow falling, a windsock blowing in the real wind
+  and the temperature) and on the right the wind and gusts, the runway in
+  use seen from above with the wind crossing it, crosswind and head- or
+  tailwind, visibility and pressure.
 - **Runways in use**, worked out from the traffic itself: every aircraft on
   final or climbing out counts, at any airport, with several runways at once
   (arrivals top left of the map, departures top right; `27L UNTIL 15:00` on
@@ -114,22 +129,47 @@ and a log.
   easterly switch, confirmed by two aircraft) the panel announces
   `RUNWAY CHANGE · NOW LANDING 09L`. With nothing landing for 30 minutes,
   no runway is shown.
-- **Quiet hours**: a dim clock (with the weather) overnight when there's no
-  traffic.
+- **Living sky**: landings, go-arounds and take-offs are drawn in the light
+  at the airport at that moment, from the sun's real position: blue sky by
+  day, an orange sun on the horizon at golden hour, twilight, then stars,
+  the moon, lit windows, runway edge lights and the aircraft's landing
+  lights, beacon and strobes after dark. The latest weather adds cloud,
+  rain, snow, thunder flashes or fog, and the map dims at night.
+- **Holding stacks**: at Heathrow the four stacks (Bovingdon, Lambourne,
+  Biggin Hill, Ockham) are checked in turn, and anywhere in range an
+  aircraft that keeps circling counts. A holding screen shows each stack
+  as a racetrack with its aircraft going round, the count and the longest
+  wait.
+- **Phone alerts** through [ntfy](https://ntfy.sh) (free, no account): emergency
+  squawks, rare spots, go-arounds, runway changes, busy stacks and the
+  evening round-up, each
+  switchable on the web page's Alerts tab.
+- **Quiet hours**: a dim clock (with the weather and tonight's moon in its
+  real phase) overnight when there's no traffic. Night dimming can follow
+  the sun instead of fixed times, easing down through dusk and up at dawn.
+- **Evening round-up** on your phone at 22:30 (optional): the day's
+  movements, busiest hour, top airline, rarest type.
 - **Board button** cycles Auto / Map / Arrivals / Stats / Weather.
 - **Scanning screen** when nothing is being tracked.
 
   ![Scanning screen](docs/scanning.gif)
-- **Showcase**: a 35-second scripted tour (the button on the web page) for
-  showing the board off, and for recording the README demo with
-  `tools/record_demo.py`.
-- **Web page** on the board: a live mirror of the panel, animation previews,
-  brightness, night dimming (UK time, GMT/BST automatic), location and data
-  source settings, firmware updates over Wi-Fi, a log and a health endpoint.
+- **Showcase**: a 43-second scripted tour (the button on the web page) for
+  showing the board off. While it runs the board pauses its fetches and
+  hides the home marker, and each frame is time-stamped, so
+  `tools/record_demo.py` records the README GIF in one clean run and
+  `tools/record_shots.py` cuts the other README images from it.
+- **Web page** on the board: a live mirror of the panel, animation and sky
+  previews, a switch for each screen, brightness, night dimming (by the clock
+  or following the sun), location and data source settings, phone alerts,
+  firmware updates over Wi-Fi, a log and a health endpoint.
 
-Nine aircraft sprites are chosen by ICAO type code: narrowbody, widebody twin,
-A380, 747, regional jet, turboprop, business jet, helicopter and light aircraft.
-Unknown types fall back to a grey narrowbody.
+Twenty aircraft sprites are chosen by ICAO type code (A320, A321, 737, A220,
+E-Jet, CRJ, 757, 767, 787, A330, A350, 777, A340, 747, A380, ATR, Q400,
+business jet, helicopter, light aircraft), shaded and painted in the
+airline's colours for about 45 airlines (colours only, no logos); any other
+airline flies white with its logo colour on the fin. The landing and
+take-off scenes use larger versions with the gear down. Unknown types fall
+back to a grey A320.
 
 ![Aircraft sprites](docs/sprites.png)
 
@@ -279,8 +319,11 @@ sample data, for screenshots or for working on the page without a board.
 
 ## Editing sprites
 
-Sprites are text grids in `tools/sprite_workbench.py`. Run it to render a
-preview image and print the C arrays for `firmware/display/AircraftSprites.cpp`.
+Aircraft are generated from each type's proportions (length, nose, fin,
+engines, upper deck...) by `tools/sprite_gen.py`, which also holds the
+liveries: `python tools/sprite_gen.py sheet out.png` renders a preview sheet
+and `python tools/sprite_gen.py emit` writes `firmware/display/SpriteData.h`.
+The helicopter and light aircraft are hand drawn in `tools/sprite_workbench.py`.
 The landing scene's London skyline is generated the same way by
 `tools/skyline_workbench.py`.
 
@@ -297,10 +340,14 @@ Aircraft positions, first to answer wins:
    a rate-limit reply. Can be switched off in the settings.
 3. [OpenSky Network](https://opensky-network.org/), every 30 s.
 
-- [hexdb.io](https://hexdb.io/) for routes, registrations and aircraft types.
+- [adsb.im](https://adsb.im/)'s open route database for routes, over plain
+  HTTP; registrations and types come with the positions from adsb.lol.
+- [hexdb.io](https://hexdb.io/) (HTTPS) for routes adsb.im doesn't know,
+  then OpenSky and AeroAPI if configured.
 - [aviationweather.gov](https://aviationweather.gov/) (NOAA) for Heathrow's
   METAR, every 10 minutes.
 - FlightAware AeroAPI, optional and paid.
+- [ntfy.sh](https://ntfy.sh/) for phone alerts, if a topic is set.
 
 ## Credits and licence
 

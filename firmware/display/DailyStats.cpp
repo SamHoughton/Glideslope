@@ -56,6 +56,12 @@ void DailyStats::rollDay()
     if (lt.tm_yday == _day && lt.tm_year == _year) return;
     if (_day >= 0)
         Log.printf("Stats: new day (yesterday %u arrivals, %u departures)\n", _arrivals, _departures);
+    // Yesterday only if the counts are from the day before (not a board
+    // switched off for a week).
+    const bool consecutive = _day >= 0 && ((lt.tm_year == _year && lt.tm_yday == _day + 1) ||
+                                           (lt.tm_year == _year + 1 && lt.tm_yday == 0 && _day >= 364));
+    _hasYesterday = consecutive;
+    for (int h = 0; h < 24; ++h) _yHour[h] = consecutive ? _arrHour[h] + _depHour[h] : 0;
     reset();
     _year = lt.tm_year;
     _day  = lt.tm_yday;
@@ -182,6 +188,15 @@ String DailyStats::rarestType() const
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 
+int DailyStats::yesterdayUpTo(int hour, int minute) const
+{
+    if (!_hasYesterday) return 0;
+    float n = 0;
+    for (int h = 0; h < hour && h < 24; ++h) n += _yHour[h];
+    if (hour >= 0 && hour < 24) n += _yHour[hour] * minute / 60.0f;
+    return (int)lroundf(n);
+}
+
 void DailyStats::serialise(std::vector<uint8_t> &v)
 {
     v.clear();
@@ -205,6 +220,9 @@ void DailyStats::serialise(std::vector<uint8_t> &v)
         v.insert(v.end(), _types[i].t, _types[i].t + 6);
         put(v, _types[i].n); put(v, _types[i].seq);
     }
+    // Yesterday (added in 4.0: older files simply end before it).
+    put(v, (uint8_t)(_hasYesterday ? 1 : 0));
+    for (uint16_t n : _yHour) put(v, n);
     _dirty = false;
 }
 
@@ -248,6 +266,18 @@ void DailyStats::load()
         ok = f.read((uint8_t *)t, 6) == 6 && get(f, tn) && get(f, tseq);
         if (ok)
             if (TypeCount *slot = typeSlot(t, true)) { slot->n = tn; slot->seq = tseq; }
+    }
+    if (ok)
+    {
+        uint8_t y = 0;
+        bool yok = get(f, y);
+        uint16_t hours[24];
+        for (uint16_t &h : hours) yok = yok && get(f, h);
+        if (yok && y)
+        {
+            _hasYesterday = true;
+            memcpy(_yHour, hours, sizeof(_yHour));
+        }
     }
     f.close();
     if (!ok)

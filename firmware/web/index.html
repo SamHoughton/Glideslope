@@ -142,11 +142,16 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="arrivals">Arrivals</button>
         <button data-demo="stats">Today's stats</button>
         <button data-demo="weather">Weather</button>
+        <button data-demo="holding">Holding stacks</button>
         <button data-demo="clock">Night clock</button>
         <button data-demo="splash">Scanning</button>
         <button data-demo="rare">Rare spot</button>
         <button data-demo="squawk">Emergency squawk</button>
         <button data-demo="runway">Runway change</button>
+        <button data-demo="sky?look=golden">Sky: golden hour</button>
+        <button data-demo="sky?look=night">Sky: night</button>
+        <button data-demo="sky?look=night+storm">Sky: storm</button>
+        <button data-demo="sky?look=day+snow">Sky: snow</button>
         <button data-demo="sprites">Aircraft sprites</button>
       </div>
     </details>
@@ -161,6 +166,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <button data-tab="airport">Airport</button>
       <button data-tab="night">Night</button>
       <button data-tab="data">Data</button>
+      <button data-tab="alerts">Alerts</button>
       <button data-tab="system">System</button>
       <button data-tab="log">Log</button>
     </div>
@@ -175,9 +181,15 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <div class="f"><label for="card_lead_seconds">Card before landing <small>(s)</small></label><input type="number" min="30" max="600" id="card_lead_seconds"></div>
         <div class="f"><label for="interlude_seconds">Break after a landing <small>(s, 0 = none)</small></label><input type="number" min="0" max="120" id="interlude_seconds"></div>
       </div>
-      <div class="f"><label>Screens between planes <small>&mdash; each comes round in turn</small></label>
-        <div class="pills"><label><input type="checkbox" data-scr="1">Map</label><label><input type="checkbox" data-scr="2">Arrivals</label><label><input type="checkbox" data-scr="4">Stats</label><label><input type="checkbox" data-scr="8">Weather</label></div></div>
       <div class="f"><label for="display_cycle_seconds">Minimum time per approach card <small>(s)</small></label><input type="number" min="3" id="display_cycle_seconds"></div>
+      <h3>Screens between planes</h3>
+      <p class="hint">Each comes round in turn; one that has nothing to show is skipped.</p>
+      <label class="sw"><input type="checkbox" data-scr="1"><span>Map<small>Everything in range around the airport</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="2"><span>Arrivals board<small>The next four landings, with countdowns</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="32"><span>Departures on the board<small>Recent take-offs as a second page of the arrivals board</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="4"><span>Today's stats<small>Movements, hourly chart, against yesterday</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="8"><span>Weather<small>Live sky, windsock and the wind on the runway</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="16"><span>Holding stacks<small>Only when aircraft are holding</small></span></label>
       <h3>Look</h3>
       <label class="sw"><input type="checkbox" id="display_border"><span>Airline-coloured border</span></label>
       <label class="sw"><input type="checkbox" id="display_nearest_only"><span>Nearest aircraft only<small>One route lookup per fetch; easier on memory and APIs</small></span></label>
@@ -209,6 +221,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
 
     <section class="tab" id="t-night">
       <label class="sw"><input type="checkbox" id="night_mode_enabled"><span>Dim at night<small>Airport local time, daylight saving automatic</small></span></label>
+      <label class="sw"><input type="checkbox" id="night_follow_sun"><span>Follow the sun<small>Dims through dusk and brightens at dawn at the airport, all year; the times below are ignored</small></span></label>
       <div class="row">
         <div class="f"><label for="night_start_time">From</label><input type="time" id="night_start_time"></div>
         <div class="f"><label for="night_end_time">Until</label><input type="time" id="night_end_time"></div>
@@ -233,6 +246,14 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <div class="f"><label for="aeroapi_cache_ttl_seconds">Route cache <small>(s)</small></label><input type="number" min="60" id="aeroapi_cache_ttl_seconds"></div>
         <div class="f"><label for="aeroapi_fail_cache_ttl_seconds">Retry unknown routes <small>(s)</small></label><input type="number" min="30" id="aeroapi_fail_cache_ttl_seconds"></div>
       </div>
+    </section>
+
+    <section class="tab" id="t-alerts">
+      <p class="hint">Alerts on your phone through <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>: free, no account. Install the ntfy app and subscribe to the topic below. Anyone who knows a topic can read it, so keep it long and random.</p>
+      <div class="f"><label for="ntfy_topic">ntfy topic <small>(or a full URL for your own server; blank = off)</small></label><input id="ntfy_topic" autocomplete="off" spellcheck="false" placeholder="e.g. glideslope-k3x9q2m7w1"></div>
+      <div class="btns"><button id="ntr">Random topic</button><button id="ntt">Save and send a test</button><span class="msg" id="ntst"></span></div>
+      <div class="f"><label>Tell me about</label>
+        <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label><label><input type="checkbox" data-ntf="32">Evening round-up</label></div></div>
     </section>
 
     <section class="tab" id="t-system">
@@ -270,7 +291,7 @@ function showTab(n){document.querySelectorAll('#tabs button').forEach(function(b
   $('savebar').style.display=(n==='system'||n==='log')?'none':'';
   try{localStorage.setItem('gs-tab',n);}catch(e){}}
 document.querySelectorAll('#tabs button').forEach(function(b){b.addEventListener('click',function(){showTab(b.dataset.tab);});});
-try{var lt=localStorage.getItem('gs-tab');if(lt&&$('t-'+lt))showTab(lt);}catch(e){}
+try{var lt=location.hash.slice(1)||localStorage.getItem('gs-tab');if(lt&&$('t-'+lt))showTab(lt);}catch(e){}
 
 // Settings.
 function load(){fetch('/api/config').then(function(r){return r.json();}).then(function(d){
@@ -279,20 +300,30 @@ function load(){fetch('/api/config').then(function(r){return r.json();}).then(fu
   $('night_start_time').value=toTime(d.night_start_minutes||0);$('night_end_time').value=toTime(d.night_end_minutes||0);
   ['opensky_client_secret','aeroapi_key'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});
   document.querySelectorAll('[data-scr]').forEach(function(e){e.checked=!!(d.screens&parseInt(e.dataset.scr));});
+  document.querySelectorAll('[data-ntf]').forEach(function(e){e.checked=!!(d.notify_mask&parseInt(e.dataset.ntf));});
   $('bv').textContent=d.display_brightness;});}
 function save(){var d={};
   ['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
   ['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',
    'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});
-  ['display_nearest_only','display_border','display_flip','night_mode_enabled','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
+  ['display_nearest_only','display_border','display_flip','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
   d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});
   d.screen_facing=$('screen_facing').value;d.tar1090_host=$('tar1090_host').value;
+  d.ntfy_topic=$('ntfy_topic').value.trim();d.notify_mask=ntfMask();
   var ma=$('min_altitude_ft').value;d.min_altitude_ft=ma===''?-1:parseInt(ma);
   d.night_start_minutes=toMin($('night_start_time').value);d.night_end_minutes=toMin($('night_end_time').value);
   ['opensky_client_id','opensky_client_secret','aeroapi_key'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});
   status('Saving…');post('/api/config',d).then(function(r){return r.json();})
     .then(function(j){status(j.ok?'Saved':'Error: '+(j.error||'?'),3000);load();}).catch(function(){status('Could not reach the board',4000);});}
 $('save').addEventListener('click',save);
+function ntfMask(){var m=0;document.querySelectorAll('[data-ntf]').forEach(function(e){if(e.checked)m|=parseInt(e.dataset.ntf);});return m;}
+$('ntr').addEventListener('click',function(){var a=new Uint8Array(8),s='';crypto.getRandomValues(a);
+  a.forEach(function(b){s+='abcdefghijkmnpqrstuvwxyz23456789'[b%32];});$('ntfy_topic').value='glideslope-'+s;});
+$('ntt').addEventListener('click',function(){var t=$('ntfy_topic').value.trim();if(!t){$('ntst').textContent='Set a topic first';return;}
+  $('ntst').textContent='Sending…';post('/api/config',{ntfy_topic:t,notify_mask:ntfMask()})
+  .then(function(){return post('/api/notify/test');}).then(function(r){return r.json();})
+  .then(function(j){$('ntst').textContent=j.ok?'Sent: check your phone (subscribed to '+t+')':'Failed: '+(j.error||'?');})
+  .catch(function(){$('ntst').textContent='Could not reach the board';});});
 var bt;$('display_brightness').addEventListener('input',function(e){$('bv').textContent=e.target.value;clearTimeout(bt);
   bt=setTimeout(function(){post('/api/config',{display_brightness:parseInt(e.target.value)});},250);});
 document.querySelectorAll('[data-demo]').forEach(function(b){b.addEventListener('click',function(){post('/api/demo/'+b.dataset.demo);});});
@@ -336,6 +367,7 @@ function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
     $('apt').textContent=(s.airport_name||'')+' ('+(s.airport||'')+')'+(s.airport_pack?' from an airport pack':', built in');
     $('sys').innerHTML='<dt>Firmware</dt><dd>'+esc(s.version)+' <small>'+esc(s.built)+'</small></dd>'+
       (s.runways_arr||s.runways_dep?'<dt>Runways</dt><dd>'+(s.runways_arr?'Landing '+esc(s.runways_arr):'')+(s.runways_arr&&s.runways_dep?' · ':'')+(s.runways_dep?'Departing '+esc(s.runways_dep):'')+'</dd>':'')+
+      (s.holding?'<dt>Holding</dt><dd>'+esc(s.holding)+'</dd>':'')+
       '<dt>Up</dt><dd>'+fmtUp(s.uptime_s)+'</dd><dt>Memory</dt><dd>'+Math.round(s.heap_free/1024)+' KB free, low '+Math.round(s.heap_min_free/1024)+' KB</dd>'+
       (s.metar?'<dt>Weather</dt><dd class="mono" style="font-size:12px">'+esc(s.metar)+'</dd>':'');
     $('livedot').className='dot on';$('livetxt').textContent='live';

@@ -13,6 +13,7 @@
 #include "display/Traffic.h"
 #include "display/DailyStats.h"
 #include "display/RunwayTracker.h"
+#include "display/Sky.h"
 #include "display/InfoScreens.h"
 #include "display/LandingScene.h"
 #include "utils/Weather.h"
@@ -56,11 +57,19 @@ void requestTakeoffDemo();
 // Show a sample emergency-squawk alert (demo).
 void requestAlertDemo();
 void requestRunwayChangeDemo();
+// Previews a sky ("night+rain", see Sky::preview): replays the card's landing
+// in it (or the showcase when there is no card). Real flights keep the real sky.
+void requestSkyPreview(const char *look, bool landing = true);
 
 // Scripted ~35 s showcase (for demos and the README recording): a fictional
 // flight, GS101, flies in on final for 27L with the Glideslope badge, lands,
 // then the map, arrivals board and weather, and a take-off. Safe from the web task.
-void requestShowcase();
+// The showcase (for the README GIF too): the board stops fetching while it
+// runs, the map hides the home marker, and look ("golden", see Sky::preview)
+// sets the sky, "" for the real one.
+void requestShowcase(const char *look = "");
+// Showcase time (ms) of the frame on the panel; UINT32_MAX outside the showcase.
+uint32_t showcaseFrameMs();
 
 // Short status text on the panel for a few seconds (e.g. update progress). Safe from the web task.
 void requestPanelMessage(const char *text);
@@ -96,6 +105,8 @@ public:
     // Frames drawn by the display task so far (heartbeat diagnostics).
     uint32_t framesDrawn() const { return _frames; }
 
+    bool showcaseRunning() const { return _showcaseActive; }
+
     // Copy of the flight on screen, without its logo; false when none (scanning screen).
     bool currentFlight(FlightInfo &out);
 
@@ -104,17 +115,29 @@ public:
     void noteTraffic(const std::vector<StateVector> &states);
     // Runways in use from that traffic ("27L", "26R 26L"; "" if none).
     void runwaysInUse(char *arr, size_t arrLen, char *dep, size_t depLen);
+    // The aircraft around named holding stack i (Airport::holds), once a minute.
+    void noteStack(int stack, const std::vector<StateVector> &states);
+    // Holding now: "BNN 4 (9 min), OCK 2 (3 min)" ("" if none); returns the total.
+    int holdingSummary(char *out, size_t len, int *longestMin = nullptr);
+    // Today in a sentence or two, for the evening round-up.
+    void dailySummary(char *out, size_t len);
     bool statsSnapshot(std::vector<uint8_t> &out);   // false if unchanged
     void loadStats();
 
     // Arrivals board rows, soonest first (call once per fetch).
     void setArrivals(const InfoScreens::Arrival *rows, int n);
+    // Recent departures, newest first: a second page of the board when
+    // switched on (g_config.screens bit 32).
+    void setDepartures(const InfoScreens::Departure *rows, int n);
 
     // Heathrow weather for the weather screen, arrivals board and night clock.
     void setWeather(const Metar &m);
 
     // Emergency squawk: takes over the panel for a few seconds. Safe from any task.
     void raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail);
+
+    // Where card logos come from (loaded only for the card on screen).
+    void setLogoStore(class BaseLogoStore *store) { _logos = store; }
 
 private:
     struct Entry
@@ -136,6 +159,8 @@ private:
         unsigned long altMs = 0;           // when shownAltFt was last updated
     };
 
+    class BaseLogoStore *_logos = nullptr;
+    void                 loadLogo(Entry &e);
     MatrixPanel_I2S_DMA *_matrix = nullptr;
     SemaphoreHandle_t    _lock   = nullptr;
     TaskHandle_t         _task   = nullptr;
@@ -148,6 +173,7 @@ private:
     std::deque<Entry>    _queue;
     std::map<String, unsigned long> _seenMs;   // ident -> last time in a fetch
     RunwayTracker        _runways;               // from every aircraft in range
+    HoldTracker          _holds;                 // aircraft in holding patterns
     char                 _runwayInUse[4] = "";  // main arrival runway, e.g. "27L"
     char                 _runwayArr[12] = "", _runwayDep[12] = "";   // all in use
     bool                 _rwyChangeActive = false;   // RUNWAY CHANGE on the panel
@@ -169,8 +195,11 @@ private:
     // Button-selected mode (display task only)
     enum class Mode : uint8_t { Auto, Map, Arrivals, Stats, Weather };
     // Rotation screens; bit n of g_config.screens enables Screen n.
-    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Count };
+    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Count };
     Screen               _screen = Screen::Weather;   // so the first rotation starts with the map
+    Screen               _shownScreen = Screen::Count;
+    unsigned long        _shownScreenMs = 0, _shownScreenLastMs = 0;
+    uint32_t             shownFor(Screen s, unsigned long now);
     unsigned long        _screenSinceMs = 0;
     unsigned long        _interludeUntilMs = 0;      // break after a landing ends
     Mode                 _mode = Mode::Auto;
@@ -187,8 +216,14 @@ private:
     DailyStats           _stats;                  // guarded by _lock
     InfoScreens::Arrival _arrivals[InfoScreens::kMaxArrivals];   // guarded by _lock
     int                  _arrivalCount = 0;
+    InfoScreens::Departure _departures[InfoScreens::kMaxDepartures];   // guarded by _lock
+    int                  _departureCount = 0;
+    bool                 departuresPage() const;
     char                 _weather[24] = "";       // guarded by _lock
     Metar                _metar;                  // guarded by _lock
+    Sky::Look            _sky;                    // the light now (refreshed every 30 s)
+    unsigned long        _skyMs = 0;
+    Sky::Look            _sceneSky;               // the light the current scene is drawn in
 
     // Emergency-squawk alert (guarded by _lock)
     char                 _alertCode[6] = "", _alertMeaning[12] = "", _alertIdent[12] = "", _alertDetail[24] = "";

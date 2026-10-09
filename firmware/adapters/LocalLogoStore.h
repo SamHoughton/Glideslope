@@ -14,6 +14,7 @@ public:
 
     bool getAirlineLogo(const String &airlineIcao,
                         std::vector<uint16_t> &outPixels) override;
+    bool hasAirlineLogo(const String &airlineIcao) override;
 
 private:
     bool _mounted = false;

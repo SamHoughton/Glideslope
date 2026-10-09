@@ -17,4 +17,6 @@ public:
 
     virtual bool getAirlineLogo(const String &airlineIcao,
                                 std::vector<uint16_t> &outPixels) = 0;
+    // Whether a logo exists, without loading it.
+    virtual bool hasAirlineLogo(const String &airlineIcao) = 0;
 };

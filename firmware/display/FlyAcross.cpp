@@ -49,7 +49,7 @@ FlyAcross::Path FlyAcross::pathFor(double headingDeg, double verticalRateFpm, co
 }
 
 void FlyAcross::compose(FrameCanvas &out, const FrameCanvas &oldFrame, uint32_t tMs,
-                        const AircraftSprites::Sprite &sprite, Rgb tail, bool greySprite,
+                        const AircraftSprites::Sprite &sprite, const AircraftSprites::Livery &livery, bool greySprite,
                         const Path &path)
 {
     const float q = tMs >= DURATION_MS ? 1.0f : (float)tMs / DURATION_MS;
@@ -81,5 +81,5 @@ void FlyAcross::compose(FrameCanvas &out, const FrameCanvas &oldFrame, uint32_t 
         }
 
     // Sprites are drawn nose-left; mirror them when flying rightward.
-    AircraftSprites::draw(out, sprite, planeX, planeY, tail, path.rightward, greySprite, true);
+    AircraftSprites::draw(out, sprite, planeX, planeY, livery, path.rightward, greySprite, true);
 }

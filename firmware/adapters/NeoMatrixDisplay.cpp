@@ -7,6 +7,7 @@ Responsibilities:
   only the pixels that changed to the panel.
 */
 #include "adapters/NeoMatrixDisplay.h"
+#include "interfaces/BaseLogoStore.h"
 #include "config/HardwareConfiguration.h"
 #include "config/RuntimeConfig.h"
 #include "display/ApproachModel.h"
@@ -21,6 +22,7 @@ Responsibilities:
 #include "config/Airport.h"
 #include "display/DemoLogo.h"
 #include "utils/TelnetLogger.h"
+#include "utils/Notify.h"
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
 
@@ -97,10 +99,30 @@ void requestTakeoffDemo() { s_takeoffDemo = true; }
 void requestAlertDemo() { s_alertDemo = true; }
 
 static volatile bool s_runwayDemo = false;
+static char          s_skyPreview[24] = "";
+static volatile unsigned long s_skyPreviewUntil = 0;
+static volatile bool s_showcaseRequest = false;
+static volatile bool s_skyDemo = false;
+void requestSkyPreview(const char *look, bool landing)
+{
+    strlcpy(s_skyPreview, look, sizeof(s_skyPreview));
+    s_skyPreviewUntil = millis() + (landing ? 45000 : 12000);
+    if (landing) s_skyDemo = true;   // a landing in that sky, straight away
+}
 void requestRunwayChangeDemo() { s_runwayDemo = true; }
 
-static volatile bool s_showcaseRequest = false;
-void requestShowcase() { s_showcaseRequest = true; }
+void requestShowcase(const char *look)
+{
+    if (look && look[0])
+    {
+        strlcpy(s_skyPreview, look, sizeof(s_skyPreview));
+        s_skyPreviewUntil = millis() + 50000;
+    }
+    s_showcaseRequest = true;
+}
+
+static volatile uint32_t s_frameShowMs = UINT32_MAX;
+uint32_t showcaseFrameMs() { return s_frameShowMs; }
 
 static char          s_panelMsg[20] = "";
 static volatile bool s_panelMsgPending = false;
@@ -133,7 +155,11 @@ namespace
 
     uint8_t effectiveBrightness()
     {
-        return isNightActive() ? g_config.night_brightness : g_config.display_brightness;
+        // Screen off at night stays a clean switch; otherwise ease between the two.
+        if (g_config.night_brightness == 0 || !g_config.night_follow_sun)
+            return isNightActive() ? g_config.night_brightness : g_config.display_brightness;
+        const float k = nightLevel();
+        return (uint8_t)lroundf(g_config.display_brightness + (g_config.night_brightness - (int)g_config.display_brightness) * k);
     }
 
     // Ordering for "most worth showing next": aircraft on approach first, then nearest.
@@ -266,7 +292,10 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
         if (_hasCurrent && f.ident == _current.flight.ident)
         {
             const double prevAlt = _current.flight.baro_altitude;
+            std::vector<uint16_t> logo;   // keep the card's logo across the update
+            logo.swap(_current.flight.airline_logo_rgb565);
             _current.flight = f;
+            logo.swap(_current.flight.airline_logo_rgb565);
             _current.dataMs = now;
             noteApproachProgress(_current, st, prevAlt, now);
         }
@@ -288,7 +317,6 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
                     Entry e;
                     e.flight = f;
                     e.dataMs = now;
-                    e.accent = CardRenderer::accentFor(f);
                     _queue.push_back(e);
                     Log.printf("Display: new contact %s queued (%u waiting)\n",
                                f.ident.c_str(), (unsigned)_queue.size());
@@ -316,8 +344,14 @@ void NeoMatrixDisplay::displayFlights(const std::vector<FlightInfo> &flights)
     for (auto it = _seenMs.begin(); it != _seenMs.end(); )
         it = (now - it->second > 2 * kSeenCooldownMs) ? _seenMs.erase(it) : std::next(it);
 
-    if (_hasNextApproach)
-        _nextApproach.accent = CardRenderer::accentFor(_nextApproach.flight);
+}
+
+// The card coming on screen: its logo from flash, and the accent colour from it.
+void NeoMatrixDisplay::loadLogo(Entry &e)
+{
+    if (e.flight.airline_logo_rgb565.empty() && _logos && e.flight.logo_code.length())
+        _logos->getAirlineLogo(e.flight.logo_code, e.flight.airline_logo_rgb565);
+    e.accent = CardRenderer::accentFor(e.flight);
 }
 
 void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
@@ -327,21 +361,92 @@ void NeoMatrixDisplay::setArrivals(const InfoScreens::Arrival *rows, int n)
     for (int i = 0; i < _arrivalCount; ++i) _arrivals[i] = rows[i];
 }
 
+void NeoMatrixDisplay::setDepartures(const InfoScreens::Departure *rows, int n)
+{
+    Lock l(_lock);
+    _departureCount = min(n, InfoScreens::kMaxDepartures);
+    for (int i = 0; i < _departureCount; ++i) _departures[i] = rows[i];
+}
+
+bool NeoMatrixDisplay::departuresPage() const
+{
+    return (g_config.screens & 32) && _departureCount > 0;
+}
+
 void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
 {
     const unsigned long now = millis();
     Lock l(_lock);
     _stats.noteTraffic(states);
+    _holds.noteStates(states, now);
     if (_runways.update(states, now))
     {
         strlcpy(_rwyFrom, _runways.changeFrom(), sizeof(_rwyFrom));
         strlcpy(_rwyTo, _runways.changeTo(), sizeof(_rwyTo));
         _rwyChangeMs = now;
         _rwyChangeActive = true;
+        Notify::post(Notify::Runway, 3, "airplane_arriving", "Runway change",
+                     "%s now landing on %s (was %s)", g_airport.name, _rwyTo, _rwyFrom);
     }
     strlcpy(_runwayInUse, _runways.mainArrival(), sizeof(_runwayInUse));
     _runways.arrivals(_runwayArr, sizeof(_runwayArr));
     _runways.departures(_runwayDep, sizeof(_runwayDep));
+}
+
+void NeoMatrixDisplay::noteStack(int stack, const std::vector<StateVector> &states)
+{
+    const unsigned long now = millis();
+    Lock l(_lock);
+    _holds.noteStack(stack, states, now);
+}
+
+int NeoMatrixDisplay::holdingSummary(char *out, size_t len, int *longestMin)
+{
+    HoldTracker::Row rows[Airport::kMaxHolds + 1];
+    int n, total;
+    {
+        Lock l(_lock);
+        n = _holds.rows(rows, Airport::kMaxHolds + 1, millis());
+    }
+    out[0] = '\0';
+    total = 0;
+    if (longestMin) *longestMin = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        if (!rows[i].count) continue;
+        total += rows[i].count;
+        if (longestMin && rows[i].longestMin > *longestMin) *longestMin = rows[i].longestMin;
+        char part[32];
+        snprintf(part, sizeof(part), "%s%s %u (%u min)", out[0] ? ", " : "", rows[i].name,
+                 (unsigned)rows[i].count, (unsigned)rows[i].longestMin);
+        strlcat(out, part, len);
+    }
+    return total;
+}
+
+void NeoMatrixDisplay::dailySummary(char *out, size_t len)
+{
+    Lock l(_lock);
+    int busiestHour = 0, busiestN = 0;
+    for (int h = 0; h < 24; ++h)
+    {
+        const int n = _stats.arrivalsInHour(h) + _stats.departuresInHour(h);
+        if (n > busiestN) { busiestN = n; busiestHour = h; }
+    }
+    int an = 0;
+    const String airline = _stats.busiestAirline(an);
+    const String rare = _stats.rarestType();
+    snprintf(out, len, "%d movements (%d in, %d out). Busiest hour %02d:00 (%d).%s%s%s%s%s",
+             _stats.arrivals() + _stats.departures(), _stats.arrivals(), _stats.departures(),
+             busiestHour, busiestN,
+             airline.length() ? " Top airline " : "", airline.c_str(),
+             rare.length() ? ". Rarest " : "", rare.c_str(), ".");
+    if (_stats.goArounds())
+    {
+        char ga[24];
+        snprintf(ga, sizeof(ga), " %d go-around%s.", _stats.goArounds(), _stats.goArounds() == 1 ? "" : "s");
+        strlcat(out, ga, len);
+    }
 }
 
 void NeoMatrixDisplay::runwaysInUse(char *arr, size_t arrLen, char *dep, size_t depLen)
@@ -438,10 +543,12 @@ void NeoMatrixDisplay::stepShowcase(unsigned long now)
     switch (_showcaseStep)
     {
         case 0: if (t >= 9000)  { startLanding(now, false); ++_showcaseStep; } break;
-        case 1: if (t >= 16500) { s_mapPreviewUntil = now + 5000; ++_showcaseStep; } break;
-        case 2: if (t >= 21500) { s_mapPreviewUntil = 0; s_screenPreviewUntil = now + 4000; s_screenPreview = 3; ++_showcaseStep; } break;
-        case 3: if (t >= 25500) { s_screenPreviewUntil = now + 4000; s_screenPreview = 4; ++_showcaseStep; } break;
-        case 4: if (t >= 29500)
+        case 1: if (t >= 15500) { s_mapPreviewUntil = now + 5000; ++_showcaseStep; } break;
+        case 2: if (t >= 20500) { s_mapPreviewUntil = 0; s_screenPreviewUntil = now + 5000; s_screenPreview = 3; ++_showcaseStep; } break;
+        case 3: if (t >= 25500) { s_screenPreviewUntil = now + 5000; s_screenPreview = 4; ++_showcaseStep; } break;
+        case 4: if (t >= 30500) { s_screenPreviewUntil = now + 4500; s_screenPreview = 1; ++_showcaseStep; } break;
+        case 5: if (t >= 35000) { s_screenPreviewUntil = now + 4500; s_screenPreview = 5; ++_showcaseStep; } break;
+        case 6: if (t >= 39500)
                 {
                     s_screenPreview = 0;
                     _ambientActive = false;
@@ -450,7 +557,7 @@ void NeoMatrixDisplay::stepShowcase(unsigned long now)
                 }
                 break;
         default:
-            if (t >= 29500 + LandingScene::DURATION_MS + 1500)
+            if (t >= 39500 + LandingScene::DURATION_MS + 1500)
             {
                 _showcaseActive = false;
                 _hasCurrent = false;   // back to normal service
@@ -505,6 +612,19 @@ void NeoMatrixDisplay::showLoading()
 uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
 {
     applyPanelSettings();
+    if (!_skyMs || now - _skyMs > 30000)
+    {
+        _sky = Sky::at(_metar, time(nullptr));
+        _skyMs = now;
+    }
+    if (s_skyPreviewUntil && (long)(now - s_skyPreviewUntil) >= 0) s_skyPreviewUntil = 0;
+    if (s_skyDemo)
+    {
+        // Replay the card's landing in the previewed sky, or the showcase if no card.
+        s_skyDemo = false;
+        if (_hasCurrent && !_inTransition && !_landingActive) requestLandingReplay();
+        else                                                  s_showcaseRequest = true;
+    }
     pollButton(now);
 
     if (_captionUntilMs && (long)(now - _captionUntilMs) < 0)
@@ -650,7 +770,7 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
             bool known = false;
             const AircraftSprites::Kind kind = AircraftSprites::classify(f.aircraft_code, known);
             FlyAcross::compose(g_workFrame, g_oldFrame, t, AircraftSprites::get(kind),
-                               _current.accent, !known, _path);
+                               AircraftSprites::liveryFor(f, _current.accent), !known, _path);
             present();
             return kAnimFrameMs;
         }
@@ -750,7 +870,7 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         if (startBreak) _current.breakTaken = true;
         _interludeUntilMs = startBreak ? now + (unsigned long)g_config.interlude_seconds * 1000UL : now;
         nextScreen();
-        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather"};
+        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather", "holding"};
         if (!preview && _mode == Mode::Auto)
             Log.printf("Display: %s, %s\n", _interludeUntilMs != now ? "break after landing" : "screens",
                        kScreenNames[(int)_screen]);
@@ -838,8 +958,9 @@ bool NeoMatrixDisplay::screenAvailable(Screen s) const
     switch (s)
     {
         case Screen::Map:      return !_traffic.empty();
-        case Screen::Arrivals: return _arrivalCount > 0;
+        case Screen::Arrivals: return _arrivalCount > 0 || departuresPage();
         case Screen::Weather:  return _metar.valid;
+        case Screen::Holding:  return _holds.total(millis()) > 0;
         default:               return true;
     }
 }
@@ -856,7 +977,22 @@ void NeoMatrixDisplay::nextScreen()
 
 unsigned long NeoMatrixDisplay::screenDwellMs(Screen s) const
 {
+    if (s == Screen::Arrivals && departuresPage() && _arrivalCount > 0)
+        return 2 * kScreenDwellMs - 2000;   // arrivals page, then departures
     return s == Screen::Map ? kMapDwellMs : kScreenDwellMs;
+}
+
+// How long screen s has been on the panel (restarts whenever it changes,
+// previews and button modes included), for entry animations.
+uint32_t NeoMatrixDisplay::shownFor(Screen s, unsigned long now)
+{
+    if (s != _shownScreen || now - _shownScreenLastMs > 1000)
+    {
+        _shownScreen = s;
+        _shownScreenMs = now;
+    }
+    _shownScreenLastMs = now;
+    return now - _shownScreenMs;
 }
 
 // The screen shown when no card is due.
@@ -868,6 +1004,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     else if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now, _weather); return; }
     else if (s_screenPreview == 3) s = Screen::Arrivals;
     else if (s_screenPreview == 4) s = Screen::Weather;
+    else if (s_screenPreview == 5) s = Screen::Holding;
     else if (s_mapPreviewUntil)    s = Screen::Map;
     else if (_mode == Mode::Map)      s = Screen::Map;
     else if (_mode == Mode::Arrivals) s = Screen::Arrivals;
@@ -884,21 +1021,54 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     switch (s)
     {
         case Screen::Arrivals:
-            InfoScreens::renderArrivals(g_workFrame, _arrivals, _arrivalCount, _runwayInUse, _weather, now);
+        {
+            // Departures as a second page (or the only one when nothing is inbound).
+            const uint32_t shown = shownFor(s, now);
+            const uint32_t half = kScreenDwellMs - 1000;
+            const bool dep = departuresPage() && (_arrivalCount == 0 || shown >= half);
+            if (dep)
+            {
+                char rw[12];
+                strlcpy(rw, _runwayDep, sizeof(rw));
+                if (char *sp = strchr(rw, ' ')) *sp = '\0';   // the busiest one
+                InfoScreens::renderDepartures(g_workFrame, _departures, _departureCount, rw,
+                                              _arrivalCount ? shown - half : shown);
+            }
+            else
+                InfoScreens::renderArrivals(g_workFrame, _arrivals, _arrivalCount, _runwayInUse, _weather, now, shown);
             return;
+        }
         case Screen::Stats:
-            InfoScreens::renderStats(g_workFrame, _stats, now);
+            InfoScreens::renderStats(g_workFrame, _stats, now, shownFor(s, now));
             return;
         case Screen::Weather:
-            InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now);
+            InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now,
+                                       s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky);
             return;
+        case Screen::Holding:
+        {
+            HoldTracker::Row rows[Airport::kMaxHolds + 1];
+            int n = _holds.rows(rows, Airport::kMaxHolds + 1, now);
+            if (s_screenPreview == 5 && _holds.total(now) == 0)
+            {
+                // Preview with nothing holding: a busy morning at Heathrow.
+                static const HoldTracker::Row kDemo[] = {
+                    {"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7},
+                };
+                n = 4;
+                for (int i = 0; i < n; ++i) rows[i] = kDemo[i];
+            }
+            InfoScreens::renderHolding(g_workFrame, rows, n, now);
+            return;
+        }
         default:
             break;
     }
     const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
     MapRenderer::render(g_workFrame, _traffic, now,
-                        homeSet ? g_config.home_lat : g_config.center_lat,
-                        homeSet ? g_config.home_lon : g_config.center_lon, _runwayArr, _runwayDep);
+                        _showcaseActive ? NAN : homeSet ? g_config.home_lat : g_config.center_lat,
+                        _showcaseActive ? NAN : homeSet ? g_config.home_lon : g_config.center_lon, _runwayArr, _runwayDep,
+                        Sky::mapLight(s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky));
 }
 
 // Blend the work frame with `from`: k = 0 shows `from`, 1 shows the work frame.
@@ -927,6 +1097,7 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
     _ambientActive = false;
     _current    = _queue.front();
     _queue.pop_front();
+    loadLogo(_current);
     _hasCurrent = true;
     _inTransition = true;
     _transStartMs = now;
@@ -940,6 +1111,12 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
         _flourishActive  = true;
         _flourishStartMs = now;
         Log.printf("Display: rare spot %s: %s %s\n", _current.flight.ident.c_str(), _flourishLine1, _flourishLine2);
+        const FlightInfo &f = _current.flight;
+        Notify::post(Notify::Rare, 3, "star", _flourishLine1, "%s %s %s, %s to %s",
+                     (f.ident_iata.length() ? f.ident_iata : f.ident).c_str(), _flourishLine2,
+                     f.registration.c_str(),
+                     (f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao).c_str(),
+                     (f.destination.code_iata.length() ? f.destination.code_iata : f.destination.code_icao).c_str());
     }
     // A departure just off the ground gets the take-off scene instead of the
     // fly-across (renderLanding starts it on the next frame).
@@ -1034,6 +1211,9 @@ void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, 
         _stats.noteGoAround();
         Log.printf("Display: %s GO-AROUND (%.0f ft, +%.0f fpm)\n", f.ident.c_str(),
                    f.baro_altitude, f.vertical_rate);
+        Notify::post(Notify::GoAround, 4, "arrows_counterclockwise", "Go-around",
+                     "%s went around at %.0f ft%s%s", (f.ident_iata.length() ? f.ident_iata : f.ident).c_str(),
+                     f.baro_altitude, e.runway[0] ? " off " : "", e.runway);
         return;
     }
     if (onFinal && descending) e.finalMs = now;
@@ -1042,6 +1222,7 @@ void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, 
 void NeoMatrixDisplay::startScene(unsigned long now, LandingScene::Kind kind, bool demo)
 {
     _sceneKind      = kind;
+    _sceneSky       = (s_skyPreviewUntil && (demo || _showcaseActive)) ? Sky::preview(s_skyPreview) : _sky;
     _landingDemo    = demo;
     _landingActive  = true;
     _landingStartMs = now;
@@ -1144,8 +1325,9 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
         snprintf(caption, sizeof(caption), "%s TO %s", id.c_str(), dest.c_str());
     else
         snprintf(caption, sizeof(caption), "%s", id.c_str());
-    LandingScene::render(g_workFrame, t, AircraftSprites::get(kind), _current.accent, !known,
-                         rightward, caption, _current.runway, _sceneKind);
+    const AircraftSprites::Livery livery = AircraftSprites::liveryFor(f, _current.accent);
+    LandingScene::render(g_workFrame, t, AircraftSprites::getScene(kind), _current.accent, !known,
+                         rightward, caption, _current.runway, _sceneKind, _sceneSky, &livery);
     present();
     return true;
 }
@@ -1203,6 +1385,7 @@ void NeoMatrixDisplay::present()
         _matrix->drawPixel(i % FrameCanvas::W, i / FrameCanvas::W, next[i]);
     }
     _forceFull = false;
+    s_frameShowMs = _showcaseActive ? (uint32_t)(millis() - _showcaseStartMs) : UINT32_MAX;
 }
 
 // 3x3 grid of every aircraft sprite, tails in the default accent.
@@ -1221,12 +1404,19 @@ bool NeoMatrixDisplay::renderSpriteGallery()
         return false;
     }
     g_workFrame.clear();
-    for (int k = 0; k < AircraftSprites::KindCount; ++k)
+    // Nine types a page, a page every 3 s, each in a different airline's colours.
+    static const char *const kAirlines[] = {"BAW", "VIR", "EZY", "RYR", "KLM", "UAE", "DLH", "AFR", "QTR"};
+    const int page = (now / 3000) % ((AircraftSprites::KindCount + 8) / 9);
+    for (int i = 0; i < 9; ++i)
     {
+        const int k = page * 9 + i;
+        if (k >= AircraftSprites::KindCount) break;
         const AircraftSprites::Sprite &sp = AircraftSprites::get((AircraftSprites::Kind)k);
-        const int cx = (k % 3) * 43, cy = (k / 3) * 21;
+        FlightInfo f;
+        f.ident = kAirlines[i];
+        const int cx = (i % 3) * 43, cy = (i / 3) * 21;
         AircraftSprites::draw(g_workFrame, sp, cx + (42 - sp.w) / 2, cy + (21 - sp.h) / 2,
-                              Rgb{90, 170, 255});
+                              AircraftSprites::liveryFor(f, Rgb{90, 170, 255}));
     }
     present();
     return true;

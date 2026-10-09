@@ -168,7 +168,7 @@ namespace
         const AircraftSprites::Sprite &sp = AircraftSprites::get(kind);
         const int x = kLeftX + (kLeftW - sp.w) / 2;
         const int y = kSpriteY0 + (kSpriteY1 - kSpriteY0 + 1 - sp.h) / 2;
-        AircraftSprites::draw(c, sp, x, y, accent, faceRight, !known);
+        AircraftSprites::draw(c, sp, x, y, AircraftSprites::liveryFor(f, accent), faceRight, !known);
     }
 
     void drawStrip(FrameCanvas &c, const ApproachStatus &s, Rgb accent, uint32_t animMs, bool landed)

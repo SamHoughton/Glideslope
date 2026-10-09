@@ -2,6 +2,8 @@
 Purpose: RuntimeConfig — mutable settings backed by ESP32 NVS (Preferences).
 Compile-time defaults come from UserConfiguration.h and TimingConfiguration.h.
 */
+#include "display/Sky.h"
+#include "config/Airport.h"
 #include "config/RuntimeConfig.h"
 #include "config/UserConfiguration.h"
 #include "config/TimingConfiguration.h"
@@ -37,6 +39,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.screen_facing[sizeof(c.screen_facing) - 1] = '\0';
     c.display_flip               = false;
     c.night_mode_enabled         = true;      // dim overnight by default
+    c.night_follow_sun           = false;
     c.night_start_minutes        = 22 * 60;   // 22:00
     c.night_end_minutes          =  7 * 60;   // 07:00
     c.night_brightness           = 38;        // ~15%
@@ -55,6 +58,8 @@ static void applyDefaults(RuntimeConfig &c)
 
     c.opensky_priority               = false;
     c.use_community_feeds            = true;
+    c.ntfy_topic[0]                  = '\0';
+    c.notify_mask                    = 0x1F;   // all events (once a topic is set)
     c.min_altitude_ft                = 100;
 
     c.fetch_interval_seconds        = TimingConfiguration::FETCH_INTERVAL_SECONDS;
@@ -62,7 +67,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.display_cycle_seconds         = TimingConfiguration::DISPLAY_CYCLE_SECONDS;
     c.card_lead_seconds             = 120;
     c.interlude_seconds             = 15;
-    c.screens                       = 0x0F;   // map, arrivals, stats, weather
+    c.screens                       = 0x1F;   // map, arrivals, stats, weather, holding
     c.aeroapi_cache_ttl_seconds     = TimingConfiguration::AEROAPI_CACHE_TTL_SECONDS;
     c.aeroapi_fail_cache_ttl_seconds = TimingConfiguration::AEROAPI_FAIL_CACHE_TTL_SECONDS;
 }
@@ -102,6 +107,7 @@ void loadConfig()
 
     g_config.display_flip           = p.getBool("flip",     g_config.display_flip);
     g_config.night_mode_enabled     = p.getBool("night_en", g_config.night_mode_enabled);
+    g_config.night_follow_sun       = p.getBool("night_sun", g_config.night_follow_sun);
     g_config.night_start_minutes    = (uint16_t)p.getUInt("night_s",  g_config.night_start_minutes);
     g_config.night_end_minutes      = (uint16_t)p.getUInt("night_e",  g_config.night_end_minutes);
     g_config.night_brightness       = (uint8_t)p.getUInt("night_br",  g_config.night_brightness);
@@ -109,6 +115,11 @@ void loadConfig()
 
     g_config.opensky_priority              = p.getBool("osky_pri",  g_config.opensky_priority);
     g_config.use_community_feeds           = p.getBool("community", g_config.use_community_feeds);
+    g_config.notify_mask                   = (uint8_t)p.getUInt("ntfy_m", g_config.notify_mask);
+    {
+        String v = p.getString("ntfy", String(g_config.ntfy_topic));
+        strlcpy(g_config.ntfy_topic, v.c_str(), sizeof(g_config.ntfy_topic));
+    }
     g_config.min_altitude_ft               = p.getInt("min_alt",   g_config.min_altitude_ft);
 
     g_config.fetch_interval_seconds        = p.getUInt("fetch_iv",   g_config.fetch_interval_seconds);
@@ -117,6 +128,7 @@ void loadConfig()
     g_config.card_lead_seconds             = p.getUInt("card_lead",  g_config.card_lead_seconds);
     g_config.interlude_seconds             = p.getUInt("interlude",  g_config.interlude_seconds);
     g_config.screens                       = (uint8_t)p.getUInt("screens", g_config.screens);
+    if (!p.isKey("scr_v3")) g_config.screens |= 0x10;   // holding screen (3.0): on for older settings too
     g_config.aeroapi_cache_ttl_seconds     = p.getUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     g_config.aeroapi_fail_cache_ttl_seconds = p.getUInt("api_fttl", g_config.aeroapi_fail_cache_ttl_seconds);
 
@@ -172,6 +184,7 @@ void saveConfig()
 
     p.putBool("flip",     g_config.display_flip);
     p.putBool("night_en", g_config.night_mode_enabled);
+    p.putBool("night_sun", g_config.night_follow_sun);
     p.putUInt("night_s",  g_config.night_start_minutes);
     p.putUInt("night_e",  g_config.night_end_minutes);
     p.putUInt("night_br", g_config.night_brightness);
@@ -179,6 +192,8 @@ void saveConfig()
 
     p.putBool("osky_pri",  g_config.opensky_priority);
     p.putBool("community", g_config.use_community_feeds);
+    p.putUInt("ntfy_m",    g_config.notify_mask);
+    p.putString("ntfy",    g_config.ntfy_topic);
     p.putInt("min_alt",    g_config.min_altitude_ft);
 
     p.putUInt("fetch_iv",  g_config.fetch_interval_seconds);
@@ -187,6 +202,7 @@ void saveConfig()
     p.putUInt("card_lead", g_config.card_lead_seconds);
     p.putUInt("interlude", g_config.interlude_seconds);
     p.putUInt("screens",   g_config.screens);
+    p.putBool("scr_v3",    true);
     p.putUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     p.putUInt("api_fttl",  g_config.aeroapi_fail_cache_ttl_seconds);
 
@@ -213,6 +229,10 @@ bool isNightActive()
     if (utcNow < 946684800L)          // pre-2000 → NTP not yet synced
         return false;
 
+    // Dusk to dawn: the sun more than 4 degrees below the horizon.
+    if (g_config.night_follow_sun)
+        return Sky::sunElevation(g_airport.lat, g_airport.lon, utcNow) < -4.0f;
+
     // Local time via the TZ rule set at boot (kLocalTimeZone), so the
     // GMT/BST changes happen automatically.
     struct tm tmBuf;
@@ -227,4 +247,15 @@ bool isNightActive()
         return (nowMin >= startMin && nowMin < endMin);  // same-day window
     else
         return (nowMin >= startMin || nowMin < endMin);  // overnight span
+}
+
+float nightLevel()
+{
+    if (!g_config.night_mode_enabled) return 0;
+    const time_t t = time(nullptr);
+    if (t < 946684800L) return 0;
+    if (!g_config.night_follow_sun) return isNightActive() ? 1 : 0;
+    const float e = Sky::sunElevation(g_airport.lat, g_airport.lon, t);
+    const float k = (2.0f - e) / 8.0f;
+    return k < 0 ? 0 : (k > 1 ? 1 : k);
 }

@@ -39,6 +39,10 @@ public:
     // 0 = fetch now (adsb.lol ready, or genuinely down: then adsb.fi).
     unsigned long holdOffMs() const;
 
+    // A small extra area from adsb.lol (holding stacks): only when it is
+    // ready, never adsb.fi. Leaves the pacing and lastSource as they were.
+    bool fetchArea(double lat, double lon, double radiusKm, std::vector<StateVector> &out);
+
 private:
     const char *_lastSource = "";
     unsigned long _restUntil[2] = {0, 0};   // millis() until which a rate-limited service is skipped

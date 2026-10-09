@@ -6,6 +6,7 @@ Responsibilities:
 Configuration: UserConfiguration (location/filters/colors), TimingConfiguration (intervals),
                WiFiConfiguration (SSID/password), HardwareConfiguration (display specs).
 */
+#include "utils/Notify.h"
 #include <vector>
 #include <map>
 #include <esp_task_wdt.h>
@@ -23,6 +24,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "adapters/HexDbFetcher.h"
 #include "adapters/OpenSkyRouteFetcher.h"
 #include "adapters/FallbackFlightFetcher.h"
+#include "adapters/AdsbImRouteFetcher.h"
 #include "adapters/LocalLogoStore.h"
 #include "core/FlightDataFetcher.h"
 #include "adapters/NeoMatrixDisplay.h"
@@ -50,6 +52,9 @@ static OpenSkyRouteFetcher        g_openSkyRoute(g_openSky);
 // Chain: hexdb → AeroAPI (if key set) → OpenSky flights endpoint (if creds set)
 static FallbackFlightFetcher      g_aeroApiFallback(&g_aeroApi, &g_openSkyRoute);
 static FallbackFlightFetcher      g_flightFetcher(&g_hexDb, &g_aeroApiFallback);
+// adsb.im first (plain HTTP, no TLS); the HTTPS chain above only for routes it lacks.
+static AdsbImRouteFetcher         g_adsbIm;
+static FallbackFlightFetcher      g_routes(&g_adsbIm, &g_flightFetcher);
 static LocalLogoStore             g_logoStore;
 static FlightDataFetcher         *g_fetcher = nullptr;
 static NeoMatrixDisplay g_display;
@@ -78,6 +83,31 @@ static const char *squawkMeaning(const String &sq)
 // Raise the panel alert for an emergency squawk once it has been seen in two
 // fetches running (a single garbled reply is ignored), then not again for
 // that aircraft and code for 30 minutes.
+// Holding stacks (Airport::holds): whose turn, and the sample itself.
+static unsigned long g_lastStackMs = 0;
+static int           g_nextStack = 0;
+
+static bool stackDue(unsigned long now)
+{
+    return g_airport.holdCount && g_config.use_community_feeds && !g_feeds.holdOffMs() &&
+           (!g_lastStackMs || now - g_lastStackMs >= 45000UL) && ESP.getFreeHeap() > 60000;
+}
+
+static void sampleStack()
+{
+    g_lastStackMs = millis();
+    const HoldFix &fix = g_airport.holds[g_nextStack];
+    std::vector<StateVector> around;
+    bool ok;
+    {
+        NetBusy busy;
+        ok = g_feeds.fetchArea(fix.lat, fix.lon, 9.0, around);
+    }
+    if (ok) g_display.noteStack(g_nextStack, around);
+    g_nextStack = (g_nextStack + 1) % g_airport.holdCount;
+    heapCheckpoint("stack sample");
+}
+
 static void checkSquawks(const std::vector<StateVector> &states)
 {
     static std::map<String, int>           streak;    // icao24+code -> fetches in a row
@@ -105,6 +135,8 @@ static void checkSquawks(const std::vector<StateVector> &states)
         const String ident = s.callsign.length() ? s.callsign : s.icao24;
         Log.printf("SQUAWK %s (%s): %s, %s\n", s.squawk.c_str(), meaning, ident.c_str(), detail);
         g_display.raiseAlert(s.squawk.c_str(), meaning, ident.c_str(), detail);
+        Notify::post(Notify::Emergency, 5, "rotating_light", "Emergency squawk",
+                     "%s squawking %s (%s), %s", ident.c_str(), s.squawk.c_str(), meaning, detail);
     }
     streak.swap(seen);
     for (auto it = alerted.begin(); it != alerted.end(); )
@@ -222,6 +254,52 @@ static void updateArrivals(const std::vector<StateVector> &states, const std::ve
     g_display.setArrivals(rows, n);
 }
 
+// Recent departures (newest first) for the board's second page: every
+// aircraft climbing out along a runway, its destination if a route is known.
+static void updateDepartures(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
+{
+    static InfoScreens::Departure recent[InfoScreens::kMaxDepartures];
+    static uint32_t ids[InfoScreens::kMaxDepartures] = {};
+    static int n = 0;
+    bool changed = false;
+    for (const StateVector &s : states)
+    {
+        FlightInfo f;
+        f.lat = s.lat;  f.lon = s.lon;  f.heading = s.heading;
+        f.baro_altitude = isnan(s.baro_altitude) ? NAN : s.baro_altitude * 3.28084;
+        f.velocity      = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
+        f.vertical_rate = isnan(s.vertical_rate) ? NAN : s.vertical_rate * 196.85;
+        char rwy[4] = "";
+        if (!ApproachModel::climbingOut(f, rwy, sizeof(rwy))) continue;
+        const uint32_t id = (uint32_t)strtoul(s.icao24.c_str(), nullptr, 16) | 1;
+        bool seen = false;
+        for (int i = 0; i < n; ++i) if (ids[i] == id) seen = true;
+        if (seen) continue;
+
+        const FlightInfo *known = nullptr;
+        for (const FlightInfo &k : flights)
+            if (k.ident == s.callsign) { known = &k; break; }
+        InfoScreens::Departure d;
+        String id2 = known && known->ident_iata.length() ? known->ident_iata : flightNumberFromCallsign(s.callsign);
+        if (!id2.length()) id2 = s.callsign.length() ? s.callsign : s.icao24;
+        strlcpy(d.ident, id2.c_str(), sizeof(d.ident));
+        strlcpy(d.type, (known && known->aircraft_code.length() ? known->aircraft_code : s.aircraft_type).c_str(), sizeof(d.type));
+        if (known)
+            strlcpy(d.dest, (known->destination.code_iata.length() ? known->destination.code_iata
+                                                                   : known->destination.code_icao).c_str(), sizeof(d.dest));
+        strlcpy(d.runway, rwy, sizeof(d.runway));
+        d.accent = airlineColour(s.callsign);
+        const time_t t = time(nullptr);
+        d.at = t > 1600000000 ? t : 0;
+        for (int i = min(n, InfoScreens::kMaxDepartures - 1); i > 0; --i) { recent[i] = recent[i - 1]; ids[i] = ids[i - 1]; }
+        recent[0] = d;
+        ids[0] = id;
+        n = min(n + 1, InfoScreens::kMaxDepartures);
+        changed = true;
+    }
+    if (changed) g_display.setDepartures(recent, n);
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -261,6 +339,7 @@ void setup()
 
     // Mount LittleFS for local logo storage. Failure is non-fatal.
     g_logoStore.initialize();
+    g_display.setLogoStore(&g_logoStore);
     RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
     AirportPack::load();    // Heathrow, or the airport pack on LittleFS
     g_display.loadStats();  // today's tally survives a restart
@@ -364,7 +443,8 @@ void setup()
         Log.printf("Flight enrichment: hexdb.io primary%s%s\n",
                    strlen(g_config.aeroapi_key)       > 0 ? " + AeroAPI fallback"       : "",
                    strlen(g_config.opensky_client_id) > 0 ? " + OpenSky route fallback" : "");
-    g_fetcher = new FlightDataFetcher(&g_stateFetcher, &g_flightFetcher, &g_logoStore);
+    Log.println("Flight enrichment: adsb.im routes first (plain HTTP)");
+    g_fetcher = new FlightDataFetcher(&g_stateFetcher, &g_routes, &g_logoStore);
 
     // Force the first fetch to fire on the very first loop() iteration rather
     // than waiting a full FETCH_INTERVAL_SECONDS from boot.
@@ -450,7 +530,12 @@ void loop()
         if (hold) g_lastFetchMs = now - intervalMs + min(hold, 30000UL);
     }
 
-    if (now - g_lastFetchMs >= intervalMs)
+    if (g_display.showcaseRunning())
+    {
+        // The showcase owns the panel (and may be recorded): no fetches, no
+        // web pauses, no real flights cutting in.
+    }
+    else if (now - g_lastFetchMs >= intervalMs)
     {
         g_lastFetchMs = now;
 
@@ -461,6 +546,12 @@ void loop()
         else if (!ensureWiFi())
         {
             Log.println("Skipping fetch — no WiFi");
+        }
+        else if (stackDue(now))
+        {
+            // Holding stacks: every 45 s one fix's airspace takes this fetch
+            // slot, so adsb.lol sees no extra requests (each fix every 3 min).
+            sampleStack();
         }
         else
         {
@@ -506,6 +597,7 @@ void loop()
             g_webConfig.setRunways(arr, dep);
         }
         updateArrivals(g_states, g_flights);
+        updateDepartures(g_states, g_flights);
 
         static String lastIdents;
         String idents;
@@ -530,8 +622,56 @@ void loop()
         } // else (ensureWiFi)
     }
 
+    {
+        static unsigned long lastHoldMs = 0;
+        if (millis() - lastHoldMs >= 20000)
+        {
+            lastHoldMs = millis();
+            char summary[96];
+            int longest = 0;
+            const int total = g_display.holdingSummary(summary, sizeof(summary), &longest);
+            // Busy: eight or more holding, or someone holding for 15 minutes.
+            static unsigned long lastBusyMs = 0;
+            if ((total >= 8 || longest >= 15) && (!lastBusyMs || millis() - lastBusyMs > 3600000UL))
+            {
+                lastBusyMs = millis();
+                Notify::post(Notify::Holding, 3, "hourglass_flowing_sand", "Busy holding stacks",
+                             "%d holding at %s: %s", total, g_airport.name, summary);
+            }
+            g_webConfig.setHolding(summary);
+            static int lastTotal = 0;
+            if (total != lastTotal)
+            {
+                Log.printf("Holding: %d%s%s\n", total, total ? ": " : "", summary);
+                lastTotal = total;
+            }
+        }
+    }
+
+    // The day's round-up at 22:30 local time, once a day.
+    {
+        static unsigned long lastCheckMs = 0;
+        static int sentDay = -1;
+        if (millis() - lastCheckMs >= 30000)
+        {
+            lastCheckMs = millis();
+            const time_t t = time(nullptr);
+            struct tm lt;
+            if (t > 1600000000 && localtime_r(&t, &lt) && lt.tm_hour == 22 && lt.tm_min >= 30 && sentDay != lt.tm_yday)
+            {
+                sentDay = lt.tm_yday;
+                char text[160];
+                g_display.dailySummary(text, sizeof(text));
+                Notify::post(Notify::Daily, 2, "bar_chart", "Today at the airport", "%s", text);
+            }
+        }
+    }
+
+    // Phone notifications: one queued message per pass.
+    if (WiFi.status() == WL_CONNECTED) Notify::loop();
+
     // Heathrow weather for the arrivals board and the night clock.
-    if (WiFi.status() == WL_CONNECTED && millis() > 20000 &&
+    if (WiFi.status() == WL_CONNECTED && millis() > 20000 && !g_display.showcaseRunning() &&
         (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= kMetarEveryMs))
     {
         g_lastMetarMs = millis();

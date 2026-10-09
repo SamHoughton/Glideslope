@@ -4,7 +4,7 @@ Serve the board's web page on this computer with made-up data, for
 screenshots and for working on the page without a board.
 
   python tools/webui_preview.py                 # http://127.0.0.1:8765/
-  python tools/webui_preview.py --shots         # docs/webui-desktop.png, docs/webui-phone.png
+  python tools/webui_preview.py --shots         # docs/webui-desktop.png, webui-alerts.png, webui-phone.png
 
 The page is firmware/web/index.html with the brand mark filled in, exactly as
 the board serves it. The API answers with
@@ -46,16 +46,18 @@ CONFIG = {
     'screen_facing': 'S', 'display_flip': False, 'night_mode_enabled': True,
     'night_start_minutes': 1320, 'night_end_minutes': 420, 'night_brightness': 38, 'utc_offset_minutes': 0,
     'fetch_interval_seconds': 30, 'local_fetch_interval_seconds': 5, 'display_cycle_seconds': 10,
-    'card_lead_seconds': 120, 'interlude_seconds': 15, 'screens': 15,
+    'card_lead_seconds': 120, 'interlude_seconds': 15, 'screens': 31,
     'aeroapi_cache_ttl_seconds': 1800, 'aeroapi_fail_cache_ttl_seconds': 300,
     'opensky_client_id': '', 'opensky_client_secret': '', 'opensky_priority': False,
-    'use_community_feeds': True, 'aeroapi_key': '',
+    'use_community_feeds': True, 'aeroapi_key': '', 'night_follow_sun': True,
+    'ntfy_topic': 'glideslope-k3x9q2m7wt', 'notify_mask': 63,
 }
 STATUS = {
-    'version': 'v1.3.0', 'built': 'Oct  7 2026 18:00:00', 'uptime_s': 86400, 'last_reset': 'power on',
+    'version': 'v4.0.0', 'built': 'Oct  9 2026 10:00:00', 'uptime_s': 86400, 'last_reset': 'power on',
     'heap_free': 84000, 'heap_max_block': 55000, 'heap_min_free': 18000, 'display_frames': 1700000,
     'web_requests': 5200, 'metar': 'METAR EGLL 071650Z 36011KT 9999 FEW030 12/06 Q1012 NOSIG',
     'airport': 'EGLL', 'airport_name': 'HEATHROW', 'airport_lat': 51.47, 'airport_lon': -0.4543, 'airport_pack': False,
+    'runways_arr': '27L', 'runways_dep': '27R', 'holding': 'BNN 4 (9 min), OCK 3 (7 min)',
 }
 DISPLAY = {
     'active': True, 'ident': 'GSL101', 'flight': 'GS101', 'airline_name': 'Glideslope', 'origin': 'JFK',
@@ -87,13 +89,19 @@ def rle(frame):
 
 
 def sample_frame():
-    cache = ROOT / 'tools' / '.cache' / 'showcase_samples.pickle'
+    # The approach card from the last showcase recording: (showcase ms, frame) pairs.
+    cache = ROOT / 'tools' / '.cache' / 'showcase_frames.pickle'
     if cache.exists():
         samples = pickle.loads(cache.read_bytes())
-        px = min(samples, key=lambda s: abs(s[0] - 6.0))[2]
+        px = min(samples, key=lambda s: abs(s[0] - 6000))[1]
         import struct
         return struct.pack('<8192H', *px)
     return bytes(16384)
+
+# A phone-width view: the page in a 390 px frame (headless Chrome won't make a
+# window that narrow), cropped afterwards.
+PHONE = b'''<!doctype html><html><body style="margin:0;background:#0b0e13">
+<iframe src="/" style="border:0;width:390px;height:1100px;display:block"></iframe></body></html>'''
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -115,6 +123,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = self.path.split('?')[0]
         if p == '/':                 self.send(self.html, 'text/html; charset=utf-8')
+        elif p == '/phone':          self.send(PHONE, 'text/html; charset=utf-8')
         elif p == '/api/config':     self.send(CONFIG)
         elif p == '/api/status':     self.send(STATUS)
         elif p == '/api/display':    self.send(DISPLAY)
@@ -171,8 +180,11 @@ def main():
         return
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     shoot(url, str(ROOT / 'docs' / 'webui-desktop.png'), 1280, 820, 1)
-    # Headless Chrome won't make a window narrower than ~500 px, so the phone
-    # shot is taken by hand (a browser's device mode at 375 px).
+    shoot(url + '#alerts', str(ROOT / 'docs' / 'webui-alerts.png'), 1280, 820, 1)
+    phone = ROOT / 'docs' / 'webui-phone.png'
+    shoot(url + 'phone', str(phone), 600, 1100, 2)
+    from PIL import Image
+    Image.open(phone).crop((0, 0, 390 * 2, 1100 * 2)).save(phone)
     srv.shutdown()
 
 
