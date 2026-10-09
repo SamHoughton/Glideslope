@@ -172,7 +172,12 @@ def main():
     print(f'{a.out}: {len(images)} frames, {Path(a.out).stat().st_size // 1024} KB')
 
     # A still of the approach card for social previews and the like.
-    led_render(to_image(at(samples, 6.0)), cell=6, pad=20).save(Path(a.out).with_name('showcase-card.png'))
+    # The route line cross-fades with the airline name: take the moment it is brightest.
+    def route_lit(px):
+        return sum(((v >> 11) & 31) + ((v >> 5) & 63) // 2 + (v & 31)
+                   for y in range(13, 22) for v in px[y * W + 62:y * W + 128])
+    card = max((px for ms, px in samples if 2500 <= ms <= 8500), key=route_lit)
+    led_render(to_image(card), cell=6, pad=20).save(Path(a.out).with_name('showcase-card.png'))
 
 
 if __name__ == '__main__':

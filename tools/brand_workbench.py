@@ -283,9 +283,9 @@ def social_card():
     body = font(['segoeui.ttf', 'DejaVuSans.ttf'], 28)
     d.text((70, 200), 'An LED flight board for the planes', font=bold, fill=(235, 240, 245))
     d.text((70, 252), 'landing over your house.', font=bold, fill=(255, 185, 60))
-    for i, line in enumerate(['Live ADS-B: landings, go-arounds,',
-                              'take-offs, a map, arrivals and weather',
-                              'on a 128×64 LED panel.']):
+    for i, line in enumerate(['Live ADS-B on a 128×64 LED panel:',
+                              'landings in the real sky, take-offs,',
+                              'a map, weather, stats, holding stacks.']):
         d.text((72, 330 + i * 40), line, font=body, fill=(139, 148, 158))
     shot = ROOT / 'docs' / 'showcase-card.png'
     if shot.exists():
