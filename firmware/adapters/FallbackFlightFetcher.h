@@ -46,7 +46,11 @@ public:
         Log.printf("FallbackFlightFetcher: %s — no route yet, trying the next source\n",
                    callsign.c_str());
 
-        FlightInfo secondary;
+        // A member, not a local: chains nest (adsb.im -> OpenSky -> AeroAPI ->
+        // hexdb), and a FlightInfo per level plus a TLS handshake at the bottom
+        // overflowed the main loop's stack.
+        FlightInfo &secondary = _scratch;
+        secondary = FlightInfo();
         bool secondaryOk = _secondary->fetchFlightInfo(callsign, icao24, secondary);
 
         if (secondaryOk)
@@ -81,4 +85,5 @@ public:
 private:
     BaseFlightFetcher *_primary;
     BaseFlightFetcher *_secondary;
+    FlightInfo         _scratch;
 };

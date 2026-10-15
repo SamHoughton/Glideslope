@@ -2,13 +2,14 @@
 #include "utils/TelnetLogger.h"
 #include <esp_attr.h>
 #include <esp_system.h>
+#include <esp_core_dump.h>
 
 namespace
 {
     constexpr uint32_t kMagic = 0x5EA6E001;
     RTC_NOINIT_ATTR uint32_t s_magic;
-    RTC_NOINIT_ATTR uint8_t  s_stage[2];
-    RTC_NOINIT_ATTR uint8_t  s_detail[2];
+    RTC_NOINIT_ATTR uint8_t  s_stage[3];
+    RTC_NOINIT_ATTR uint8_t  s_detail[3];
 
     const char *displayStage(uint8_t s)
     {
@@ -19,6 +20,21 @@ namespace
             case StageTrace::DispPresent:  return "sending pixels to the panel";
             case StageTrace::DispSleep:    return "idle between frames";
             default:                       return "unknown";
+        }
+    }
+
+    const char *mainStage(uint8_t s)
+    {
+        switch (s)
+        {
+            case StageTrace::MainIdle:    return "idle";
+            case StageTrace::MainFetch:   return "fetching positions and routes";
+            case StageTrace::MainStack:   return "sampling a holding stack";
+            case StageTrace::MainWeather: return "fetching the weather";
+            case StageTrace::MainNotify:  return "sending a notification";
+            case StageTrace::MainStats:   return "saving stats";
+            case StageTrace::MainTraffic: return "processing the traffic";
+            default:                      return "unknown";
         }
     }
 
@@ -57,12 +73,38 @@ void StageTrace::reportAtBoot()
     const bool abnormal = r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT ||
                           r == ESP_RST_WDT || r == ESP_RST_PANIC;
     if (abnormal && s_magic == kMagic)
-        snprintf(s_lastReset, sizeof(s_lastReset), "%s; display was %s, web was %s (route %u)",
-                 why, displayStage(s_stage[Display]), webStage(s_stage[Web]), (unsigned)s_detail[Web]);
+        snprintf(s_lastReset, sizeof(s_lastReset), "%s; main loop was %s, display was %s, web was %s (route %u)",
+                 why, mainStage(s_stage[Main]), displayStage(s_stage[Display]), webStage(s_stage[Web]),
+                 (unsigned)s_detail[Web]);
     else
         snprintf(s_lastReset, sizeof(s_lastReset), "%s", why);
     Log.printf("Boot: last reset: %s\n", s_lastReset);
+    static char dump[256];
+    if (coreDump(dump, sizeof(dump))) Log.printf("Boot: core dump saved: %s\n", dump);
     s_magic = 0;
 }
 
 const char *StageTrace::lastReset() { return s_lastReset; }
+
+bool StageTrace::coreDump(char *out, size_t len)
+{
+    if (esp_core_dump_image_check() != ESP_OK) return false;
+    esp_core_dump_summary_t *s = (esp_core_dump_summary_t *)malloc(sizeof(esp_core_dump_summary_t));
+    if (!s) return false;
+    const bool ok = esp_core_dump_get_summary(s) == ESP_OK;
+    if (ok)
+    {
+        int n = snprintf(out, len, "task %.16s, pc 0x%08x, cause %u, vaddr 0x%08x, backtrace%s:",
+                         s->exc_task, (unsigned)s->exc_pc, (unsigned)s->ex_info.exc_cause,
+                         (unsigned)s->ex_info.exc_vaddr, s->exc_bt_info.corrupted ? " (corrupted)" : "");
+        for (uint32_t i = 0; i < s->exc_bt_info.depth && i < 16 && n > 0 && (size_t)n < len; ++i)
+            n += snprintf(out + n, len - n, " 0x%08x", (unsigned)s->exc_bt_info.bt[i]);
+    }
+    free(s);
+    return ok;
+}
+
+void StageTrace::eraseCoreDump()
+{
+    esp_core_dump_image_erase();
+}

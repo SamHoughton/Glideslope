@@ -139,6 +139,22 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/map"      && r.method == "POST") { requestMapPreview(30000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/stats"    && r.method == "POST") { requestScreenPreview(1, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/coredump"      && r.method == "GET")
+    {
+        static char text[300];
+        String body = "{\"present\":false}";
+        if (StageTrace::coreDump(text, sizeof(text)))
+        {
+            JsonDocument d;
+            d["present"] = true;
+            d["summary"] = text;
+            d["built"]   = __DATE__ " " __TIME__;
+            body = "";
+            serializeJson(d, body);
+        }
+        sendHttp(client, 200, "application/json", body);
+    }
+    else if (r.path == "/api/coredump/erase" && r.method == "POST") { StageTrace::eraseCoreDump(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/notify/test"   && r.method == "POST")
     {
         Notify::post(Notify::Test, 3, "white_check_mark", "Glideslope", "Test from %s: notifications are working.", g_airport.name);
@@ -460,6 +476,7 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["heap_free"]      = ESP.getFreeHeap();
     doc["heap_max_block"] = ESP.getMaxAllocHeap();
     doc["heap_min_free"]  = ESP.getMinFreeHeap();
+    doc["stack_web_free"] = uxTaskGetStackHighWaterMark(nullptr);   // this task: the web server
     doc["display_frames"] = displayFramesDrawn();
     doc["web_requests"]   = (uint32_t)_requests;
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);

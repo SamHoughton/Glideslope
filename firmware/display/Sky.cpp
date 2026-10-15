@@ -286,10 +286,29 @@ void Sky::drawWeather(FrameCanvas &c, const Look &l, uint32_t tMs, int x0, int x
 Rgb Sky::shade(const Look &l, Rgb nightColour)
 {
     if (!l.known) return nightColour;
-    // By day buildings are a hazy grey-blue a little darker than the sky
-    // near the horizon; in golden hour and at night, dark silhouettes.
-    const Rgb day = mix(nightColour, FrameCanvas::scale(l.horizon, 0.6f), 0.6f);
-    return mix(day, nightColour, max(l.night, l.golden));
+    // Readable against the sky on the LEDs: by day a clear step darker and
+    // bluer than the horizon; against a sunset a dusky violet (a dark grey
+    // there crushes to black and the skyline vanishes into the glow); the
+    // night colour after dark. Scenery darker or lighter than the main
+    // silhouette (hills, roofs) keeps that difference.
+    const float rel = (nightColour.r + nightColour.g + nightColour.b) / 147.0f;   // 1: the silhouette
+    auto mul = [](Rgb c, float k) {
+        return Rgb{(uint8_t)min(255.0f, c.r * k), (uint8_t)min(255.0f, c.g * k), (uint8_t)min(255.0f, c.b * k)};
+    };
+    const Rgb day  = mul(mix(l.horizon, Rgb{40, 60, 100}, 0.35f), 0.55f * rel);
+    const Rgb dusk = mul(Rgb{58, 34, 72}, rel);
+    return mix(mix(day, dusk, l.golden), nightColour, l.night);
+}
+
+Rgb Sky::rim(const Look &l, float &strength)
+{
+    // The low sun catching the tops of the buildings: warm at sunset, cool
+    // blue in twilight, none by day or deep night.
+    strength = 0;
+    if (!l.known) return Rgb{0, 0, 0};
+    const float dusk = clamp01(l.golden + (l.night > 0.2f && l.night < 0.85f ? 0.6f : 0.0f));
+    strength = 0.65f * dusk;
+    return mix(Rgb{255, 170, 110}, Rgb{120, 140, 220}, clamp01((l.night - 0.2f) / 0.5f));
 }
 
 float Sky::mapLight(const Look &l)
