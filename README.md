@@ -249,6 +249,12 @@ about 10 seconds and the board restarts into the new version; if anything
 goes wrong the old one keeps running. The web page has no password, so this
 is only safe on a network you trust (as is the rest of the page).
 
+If the board ever restarts unexpectedly, `http://glideslope.local/api/status`
+says why (and what each task was doing), and `/api/coredump` gives the
+crash's backtrace, to decode with `xtensa-esp32s3-elf-addr2line -pfiaC -e
+firmware.elf <addresses>` against that release's build; please include both
+in a bug report.
+
 Releases are built by GitHub Actions: pushing a tag such as `v1.0.0` builds
 the firmware and attaches `firmware.bin` and the full image to a release.
 
