@@ -749,7 +749,8 @@ void loop()
             lastBeatMs = beatNow;
             const uint32_t frames = g_display.framesDrawn(), reqs = g_webConfig.requestsServed();
             // Stack left at its lowest (bytes) for the main loop, display and web tasks.
-            Log.printf("Beat %lus: +%u frames, +%u web, heap %u blk %u low %u, %u routes, stack free %u/%u/%u\n",
+            // Kept under the log's 112-character lines (a longer one lost its tail).
+            Log.printf("Beat %lus: +%u fr, +%u web, heap %u blk %u low %u, %u rt, stk %u/%u/%u\n",
                        beatNow / 1000, (unsigned)(frames - lastFrames), (unsigned)(reqs - lastReqs),
                        (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
                        (unsigned)ESP.getMinFreeHeap(), (unsigned)(g_fetcher ? g_fetcher->cachedFlights() : 0),

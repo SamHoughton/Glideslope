@@ -476,6 +476,7 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["heap_free"]      = ESP.getFreeHeap();
     doc["heap_max_block"] = ESP.getMaxAllocHeap();
     doc["heap_min_free"]  = ESP.getMinFreeHeap();
+    doc["stack_web_free"] = uxTaskGetStackHighWaterMark(nullptr);   // this task: the web server
     doc["display_frames"] = displayFramesDrawn();
     doc["web_requests"]   = (uint32_t)_requests;
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
