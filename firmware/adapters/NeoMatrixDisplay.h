@@ -101,6 +101,7 @@ public:
     void showLoading();
     // Start the display task; from then on it owns the panel.
     void startTask();
+    TaskHandle_t task() const { return _task; }
 
     // Frames drawn by the display task so far (heartbeat diagnostics).
     uint32_t framesDrawn() const { return _frames; }

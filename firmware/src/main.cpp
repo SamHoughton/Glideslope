@@ -58,6 +58,12 @@ static FallbackFlightFetcher      g_routes(&g_adsbIm, &g_flightFetcher);
 static LocalLogoStore             g_logoStore;
 static FlightDataFetcher         *g_fetcher = nullptr;
 static NeoMatrixDisplay g_display;
+static TaskHandle_t     g_webTask = nullptr;
+
+// The main loop fetches, parses JSON and, now and then, runs a TLS handshake
+// several calls deep: 12 KB rather than Arduino's 8 KB (a stack overflow
+// crashed 4.0.0 once in six days).
+SET_LOOP_TASK_STACK_SIZE(12 * 1024);
 
 static unsigned long g_lastFetchMs = 0;
 static unsigned long g_lastWebSyncMs = 0;
@@ -95,6 +101,7 @@ static bool stackDue(unsigned long now)
 
 static void sampleStack()
 {
+    StageTrace::mark(StageTrace::Main, StageTrace::MainStack);
     g_lastStackMs = millis();
     const HoldFix &fix = g_airport.holds[g_nextStack];
     std::vector<StateVector> around;
@@ -416,7 +423,7 @@ void setup()
                 8192,       // stack: HTML send + ArduinoJson + log build
                 nullptr,
                 1,          // same priority as loop()
-                nullptr,
+                &g_webTask,
                 APP_CPU_NUM // core 1
             );
 
@@ -558,7 +565,9 @@ void loop()
         size_t enriched;
         {
             NetBusy busy;
+            StageTrace::mark(StageTrace::Main, StageTrace::MainFetch);
             enriched = g_fetcher->fetchFlights(g_states, g_flights);
+            StageTrace::mark(StageTrace::Main, StageTrace::MainTraffic);
         }
 
         // Dead-link watchdog: the ESP32 can stay "connected" to Wi-Fi with a
@@ -668,7 +677,11 @@ void loop()
     }
 
     // Phone notifications: one queued message per pass.
-    if (WiFi.status() == WL_CONNECTED) Notify::loop();
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        StageTrace::mark(StageTrace::Main, StageTrace::MainNotify);
+        Notify::loop();
+    }
 
     // Heathrow weather for the arrivals board and the night clock.
     if (WiFi.status() == WL_CONNECTED && millis() > 20000 && !g_display.showcaseRunning() &&
@@ -679,6 +692,7 @@ void loop()
         bool gotWeather;
         {
             NetBusy busy;
+            StageTrace::mark(StageTrace::Main, StageTrace::MainWeather);
             gotWeather = tlsAffordable("weather") && Weather::fetch(m);
         }
         heapCheckpoint("weather fetch");
@@ -717,6 +731,7 @@ void loop()
         if (millis() - lastSaveMs >= 5UL * 60 * 1000 && ESP.getFreeHeap() > 40000)
         {
             lastSaveMs = millis();
+            StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
             std::vector<uint8_t> data;
             if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
                 Log.println("Stats: could not save");
@@ -733,13 +748,18 @@ void loop()
         {
             lastBeatMs = beatNow;
             const uint32_t frames = g_display.framesDrawn(), reqs = g_webConfig.requestsServed();
-            Log.printf("Beat %lus: +%u frames, +%u web, heap %u blk %u low %u, %u routes\n",
+            // Stack left at its lowest (bytes) for the main loop, display and web tasks.
+            Log.printf("Beat %lus: +%u frames, +%u web, heap %u blk %u low %u, %u routes, stack free %u/%u/%u\n",
                        beatNow / 1000, (unsigned)(frames - lastFrames), (unsigned)(reqs - lastReqs),
                        (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
-                       (unsigned)ESP.getMinFreeHeap(), (unsigned)(g_fetcher ? g_fetcher->cachedFlights() : 0));
+                       (unsigned)ESP.getMinFreeHeap(), (unsigned)(g_fetcher ? g_fetcher->cachedFlights() : 0),
+                       (unsigned)uxTaskGetStackHighWaterMark(nullptr),
+                       (unsigned)(g_display.task() ? uxTaskGetStackHighWaterMark(g_display.task()) : 0),
+                       (unsigned)(g_webTask ? uxTaskGetStackHighWaterMark(g_webTask) : 0));
             lastFrames = frames;
             lastReqs   = reqs;
         }
     }
+    StageTrace::mark(StageTrace::Main, StageTrace::MainIdle);
     delay(10);
 }
