@@ -104,6 +104,15 @@ namespace
     }
     const Rgb kWarning    {230,  40,  40};
 
+    // Top of the scenery in each column (255 = none), for the rim light.
+    uint8_t s_top[FrameCanvas::W];
+    void scenery(FrameCanvas &c, int x, int y, Rgb col)
+    {
+        if ((unsigned)x >= (unsigned)FrameCanvas::W) return;
+        c.set(x, y, col);
+        if (y < s_top[x]) s_top[x] = (uint8_t)y;
+    }
+
     // Drawn pre-mirrored when the scene will be mirrored, so London never
     // appears back to front. Bottom row sits on the runway edge line.
     void drawSkyline(FrameCanvas &c, uint32_t tMs, bool mirrored)
@@ -117,8 +126,8 @@ namespace
                 if (ch == '.') continue;
                 const int px = mirrored ? FrameCanvas::W - 1 - x : x;
                 if (ch == 'r')      { if (lightOn) c.set(px, top + r, kWarning); }
-                else if (ch == 'w') c.set(px, top + r, s_windows ? kWindowLit : kSilhouette);
-                else                c.set(px, top + r, kSilhouette);
+                else if (ch == 'w') scenery(c, px, top + r, s_windows ? kWindowLit : kSilhouette);
+                else                scenery(c, px, top + r, kSilhouette);
             }
     }
 
@@ -131,7 +140,7 @@ namespace
         const int base = kSurfaceY - 1;
         auto put = [&](int x, int y, Rgb col) {
             if (x < 0 || x >= FrameCanvas::W) return;
-            c.set(mirrored ? FrameCanvas::W - 1 - x : x, y, col);
+            scenery(c, mirrored ? FrameCanvas::W - 1 - x : x, y, col);
         };
         const Rgb hills = s_hills;
         for (int x = 0; x < FrameCanvas::W; ++x)
@@ -197,8 +206,21 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     s_roof      = Sky::shade(sky, Rgb{58, 64, 82});
     s_windows   = !sky.known || sky.lightsOn;
     s_shadow    = sky.known && sky.night < 0.6f;
+    memset(s_top, 255, sizeof(s_top));
     if (g_airport.londonSkyline) drawSkyline(c, tMs, rightward);
     else                         drawGenericSkyline(c, tMs, rightward);
+    // Sunset and twilight: light along the tops of the buildings.
+    float rimK;
+    const Rgb rimCol = Sky::rim(sky, rimK);
+    if (rimK > 0.02f)
+        for (int x = 0; x < FrameCanvas::W; ++x)
+            if (s_top[x] != 255)
+            {
+                const Rgb p = FrameCanvas::unpack(c.get(x, s_top[x]));
+                c.set(x, s_top[x], Rgb{(uint8_t)(p.r + (rimCol.r - p.r) * rimK),
+                                       (uint8_t)(p.g + (rimCol.g - p.g) * rimK),
+                                       (uint8_t)(p.b + (rimCol.b - p.b) * rimK)});
+            }
 
     // Runway: surface, dotted edge line, dashed centreline, piano keys.
     for (int y = kSurfaceY; y <= kSurfaceY + 3; ++y)

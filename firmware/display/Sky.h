@@ -59,6 +59,9 @@ namespace Sky
 
     // Colour for scenery silhouettes in this light (night colour given).
     Rgb shade(const Look &l, Rgb nightColour);
+    // Light along the tops of the buildings at sunset and twilight;
+    // strength 0 when there is none.
+    Rgb rim(const Look &l, float &strength);
     // Multiplier for the map's base layer (dimmer at night).
     float mapLight(const Look &l);
 }
