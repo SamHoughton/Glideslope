@@ -1,8 +1,9 @@
 // Unit tests for the board's logic, built for the desktop with the stand-in
 // Arduino layer in test/stubs:   pio test -e native
 //
-// The sources are compiled into this one test program (they only need a few
-// Arduino types, which the stubs provide).
+// The sources under test are built as they are on the board, one file at a
+// time (build_src_filter in platformio.ini); they only need a few Arduino
+// types, which the stubs provide.
 #include <unity.h>
 #include <vector>
 #include <fstream>
@@ -11,13 +12,13 @@
 RuntimeConfig g_config{};
 unsigned long g_fakeMillis = 1000;
 
-#include "../../config/Airport.cpp"
-#include "../../display/ApproachModel.cpp"
-#include "../../display/RunwayTracker.cpp"
-#include "../../display/HoldTracker.cpp"
-#include "../../display/DailyStats.cpp"
-#include "../../utils/Weather.cpp"
-#include "../../adapters/ReadsbParser.cpp"
+#include "config/Airport.h"
+#include "display/ApproachModel.h"
+#include "display/RunwayTracker.h"
+#include "display/HoldTracker.h"
+#include "display/DailyStats.h"
+#include "utils/Weather.h"
+#include "adapters/ReadsbParser.h"
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 namespace

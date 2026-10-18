@@ -121,6 +121,14 @@ class Print
 public:
     virtual ~Print() = default;
     virtual size_t write(uint8_t) { return 1; }
+    virtual size_t write(const uint8_t *buf, size_t n) { for (size_t i = 0; i < n; ++i) write(buf[i]); return n; }
+};
+
+class Printable
+{
+public:
+    virtual ~Printable() = default;
+    virtual size_t printTo(Print &p) const = 0;
 };
 
 class Stream : public Print
