@@ -15,8 +15,8 @@ namespace
     // Sky colours by sun elevation: {elevation, top, horizon}.
     struct Key { float elev; Rgb top, horizon; };
     const Key kKeys[] = {
-        {-18, {  0,   0,   4}, {  5,   8,  22}},   // night
-        { -9, {  6,  10,  36}, { 30,  30,  78}},   // nautical twilight
+        {-18, {  2,   4,  18}, { 58,  38,  44}},   // night: deep navy over a city's warm skyglow
+        { -9, {  8,  12,  44}, { 60,  42,  86}},   // nautical twilight
         { -3, { 18,  24,  72}, {150,  70,  80}},   // civil twilight: pink horizon
         {  2, { 36,  56, 118}, {235, 125,  50}},   // sun on the horizon: orange
         {  8, { 22,  60, 128}, {110, 140, 170}},   // morning / evening
@@ -155,12 +155,20 @@ void Sky::drawSky(FrameCanvas &c, const Look &l, uint32_t tMs, int horizonY)
         const uint32_t ph = tMs % 2900;
         if (ph < 70 || (ph > 140 && ph < 190)) flash = 0.55f;
     }
+    // Ordered (Bayer) dithering: the panel only has a few levels in a dark
+    // sky, and without it the gradient shows as two or three flat bands.
+    static const uint8_t kBayer[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
     for (int y = 0; y < horizonY; ++y)
     {
         const float k = (float)y / (horizonY - 1);
         Rgb col = mix(l.top, l.horizon, k * k);   // colour gathers at the horizon
         if (flash > 0) col = mix(col, Rgb{170, 170, 210}, flash);
-        for (int x = 0; x < FrameCanvas::W; ++x) c.set(x, y, col);
+        for (int x = 0; x < FrameCanvas::W; ++x)
+        {
+            const int t = kBayer[y & 3][x & 3];   // 0..15
+            c.set(x, y, Rgb{(uint8_t)min(255, col.r + t / 2), (uint8_t)min(255, col.g + t / 4),
+                            (uint8_t)min(255, col.b + t / 2)});
+        }
     }
 
     // Stars, twinkling, fading out through twilight and behind cloud.
@@ -297,18 +305,20 @@ Rgb Sky::shade(const Look &l, Rgb nightColour)
     };
     const Rgb day  = mul(mix(l.horizon, Rgb{40, 60, 100}, 0.35f), 0.55f * rel);
     const Rgb dusk = mul(Rgb{58, 34, 72}, rel);
-    return mix(mix(day, dusk, l.golden), nightColour, l.night);
+    // After dark: darker than the city's skyglow behind them.
+    return mix(mix(day, dusk, l.golden), FrameCanvas::scale(nightColour, 0.55f), l.night);
 }
 
 Rgb Sky::rim(const Look &l, float &strength)
 {
-    // The low sun catching the tops of the buildings: warm at sunset, cool
-    // blue in twilight, none by day or deep night.
+    // Light catching the tops of the buildings: the low sun at sunset
+    // (warm), twilight (cool blue), and a faint moonlit edge at night so the
+    // rooftops still read against the dark upper sky. None by day.
     strength = 0;
     if (!l.known) return Rgb{0, 0, 0};
     const float dusk = clamp01(l.golden + (l.night > 0.2f && l.night < 0.85f ? 0.6f : 0.0f));
-    strength = 0.65f * dusk;
-    return mix(Rgb{255, 170, 110}, Rgb{120, 140, 220}, clamp01((l.night - 0.2f) / 0.5f));
+    strength = max(0.65f * dusk, l.night >= 0.85f ? 0.4f : 0.0f);
+    return mix(Rgb{255, 170, 110}, Rgb{110, 125, 175}, clamp01((l.night - 0.2f) / 0.5f));
 }
 
 float Sky::mapLight(const Look &l)
