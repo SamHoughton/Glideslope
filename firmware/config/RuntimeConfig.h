@@ -92,6 +92,16 @@ struct RuntimeConfig
 // TimingConfiguration constants.
 extern RuntimeConfig g_config;
 
+// Changing settings from another task (the web server) while the main loop
+// and display read them: build a whole new copy and publish it with
+// configCommit(); a reader that needs several fields to agree (centre and
+// radius, the alerts topic) takes configSnapshot(). Single fields can still
+// be read from g_config directly. (Equal-priority tasks on one core are
+// time-sliced, so a field-by-field update could be seen half done.)
+extern volatile uint32_t g_configSeq;
+void configCommit(const RuntimeConfig &next);
+RuntimeConfig configSnapshot();
+
 // Load saved values from NVS into g_config.
 // Falls back to compile-time defaults (UserConfiguration.h) for any key that
 // has never been saved.  Call once from setup() before connecting to WiFi.

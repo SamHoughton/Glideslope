@@ -11,6 +11,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include <map>
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
+#include "utils/ImageCheck.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
@@ -325,6 +326,7 @@ void setup()
     // StageTrace) is logged on the next boot.
     esp_task_wdt_init(30, true);
     StageTrace::reportAtBoot();
+    ImageCheck::begin();
 
     // Load config first so g_config is fully populated before any component reads it.
     // initialize() calls setBrightness8(g_config.display_brightness) — must be non-zero.
@@ -596,6 +598,7 @@ void loop()
                 ESP.restart();
             }
         }
+        if (g_fetcher->lastFetchOk()) ImageCheck::keep("positions fetched");
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
         heapCheckpoint("fetch cycle");
@@ -773,6 +776,7 @@ void loop()
             lastReqs   = reqs;
         }
     }
+    if (millis() > 5UL * 60 * 1000) ImageCheck::keep("5 minutes up");
     StageTrace::mark(StageTrace::Main, StageTrace::MainIdle);
     delay(10);
 }

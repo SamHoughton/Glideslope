@@ -8,6 +8,7 @@ WebServer library to avoid framework include-path issues.
 #include "utils/TelnetLogger.h"
 #include "utils/WifiProvisioner.h"
 #include "utils/StageTrace.h"
+#include "utils/ImageCheck.h"
 #include "config/RuntimeConfig.h"
 #include "config/Airport.h"
 #include <LittleFS.h>
@@ -15,6 +16,7 @@ WebServer library to avoid framework include-path issues.
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <Update.h>
+#include <Preferences.h>
 #include <esp_task_wdt.h>
 #include "utils/HeapWatch.h"
 #include <vector>
@@ -25,9 +27,64 @@ WebConfig g_webConfig;
 // Lifecycle
 // ---------------------------------------------------------------------------
 
+void WebConfig::loadToken()
+{
+    Preferences p;
+    p.begin("fw_auth", false);
+    String t = p.getString("token", "");
+    if (t.length() != 9)
+    {
+        // XXXX-XXXX from letters and digits that can't be mixed up on the panel.
+        static const char kChars[] = "ACDEFGHJKMNPQRTUVWXY34679";
+        char buf[10];
+        for (int i = 0; i < 9; ++i) buf[i] = i == 4 ? '-' : kChars[esp_random() % (sizeof(kChars) - 1)];
+        buf[9] = '\0';
+        t = buf;
+        p.putString("token", t);
+        Log.println("WebConfig: made the web page code (shown on the panel when asked)");
+    }
+    p.end();
+    strlcpy(_token, t.c_str(), sizeof(_token));
+}
+
+String WebConfig::header(const String &raw, const char *name)
+{
+    // Case-insensitive "\r\n<name>:" in the raw headers; the value trimmed.
+    const int n = strlen(name);
+    for (int i = raw.indexOf("\r\n"); i >= 0; i = raw.indexOf("\r\n", i + 2))
+    {
+        if (strncasecmp(raw.c_str() + i + 2, name, n) == 0 && raw[i + 2 + n] == ':')
+        {
+            const int end = raw.indexOf("\r\n", i + 2);
+            String v = raw.substring(i + 3 + n, end < 0 ? raw.length() : end);
+            v.trim();
+            return v;
+        }
+    }
+    return String();
+}
+
+bool WebConfig::hostAllowed(const String &hostPort)
+{
+    String host = hostPort;
+    const int colon = host.indexOf(':');
+    if (colon >= 0) host = host.substring(0, colon);
+    host.toLowerCase();
+    return host == "glideslope.local" || host == "glideslope" ||
+           host == WiFi.localIP().toString() || host == WiFi.softAPIP().toString();
+}
+
+bool WebConfig::needsToken(const String &p)
+{
+    return p == "/api/update" || p == "/api/airport" || p == "/api/airport/reset" || p == "/api/config" ||
+           p == "/api/config/reset" || p == "/api/restart" || p == "/api/wifi/reset" ||
+           p == "/api/coredump/erase" || p == "/api/notify/test";
+}
+
 void WebConfig::begin(uint16_t port)
 {
     if (!_displayMutex) _displayMutex = xSemaphoreCreateMutex();
+    loadToken();
     _server = WiFiServer(port);
     _server.begin();
     Log.printf("WebConfig: UI at http://%s/\n", WiFi.localIP().toString().c_str());
@@ -61,6 +118,7 @@ void WebConfig::loop()
             raw += (char)client.read();
             if (raw.endsWith("\r\n\r\n"))
                 headersRead = true;
+            if (raw.length() > 4096) { client.stop(); return; }   // no request needs headers this long
         }
         if (!headersRead) delay(1);
     }
@@ -83,6 +141,45 @@ void WebConfig::loop()
     else
     {
         r.path = fullPath;
+    }
+
+    // ── Who is asking ──────────────────────────────────────────────────────
+    if (!hostAllowed(header(raw, "Host")))
+    {
+        sendHttp(client, 403, "text/plain", "Unknown host: use http://glideslope.local/ or the board's address");
+        client.stop();
+        return;
+    }
+    if (r.method == "POST")
+    {
+        const String origin = header(raw, "Origin");
+        const bool sameOrigin = !origin.length() || origin.equalsIgnoreCase("http://" + header(raw, "Host"));
+        if (!sameOrigin || header(raw, "X-Glideslope") != "1")
+        {
+            sendHttp(client, 403, "application/json", "{\"ok\":false,\"error\":\"not from this board's page\"}");
+            client.stop();
+            return;
+        }
+        if (r.path == "/api/token/show")
+        {
+            // At most every 20 s: someone at the board reads it off the panel.
+            if (!_tokenShownMs || millis() - _tokenShownMs > 20000)
+            {
+                _tokenShownMs = millis();
+                char msg[20];
+                snprintf(msg, sizeof(msg), "CODE %s", _token);
+                requestPanelMessage(msg, 30000);
+            }
+            sendHttp(client, 200, "application/json", "{\"ok\":true}");
+            client.stop();
+            return;
+        }
+        if (needsToken(r.path) && header(raw, "X-Glideslope-Token") != _token)
+        {
+            sendHttp(client, 401, "application/json", "{\"ok\":false,\"error\":\"code needed\"}");
+            client.stop();
+            return;
+        }
     }
 
     // ── Read POST body (Content-Length driven) ─────────────────────────────
@@ -311,87 +408,92 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
         return;
     }
 
+    // Built on a copy and published in one go (configCommit), so the main
+    // loop and display never see half the new settings.
+    RuntimeConfig next = configSnapshot();
+
     // ArduinoJson "| current" idiom: keeps existing value when key is absent
     {
-        const char *v = doc["tar1090_host"] | g_config.tar1090_host;
-        strncpy(g_config.tar1090_host, v, sizeof(g_config.tar1090_host) - 1);
-        g_config.tar1090_host[sizeof(g_config.tar1090_host) - 1] = '\0';
+        const char *v = doc["tar1090_host"] | next.tar1090_host;
+        strncpy(next.tar1090_host, v, sizeof(next.tar1090_host) - 1);
+        next.tar1090_host[sizeof(next.tar1090_host) - 1] = '\0';
     }
-    g_config.center_lat   = doc["center_lat"]   | g_config.center_lat;
-    g_config.center_lon   = doc["center_lon"]   | g_config.center_lon;
-    g_config.home_lat     = doc["home_lat"]     | g_config.home_lat;
-    g_config.home_lon     = doc["home_lon"]     | g_config.home_lon;
-    g_config.radius_km    = doc["radius_km"]    | g_config.radius_km;
-    g_config.min_altitude_ft = doc["min_altitude_ft"] | g_config.min_altitude_ft;
+    next.center_lat   = doc["center_lat"]   | next.center_lat;
+    next.center_lon   = doc["center_lon"]   | next.center_lon;
+    next.home_lat     = doc["home_lat"]     | next.home_lat;
+    next.home_lon     = doc["home_lon"]     | next.home_lon;
+    next.radius_km    = doc["radius_km"]    | next.radius_km;
+    next.min_altitude_ft = doc["min_altitude_ft"] | next.min_altitude_ft;
 
-    g_config.display_brightness = (uint8_t)(doc["display_brightness"] | (int)g_config.display_brightness);
-    g_config.text_color_r       = (uint8_t)(doc["text_color_r"]       | (int)g_config.text_color_r);
-    g_config.text_color_g       = (uint8_t)(doc["text_color_g"]       | (int)g_config.text_color_g);
-    g_config.text_color_b       = (uint8_t)(doc["text_color_b"]       | (int)g_config.text_color_b);
+    next.display_brightness = (uint8_t)(doc["display_brightness"] | (int)next.display_brightness);
+    next.text_color_r       = (uint8_t)(doc["text_color_r"]       | (int)next.text_color_r);
+    next.text_color_g       = (uint8_t)(doc["text_color_g"]       | (int)next.text_color_g);
+    next.text_color_b       = (uint8_t)(doc["text_color_b"]       | (int)next.text_color_b);
 
-    g_config.display_nearest_only         = doc["display_nearest_only"]         | g_config.display_nearest_only;
-    g_config.display_border               = doc["display_border"]               | g_config.display_border;
-    g_config.show_flight_number_with_logo = doc["show_flight_number_with_logo"] | g_config.show_flight_number_with_logo;
-    g_config.show_aircraft_type           = doc["show_aircraft_type"]           | g_config.show_aircraft_type;
-    g_config.show_aircraft_registration   = doc["show_aircraft_registration"]   | g_config.show_aircraft_registration;
-    g_config.swap_aircraft_type_reg       = doc["swap_aircraft_type_reg"]       | g_config.swap_aircraft_type_reg;
+    next.display_nearest_only         = doc["display_nearest_only"]         | next.display_nearest_only;
+    next.display_border               = doc["display_border"]               | next.display_border;
+    next.show_flight_number_with_logo = doc["show_flight_number_with_logo"] | next.show_flight_number_with_logo;
+    next.show_aircraft_type           = doc["show_aircraft_type"]           | next.show_aircraft_type;
+    next.show_aircraft_registration   = doc["show_aircraft_registration"]   | next.show_aircraft_registration;
+    next.swap_aircraft_type_reg       = doc["swap_aircraft_type_reg"]       | next.swap_aircraft_type_reg;
 
-    const char *facing = doc["screen_facing"] | g_config.screen_facing;
-    strncpy(g_config.screen_facing, facing, sizeof(g_config.screen_facing) - 1);
-    g_config.screen_facing[sizeof(g_config.screen_facing) - 1] = '\0';
+    const char *facing = doc["screen_facing"] | next.screen_facing;
+    strncpy(next.screen_facing, facing, sizeof(next.screen_facing) - 1);
+    next.screen_facing[sizeof(next.screen_facing) - 1] = '\0';
 
-    g_config.display_flip          = doc["display_flip"]          | g_config.display_flip;
-    g_config.night_mode_enabled    = doc["night_mode_enabled"]    | g_config.night_mode_enabled;
-    g_config.night_follow_sun      = doc["night_follow_sun"]      | g_config.night_follow_sun;
-    g_config.night_start_minutes   = (uint16_t)(doc["night_start_minutes"] | (int)g_config.night_start_minutes);
-    g_config.night_end_minutes     = (uint16_t)(doc["night_end_minutes"]   | (int)g_config.night_end_minutes);
-    g_config.night_brightness      = (uint8_t)(doc["night_brightness"]     | (int)g_config.night_brightness);
-    g_config.utc_offset_minutes    = doc["utc_offset_minutes"]    | g_config.utc_offset_minutes;
+    next.display_flip          = doc["display_flip"]          | next.display_flip;
+    next.night_mode_enabled    = doc["night_mode_enabled"]    | next.night_mode_enabled;
+    next.night_follow_sun      = doc["night_follow_sun"]      | next.night_follow_sun;
+    next.night_start_minutes   = (uint16_t)(doc["night_start_minutes"] | (int)next.night_start_minutes);
+    next.night_end_minutes     = (uint16_t)(doc["night_end_minutes"]   | (int)next.night_end_minutes);
+    next.night_brightness      = (uint8_t)(doc["night_brightness"]     | (int)next.night_brightness);
+    next.utc_offset_minutes    = doc["utc_offset_minutes"]    | next.utc_offset_minutes;
 
-    g_config.opensky_priority              = doc["opensky_priority"]              | g_config.opensky_priority;
-    g_config.use_community_feeds           = doc["use_community_feeds"]           | g_config.use_community_feeds;
-    g_config.notify_mask                   = doc["notify_mask"]                   | g_config.notify_mask;
+    next.opensky_priority              = doc["opensky_priority"]              | next.opensky_priority;
+    next.use_community_feeds           = doc["use_community_feeds"]           | next.use_community_feeds;
+    next.notify_mask                   = doc["notify_mask"]                   | next.notify_mask;
     if (doc["ntfy_topic"].is<const char *>())
     {
         // Trimmed: a topic pasted with a stray space would silently go nowhere.
         String t = doc["ntfy_topic"].as<const char *>();
         t.trim();
-        strlcpy(g_config.ntfy_topic, t.c_str(), sizeof(g_config.ntfy_topic));
+        strlcpy(next.ntfy_topic, t.c_str(), sizeof(next.ntfy_topic));
     }
 
-    g_config.fetch_interval_seconds        = doc["fetch_interval_seconds"]        | g_config.fetch_interval_seconds;
-    g_config.local_fetch_interval_seconds  = doc["local_fetch_interval_seconds"]  | g_config.local_fetch_interval_seconds;
-    g_config.display_cycle_seconds         = doc["display_cycle_seconds"]         | g_config.display_cycle_seconds;
-    g_config.card_lead_seconds             = doc["card_lead_seconds"]             | g_config.card_lead_seconds;
-    g_config.interlude_seconds             = doc["interlude_seconds"]             | g_config.interlude_seconds;
-    g_config.screens                       = (uint8_t)(doc["screens"]             | (int)g_config.screens);
-    g_config.aeroapi_cache_ttl_seconds     = doc["aeroapi_cache_ttl_seconds"]      | g_config.aeroapi_cache_ttl_seconds;
-    g_config.aeroapi_fail_cache_ttl_seconds = doc["aeroapi_fail_cache_ttl_seconds"] | g_config.aeroapi_fail_cache_ttl_seconds;
+    next.fetch_interval_seconds        = doc["fetch_interval_seconds"]        | next.fetch_interval_seconds;
+    next.local_fetch_interval_seconds  = doc["local_fetch_interval_seconds"]  | next.local_fetch_interval_seconds;
+    next.display_cycle_seconds         = doc["display_cycle_seconds"]         | next.display_cycle_seconds;
+    next.card_lead_seconds             = doc["card_lead_seconds"]             | next.card_lead_seconds;
+    next.interlude_seconds             = doc["interlude_seconds"]             | next.interlude_seconds;
+    next.screens                       = (uint8_t)(doc["screens"]             | (int)next.screens);
+    next.aeroapi_cache_ttl_seconds     = doc["aeroapi_cache_ttl_seconds"]      | next.aeroapi_cache_ttl_seconds;
+    next.aeroapi_fail_cache_ttl_seconds = doc["aeroapi_fail_cache_ttl_seconds"] | next.aeroapi_fail_cache_ttl_seconds;
 
     // API keys — only update when the posted value is non-empty and not the
     // mask sentinel "***".  Empty / absent = keep the current value intact.
     {
         const char *v = doc["opensky_client_id"] | "";
         if (strlen(v) > 0 && strcmp(v, "***") != 0) {
-            strncpy(g_config.opensky_client_id, v, sizeof(g_config.opensky_client_id) - 1);
-            g_config.opensky_client_id[sizeof(g_config.opensky_client_id) - 1] = '\0';
+            strncpy(next.opensky_client_id, v, sizeof(next.opensky_client_id) - 1);
+            next.opensky_client_id[sizeof(next.opensky_client_id) - 1] = '\0';
         }
     }
     {
         const char *v = doc["opensky_client_secret"] | "";
         if (strlen(v) > 0 && strcmp(v, "***") != 0) {
-            strncpy(g_config.opensky_client_secret, v, sizeof(g_config.opensky_client_secret) - 1);
-            g_config.opensky_client_secret[sizeof(g_config.opensky_client_secret) - 1] = '\0';
+            strncpy(next.opensky_client_secret, v, sizeof(next.opensky_client_secret) - 1);
+            next.opensky_client_secret[sizeof(next.opensky_client_secret) - 1] = '\0';
         }
     }
     {
         const char *v = doc["aeroapi_key"] | "";
         if (strlen(v) > 0 && strcmp(v, "***") != 0) {
-            strncpy(g_config.aeroapi_key, v, sizeof(g_config.aeroapi_key) - 1);
-            g_config.aeroapi_key[sizeof(g_config.aeroapi_key) - 1] = '\0';
+            strncpy(next.aeroapi_key, v, sizeof(next.aeroapi_key) - 1);
+            next.aeroapi_key[sizeof(next.aeroapi_key) - 1] = '\0';
         }
     }
 
+    configCommit(next);
     saveConfig();
     Log.println("WebConfig: settings updated and saved to NVS");
     sendHttp(c, 200, "application/json", "{\"ok\":true}");
@@ -411,6 +513,7 @@ void WebConfig::handleRestart(WiFiClient &c)
     c.flush();
     c.stop();
     delay(200);
+    ImageCheck::keep("restart requested");
     ESP.restart();
 }
 
@@ -422,6 +525,7 @@ void WebConfig::handleWifiReset(WiFiClient &c)
     c.stop();
     delay(200);
     WifiProvisioner::clearCredentials();
+    ImageCheck::keep("restart requested");
     ESP.restart();
 }
 
@@ -473,6 +577,7 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["built"]          = __DATE__ " " __TIME__;
     doc["uptime_s"]       = millis() / 1000;
     doc["last_reset"]     = StageTrace::lastReset();
+    doc["image"]          = ImageCheck::state();
     doc["heap_free"]      = ESP.getFreeHeap();
     doc["heap_max_block"] = ESP.getMaxAllocHeap();
     doc["heap_min_free"]  = ESP.getMinFreeHeap();
@@ -605,6 +710,7 @@ void WebConfig::handleUpdate(WiFiClient &c, int length)
     c.flush();
     c.stop();
     delay(500);
+    ImageCheck::keep("restart requested");
     ESP.restart();
 }
 
@@ -670,6 +776,7 @@ void WebConfig::handleAirport(WiFiClient &c, int length)
     c.flush();
     c.stop();
     delay(500);
+    ImageCheck::keep("restart requested");
     ESP.restart();
 }
 
@@ -681,6 +788,7 @@ void WebConfig::handleAirportReset(WiFiClient &c)
     c.flush();
     c.stop();
     delay(500);
+    ImageCheck::keep("restart requested");
     ESP.restart();
 }
 

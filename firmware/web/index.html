@@ -280,7 +280,16 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
 var $=function(id){return document.getElementById(id);};
 var st={},cur=0,lines=0,lb=$('lb'),PACKS='https://raw.githubusercontent.com/SamHoughton/Glideslope/main/packs/';
 function status(t,ms){$('st').textContent=t;if(ms)setTimeout(function(){$('st').textContent='';},ms);}
-function post(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
+// Every POST carries X-Glideslope (a cross-site page can't add it) and, once
+// entered, the board's code; a 401 shows the code on the panel and asks for it.
+var TOK='';try{TOK=localStorage.getItem('gs-token')||'';}catch(e){}
+function hdrs(ct){var h={'X-Glideslope':'1'};if(TOK)h['X-Glideslope-Token']=TOK;if(ct)h['Content-Type']=ct;return h;}
+function askCode(){return fetch('/api/token/show',{method:'POST',headers:hdrs()}).catch(function(){}).then(function(){
+  var c=prompt('Enter the code now shown on the board (it stays up for 30 seconds).');if(!c)return false;
+  TOK=c.trim().toUpperCase();try{localStorage.setItem('gs-token',TOK);}catch(e){}return true;});}
+function send(u,ct,body){return fetch(u,{method:'POST',headers:hdrs(ct),body:body}).then(function(r){
+  if(r.status!==401)return r;return askCode().then(function(ok){return ok?fetch(u,{method:'POST',headers:hdrs(ct),body:body}):r;});});}
+function post(u,b){return send(u,'application/json',b?JSON.stringify(b):undefined);}
 function toTime(m){var h=Math.floor(m/60),n=m%60;return(h<10?'0':'')+h+':'+(n<10?'0':'')+n;}
 function toMin(t){var p=(t||'00:00').split(':');return parseInt(p[0])*60+(parseInt(p[1])||0);}
 function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
@@ -337,10 +346,13 @@ $('res').addEventListener('click',function(){$('resf').click();});
 $('resf').addEventListener('change',function(e){var f=e.target.files[0];if(!f)return;f.text().then(function(t){var d;try{d=JSON.parse(t);}catch(x){status('Not a settings file',4000);return;}
   if(!confirm('Restore settings from '+f.name+'?'))return;post('/api/config',d).then(function(r){return r.json();}).then(function(j){status(j.ok?'Restored':'Error',3000);load();});});e.target.value='';});
 $('upd').addEventListener('click',function(){var f=$('fw').files[0],u=$('ust');if(!f){u.textContent='Choose a .bin file first';return;}
-  if(!confirm('Install '+f.name+' and restart the board?'))return;var x=new XMLHttpRequest();x.open('POST','/api/update');
+  if(!confirm('Install '+f.name+' and restart the board?'))return;upload(f,u,false);});
+function upload(f,u,retried){var x=new XMLHttpRequest();x.open('POST','/api/update');
   x.upload.onprogress=function(e){if(e.lengthComputable)u.textContent='Uploading '+Math.round(e.loaded*100/e.total)+'%';};
-  x.onload=function(){var j={};try{j=JSON.parse(x.responseText);}catch(e){}if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}else u.textContent='Failed: '+(j.error||x.status);};
-  x.onerror=function(){u.textContent='Upload failed (connection lost)';};x.setRequestHeader('Content-Type','application/octet-stream');x.send(f);});
+  x.onload=function(){if(x.status===401&&!retried){askCode().then(function(ok){if(ok)upload(f,u,true);else u.textContent='The board\'s code is needed';});return;}
+    var j={};try{j=JSON.parse(x.responseText);}catch(e){}if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}else u.textContent='Failed: '+(j.error||x.status);};
+  x.onerror=function(){u.textContent='Upload failed (connection lost)';};var h=hdrs('application/octet-stream');
+  Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send(f);}
 
 // Airport.
 fetch(PACKS+'index.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){
@@ -349,7 +361,7 @@ fetch(PACKS+'index.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;r
     o.textContent=p.name+' ('+p.icao+(p.iata?' / '+p.iata:'')+')'+(p.city?', '+p.city:'')+(p.country?', '+p.country:'');sel.appendChild(o);});
 }).catch(function(){$('aps').innerHTML='<option value="">Could not reach GitHub: use a pack file below</option>';});
 function sendPack(blob,label){var u=$('ast');if(!confirm('Install '+label+' and restart the board?'))return;u.textContent='Installing…';
-  fetch('/api/airport',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:blob}).then(function(r){return r.json();})
+  send('/api/airport','application/octet-stream',blob).then(function(r){return r.json();})
   .then(function(j){if(j.ok){u.textContent='Installed '+j.airport+', restarting…';setTimeout(function(){location.reload();},9000);}else u.textContent='Failed: '+j.error;})
   .catch(function(){u.textContent='Upload failed';});}
 $('apu').addEventListener('click',function(){var f=$('apf').files[0],v=$('aps').value,u=$('ast');if(f){sendPack(f,f.name);return;}

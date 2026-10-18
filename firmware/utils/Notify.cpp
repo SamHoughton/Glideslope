@@ -62,7 +62,8 @@ void Notify::loop()
     --s_count;
     portEXIT_CRITICAL(&s_mux);
 
-    const char *topic = g_config.ntfy_topic;
+    char topic[sizeof(g_config.ntfy_topic)];
+    strlcpy(topic, configSnapshot().ntfy_topic, sizeof(topic));
     const bool full = strncmp(topic, "http://", 7) == 0 || strncmp(topic, "https://", 8) == 0;
     const bool tls  = strncmp(topic, "https://", 8) == 0;
     if (tls && !tlsAffordable("ntfy")) return;   // dropped: better than starving the fetches

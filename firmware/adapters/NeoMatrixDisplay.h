@@ -72,7 +72,7 @@ void requestShowcase(const char *look = "");
 uint32_t showcaseFrameMs();
 
 // Short status text on the panel for a few seconds (e.g. update progress). Safe from the web task.
-void requestPanelMessage(const char *text);
+void requestPanelMessage(const char *text, uint32_t ms = 4000);
 
 /*
 Card flow: each fetch's flight list goes through displayFlights(). A flight

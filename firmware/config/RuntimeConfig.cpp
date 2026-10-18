@@ -15,6 +15,30 @@ static constexpr const char *kNS = "fw_cfg";
 
 // Global instance — default-initialised to zeros; loadConfig() fills it.
 RuntimeConfig g_config;
+volatile uint32_t g_configSeq = 0;
+
+void configCommit(const RuntimeConfig &next)
+{
+    ++g_configSeq;   // odd: a write is under way
+    __sync_synchronize();
+    g_config = next;
+    __sync_synchronize();
+    ++g_configSeq;   // even: settled
+}
+
+RuntimeConfig configSnapshot()
+{
+    RuntimeConfig copy;
+    for (;;)
+    {
+        const uint32_t before = g_configSeq;
+        __sync_synchronize();
+        copy = g_config;
+        __sync_synchronize();
+        if (!(before & 1) && before == g_configSeq) return copy;
+        delay(1);
+    }
+}
 
 // Write all compile-time defaults into c.
 static void applyDefaults(RuntimeConfig &c)
@@ -216,7 +240,9 @@ void saveConfig()
 
 void resetConfig()
 {
-    applyDefaults(g_config);
+    RuntimeConfig next;
+    applyDefaults(next);
+    configCommit(next);
     saveConfig();
 }
 

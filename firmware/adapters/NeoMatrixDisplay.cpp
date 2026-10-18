@@ -127,9 +127,11 @@ uint32_t showcaseFrameMs() { return s_frameShowMs; }
 static char          s_panelMsg[20] = "";
 static volatile bool s_panelMsgPending = false;
 
-void requestPanelMessage(const char *text)
+static volatile uint32_t s_panelMsgMs = 4000;
+void requestPanelMessage(const char *text, uint32_t ms)
 {
     strlcpy(s_panelMsg, text, sizeof(s_panelMsg));
+    s_panelMsgMs = ms;
     s_panelMsgPending = true;
 }
 
@@ -661,7 +663,7 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
     {
         s_panelMsgPending = false;
         _message        = s_panelMsg;
-        _messageUntilMs = now + kMessageMs;
+        _messageUntilMs = now + s_panelMsgMs;
     }
     if (_messageUntilMs && (long)(now - _messageUntilMs) < 0)
     {
