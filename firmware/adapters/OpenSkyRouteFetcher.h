@@ -5,7 +5,7 @@ can slot into the FallbackFlightFetcher chain as a third-tier route source.
 
 Only fills origin/destination ICAO and IATA codes — registration, aircraft type,
 and operator fields are left empty (those come from hexdb in the primary tier).
-IATA codes are resolved from the local PROGMEM table (IcaoIataTable.h) rather
+IATA codes are resolved from the offline airport table (config/Airports.h) rather
 than making additional network calls.
 
 Requires:
@@ -16,7 +16,7 @@ Requires:
 #include "interfaces/BaseFlightFetcher.h"
 #include "adapters/OpenSkyFetcher.h"
 #include "adapters/FlightWallFetcher.h"
-#include "config/IcaoIataTable.h"
+#include "config/Airports.h"
 #include "models/FlightInfo.h"
 #include "utils/TelnetLogger.h"
 
@@ -43,12 +43,12 @@ public:
         char iata[4];
         if (originIcao.length() == 4)
         {
-            if (icaoToIata(originIcao.c_str(), iata))
+            if (Airports::icaoToIata(originIcao.c_str(), iata))
                 outInfo.origin.code_iata = String(iata);
         }
         if (destIcao.length() == 4)
         {
-            if (icaoToIata(destIcao.c_str(), iata))
+            if (Airports::icaoToIata(destIcao.c_str(), iata))
                 outInfo.destination.code_iata = String(iata);
         }
 

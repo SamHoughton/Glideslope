@@ -39,6 +39,7 @@ struct RuntimeConfig
     bool     swap_aircraft_type_reg;      // swap order: reg on line 3, type on line 3b
     char     screen_facing[8];           // e.g. "N", "NNW" — null-terminated
     bool     display_flip;               // true = rotate 180° (USB on opposite side)
+    bool     route_cities;               // routes as city names (London > New York) instead of codes
 
     // Night mode — optional time-based brightness reduction
     bool     night_mode_enabled;

@@ -1,6 +1,8 @@
 #include "display/CardRenderer.h"
 #include "display/AircraftSprites.h"
 #include "config/Airport.h"
+#include "config/Airports.h"
+#include "config/RuntimeConfig.h"
 #include <math.h>
 
 namespace
@@ -111,6 +113,43 @@ namespace
         if (n == 0 || FrameCanvas::textWidth(buf) > maxChars * 6 - 1) return false;
         snprintf(out, outLen, "%s", buf);
         return true;
+    }
+
+    // The route line: "LHR > JFK", or with the city-names setting
+    // "PARIS > ROME". A city route too long for the line becomes "FROM NEW
+    // YORK" / "TO NEW YORK" when the other end is the home airport (it's on
+    // every card, so says nothing), and otherwise scrolls.
+    void routeText(const FlightInfo &f, const char *org, const char *dst, char *out, size_t len)
+    {
+        if (!g_config.route_cities)
+        {
+            snprintf(out, len, "%s > %s", org, dst);
+            return;
+        }
+        const char *oc = Airports::city(f.origin), *dc = Airports::city(f.destination);
+        const char *o = oc ? oc : org, *d = dc ? dc : dst;
+        snprintf(out, len, "%s > %s", o, d);
+        if (FrameCanvas::textWidth(out) <= kTextW) return;
+        if (AirportPack::isHome(f.destination)) snprintf(out, len, "FROM %s", o);
+        else if (AirportPack::isHome(f.origin)) snprintf(out, len, "TO %s", d);
+    }
+
+    // Scroll for text wider than the line: hold, scroll at 24 px/s, hold.
+    constexpr uint32_t kScrollHoldMs = 900;
+    uint32_t routeShowMs(int width)
+    {
+        if (width <= kTextW) return kRouteShowMs;
+        return max(kRouteShowMs, 2 * kScrollHoldMs + (uint32_t)(width - kTextW) * 1000 / 24);
+    }
+    void drawRoute(FrameCanvas &c, int y, const char *s, Rgb colour, uint32_t t)
+    {
+        const int w = FrameCanvas::textWidth(s);
+        if (w <= kTextW) { c.text(kTextX, y, s, colour); return; }
+        const int travel = w - kTextW;
+        const int dx = t < kScrollHoldMs ? 0 : min(travel, (int)((t - kScrollHoldMs) * 24 / 1000));
+        c.setClip(kTextX, kRightX);
+        c.text(kTextX - dx, y, s, colour);
+        c.resetClip();
     }
 
     // 0..1 brightness for a phase of length len at time t: fades in over the
@@ -291,20 +330,21 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
     const char *org = firstNonEmpty(f.origin.code_iata, f.origin.code_icao);
     const char *dst = firstNonEmpty(f.destination.code_iata, f.destination.code_icao);
     const bool hasRoute = org[0] && dst[0];
-    char route[24] = "", airline[kCols + 1] = "";
-    if (hasRoute) snprintf(route, sizeof(route), "%s > %s", org, dst);
+    char route[48] = "", airline[kCols + 1] = "";
+    if (hasRoute) routeText(f, org, dst, route, sizeof(route));
     const bool hasAirline = shortAirlineName(f.airline_display_name_full.c_str(), kCols, airline, sizeof(airline));
+    const uint32_t routeMs = routeShowMs(FrameCanvas::textWidth(route));
 
     if (hasRoute && hasAirline)
     {
-        const uint32_t t = opt.animMs % (kRouteShowMs + kNameShowMs);
-        if (t < kRouteShowMs)
-            c.text(kTextX, 18, route, FrameCanvas::scale(kWhite, phaseFade(t, kRouteShowMs, kFadeMs)), 1, 0, kCols);
+        const uint32_t t = opt.animMs % (routeMs + kNameShowMs);
+        if (t < routeMs)
+            drawRoute(c, 18, route, FrameCanvas::scale(kWhite, phaseFade(t, routeMs, kFadeMs)), t);
         else
-            c.text(kTextX, 18, airline, FrameCanvas::scale(accent, phaseFade(t - kRouteShowMs, kNameShowMs, kFadeMs)));
+            c.text(kTextX, 18, airline, FrameCanvas::scale(accent, phaseFade(t - routeMs, kNameShowMs, kFadeMs)));
     }
     else if (hasRoute)
-        c.text(kTextX, 18, route, kWhite, 1, 0, kCols);
+        drawRoute(c, 18, route, kWhite, opt.animMs % (routeMs + kScrollHoldMs));
     else if (hasAirline)
         c.text(kTextX, 18, airline, accent);
 

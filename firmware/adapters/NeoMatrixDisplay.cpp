@@ -20,6 +20,7 @@ Responsibilities:
 #include "display/RareSpotter.h"
 #include "display/InfoScreens.h"
 #include "config/Airport.h"
+#include "config/Airports.h"
 #include "display/DemoLogo.h"
 #include "utils/TelnetLogger.h"
 #include "utils/Notify.h"
@@ -1329,8 +1330,13 @@ bool NeoMatrixDisplay::renderLanding(unsigned long now)
     static char caption[24];
     const String &id = f.ident_iata.length() ? f.ident_iata : f.ident;
     const String &dest = f.destination.code_iata.length() ? f.destination.code_iata : f.destination.code_icao;
+    const char *destCity = g_config.route_cities ? Airports::city(f.destination) : nullptr;
     if (_sceneKind == LandingScene::Takeoff && dest.length() && !AirportPack::isHome(f.destination))
-        snprintf(caption, sizeof(caption), "%s TO %s", id.c_str(), dest.c_str());
+    {
+        snprintf(caption, sizeof(caption), "%s TO %s", id.c_str(), destCity ? destCity : dest.c_str());
+        if (FrameCanvas::textWidth(caption) > FrameCanvas::W - 4)   // too long for the line: the code
+            snprintf(caption, sizeof(caption), "%s TO %s", id.c_str(), dest.c_str());
+    }
     else
         snprintf(caption, sizeof(caption), "%s", id.c_str());
     const AircraftSprites::Livery livery = AircraftSprites::liveryFor(f, _current.accent);

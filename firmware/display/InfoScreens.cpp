@@ -2,6 +2,8 @@
 #include <math.h>
 #include <time.h>
 #include "config/Airport.h"
+#include "config/Airports.h"
+#include "config/RuntimeConfig.h"
 
 namespace
 {
@@ -331,7 +333,9 @@ void InfoScreens::renderDepartures(FrameCanvas &c, const Departure *rows, int n,
         const int y = 14 + i * 10;
         c.fillRect(2, y, 2, 7, d.accent);
         flapText(c, 6, y, d.ident, Rgb{235, 240, 245}, shownMs, i * 110);
-        if (d.dest[0]) flapText(c, 54, y, d.dest, kValue, shownMs, i * 110 + 200);
+        char city[8];
+        const char *dest = g_config.route_cities && Airports::shortCity(d.dest, 7, city, sizeof(city)) ? city : d.dest;
+        if (d.dest[0]) flapText(c, 54, y, dest, kValue, shownMs, i * 110 + 200);
         else           flapText(c, 54, y, d.type, kLabel, shownMs, i * 110 + 200);
         char when[8] = "";
         if (d.at)

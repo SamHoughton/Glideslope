@@ -9,6 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+
+#ifndef PROGMEM
+#define PROGMEM   // flash tables are ordinary arrays on the host
+#endif
 #include <stdarg.h>
 #include <time.h>
 #include <string>

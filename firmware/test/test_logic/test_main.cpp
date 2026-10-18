@@ -13,6 +13,7 @@ RuntimeConfig g_config{};
 unsigned long g_fakeMillis = 1000;
 
 #include "config/Airport.h"
+#include "config/Airports.h"
 #include "display/ApproachModel.h"
 #include "display/RunwayTracker.h"
 #include "display/HoldTracker.h"
@@ -358,6 +359,47 @@ void test_fuzz_parsers()
     }
 }
 
+// The offline airport table: lookups both ways, cities, short forms.
+void test_airport_cities()
+{
+    Airports::Place p;
+    TEST_ASSERT_TRUE(Airports::byIata("LHR", p));
+    TEST_ASSERT_EQUAL_STRING("EGLL", p.icao);
+    TEST_ASSERT_EQUAL_STRING("London", p.city);
+    TEST_ASSERT_FLOAT_WITHIN(0.02f, 51.47f, p.lat);
+    TEST_ASSERT_TRUE(Airports::byIcao("kjfk", p));
+    TEST_ASSERT_EQUAL_STRING("JFK", p.iata);
+    TEST_ASSERT_EQUAL_STRING("New York", p.city);
+    TEST_ASSERT_EQUAL_STRING("Brussels", Airports::city("BRU"));   // municipality is Zaventem
+    TEST_ASSERT_EQUAL_STRING("Edinburgh", Airports::city("EGPH"));
+    TEST_ASSERT_NULL(Airports::city("QQQ"));
+    TEST_ASSERT_NULL(Airports::city("LH"));
+    char iata[4];
+    TEST_ASSERT_TRUE(Airports::icaoToIata("LFPG", iata));
+    TEST_ASSERT_EQUAL_STRING("CDG", iata);
+    TEST_ASSERT_FALSE(Airports::icaoToIata("ZZZZ", iata));
+    TEST_ASSERT_EQUAL_STRING("", iata);
+
+    char s[8];
+    TEST_ASSERT_TRUE(Airports::shortCity("DUB", 7, s, sizeof(s)));
+    TEST_ASSERT_EQUAL_STRING("Dublin", s);
+    TEST_ASSERT_TRUE(Airports::shortCity("JFK", 7, s, sizeof(s)));
+    TEST_ASSERT_EQUAL_STRING("NewYork", s);
+    TEST_ASSERT_TRUE(Airports::shortCity("SFO", 7, s, sizeof(s)));
+    TEST_ASSERT_EQUAL_STRING("San Fra", s);
+    TEST_ASSERT_TRUE(Airports::shortCity("LAX", 7, s, sizeof(s)));
+    TEST_ASSERT_EQUAL_STRING("Los Ang", s);
+    TEST_ASSERT_FALSE(Airports::shortCity("QQQ", 7, s, sizeof(s)));
+
+    // Cities found through the IATA index are real, short strings.
+    for (const char *code : { "AMS", "SIN", "SYD", "GRU", "NBO", "YVR" })
+    {
+        const char *c = Airports::city(code);
+        TEST_ASSERT_NOT_NULL(c);
+        TEST_ASSERT_TRUE(strlen(c) > 1 && strlen(c) <= 15);
+    }
+}
+
 int main(int, char **)
 {
     UNITY_BEGIN();
@@ -376,5 +418,6 @@ int main(int, char **)
     RUN_TEST(test_pack_header);
     RUN_TEST(test_fuzz_parsers);
     RUN_TEST(test_replay_counts_arrivals);
+    RUN_TEST(test_airport_cities);
     return UNITY_END();
 }

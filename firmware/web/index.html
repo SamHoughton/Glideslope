@@ -192,6 +192,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <label class="sw"><input type="checkbox" data-scr="16"><span>Holding stacks<small>Only when aircraft are holding</small></span></label>
       <h3>Look</h3>
       <label class="sw"><input type="checkbox" id="display_border"><span>Airline-coloured border</span></label>
+      <label class="sw"><input type="checkbox" id="route_cities"><span>City names on routes<small>London &gt; New York instead of LHR &gt; JFK</small></span></label>
       <label class="sw"><input type="checkbox" id="display_nearest_only"><span>Nearest aircraft only<small>One route lookup per fetch; easier on memory and APIs</small></span></label>
       <label class="sw"><input type="checkbox" id="display_flip"><span>Rotate 180&deg;</span></label>
     </section>
@@ -316,7 +317,7 @@ function save(){var d={};
   ['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
   ['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',
    'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});
-  ['display_nearest_only','display_border','display_flip','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
+  ['display_nearest_only','display_border','display_flip','route_cities','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
   d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});
   d.screen_facing=$('screen_facing').value;d.tar1090_host=$('tar1090_host').value;
   d.ntfy_topic=$('ntfy_topic').value.trim();d.notify_mask=ntfMask();
