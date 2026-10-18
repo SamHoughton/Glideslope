@@ -197,10 +197,19 @@ int DailyStats::yesterdayUpTo(int hour, int minute) const
     return (int)lroundf(n);
 }
 
+size_t DailyStats::serialisedSize() const
+{
+    return sizeof(kMagic) + 2 * sizeof(int16_t) + 3 * sizeof(uint16_t) + sizeof(_arrHour) + sizeof(_depHour) +
+           2 * sizeof(uint16_t) + sizeof(_seen) + 1 + _nAirlines * (4 + sizeof(uint16_t)) +
+           1 + _nTypes * (6 + 2 * sizeof(uint16_t)) + 1 + sizeof(_yHour);
+}
+
 void DailyStats::serialise(std::vector<uint8_t> &v)
 {
+    // Reserved exactly: growing it needed a second, larger block while the
+    // first was held (4.0.2 candidate crashed there with a TLS session open).
     v.clear();
-    v.reserve(sizeof(_seen) + 600);
+    v.reserve(serialisedSize());
     put(v, kMagic);
     put(v, (int16_t)_year); put(v, (int16_t)_day);
     put(v, _arrivals); put(v, _departures); put(v, _goArounds);

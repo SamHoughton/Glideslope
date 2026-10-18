@@ -733,9 +733,20 @@ void loop()
         {
             lastSaveMs = millis();
             StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
-            std::vector<uint8_t> data;
-            if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
-                Log.println("Stats: could not save");
+            // ~7 KB in one block: with the feed's TLS connection open the
+            // largest free block can be smaller, so close it first if need
+            // be (it reopens on the next fetch), and skip a round rather
+            // than fail an allocation.
+            const size_t need = g_display.statsSize();
+            if (need && ESP.getMaxAllocHeap() < need + 4096 && g_tlsReleaser) g_tlsReleaser();
+            if (need && ESP.getMaxAllocHeap() >= need + 4096)
+            {
+                std::vector<uint8_t> data;
+                if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
+                    Log.println("Stats: could not save");
+            }
+            else if (need)
+                Log.println("Stats: no room to save now, trying again in 5 minutes");
         }
     }
 

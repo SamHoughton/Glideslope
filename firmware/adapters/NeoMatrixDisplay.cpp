@@ -456,6 +456,12 @@ void NeoMatrixDisplay::runwaysInUse(char *arr, size_t arrLen, char *dep, size_t 
     strlcpy(dep, _runwayDep, depLen);
 }
 
+size_t NeoMatrixDisplay::statsSize()
+{
+    Lock l(_lock);
+    return _stats.dirty() ? _stats.serialisedSize() : 0;
+}
+
 bool NeoMatrixDisplay::statsSnapshot(std::vector<uint8_t> &out)
 {
     Lock l(_lock);
