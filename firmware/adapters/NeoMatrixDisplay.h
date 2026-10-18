@@ -253,7 +253,7 @@ private:
     void renderCurrentCard(unsigned long now);
     void renderAmbient(unsigned long now);
     void pollButton(unsigned long now);
-    void crossFade(const FrameCanvas &from, float k);
+    void crossFade(const PackedFrame &from, float k);
     ApproachStatus liveStatus(unsigned long now);   // dead-reckoned status of the current card
     void noteApproachProgress(Entry &e, const ApproachStatus &st, double prevAlt, unsigned long now);
     void startLanding(unsigned long now, bool demo);   // demo: replay only, card state unchanged

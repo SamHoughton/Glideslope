@@ -29,7 +29,7 @@ Responsibilities:
 // Static frames (16 KB each): the one being drawn, a mirror of the panel, and
 // a snapshot of the outgoing card during a fly-across.
 static FrameCanvas g_workFrame;
-static FrameCanvas g_oldFrame;
+static PackedFrame g_oldFrame;   // 12 bits a pixel: 4 KB less than a FrameCanvas
 FrameCanvas        g_shownFrame;
 
 static constexpr size_t        kMaxQueue        = 5;
@@ -1080,14 +1080,14 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
 }
 
 // Blend the work frame with `from`: k = 0 shows `from`, 1 shows the work frame.
-void NeoMatrixDisplay::crossFade(const FrameCanvas &from, float k)
+void NeoMatrixDisplay::crossFade(const PackedFrame &from, float k)
 {
-    uint16_t       *px  = g_workFrame.pixels();
-    const uint16_t *old = from.pixels();
-    for (int i = 0; i < FrameCanvas::W * FrameCanvas::H; ++i)
+    uint16_t *px = g_workFrame.pixels();
+    for (int i = 0; i < PackedFrame::N; ++i)
     {
-        if (px[i] == old[i]) continue;
-        const Rgb a = FrameCanvas::unpack(old[i]), b = FrameCanvas::unpack(px[i]);
+        const uint16_t o = from.raw(i);
+        if (PackedFrame::to444(px[i]) == o) continue;   // unchanged: keep the full-depth pixel
+        const Rgb a = FrameCanvas::unpack(PackedFrame::to565(o)), b = FrameCanvas::unpack(px[i]);
         px[i] = FrameCanvas::pack(Rgb{ (uint8_t)(a.r + (b.r - a.r) * k), (uint8_t)(a.g + (b.g - a.g) * k),
                                        (uint8_t)(a.b + (b.b - a.b) * k) });
     }

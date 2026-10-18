@@ -8,6 +8,7 @@ a short white flash.
 */
 #include <Arduino.h>
 #include "display/FrameCanvas.h"
+#include "display/PackedFrame.h"
 #include "display/AircraftSprites.h"
 
 namespace FlyAcross
@@ -28,7 +29,7 @@ namespace FlyAcross
 
     // out must already hold the new card. oldFrame is a snapshot of the panel
     // when the transition began. tMs runs 0..DURATION_MS.
-    void compose(FrameCanvas &out, const FrameCanvas &oldFrame, uint32_t tMs,
+    void compose(FrameCanvas &out, const PackedFrame &oldFrame, uint32_t tMs,
                  const AircraftSprites::Sprite &sprite, const AircraftSprites::Livery &livery, bool greySprite,
                  const Path &path);
 }

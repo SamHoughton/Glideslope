@@ -48,7 +48,7 @@ FlyAcross::Path FlyAcross::pathFor(double headingDeg, double verticalRateFpm, co
     return p;
 }
 
-void FlyAcross::compose(FrameCanvas &out, const FrameCanvas &oldFrame, uint32_t tMs,
+void FlyAcross::compose(FrameCanvas &out, const PackedFrame &oldFrame, uint32_t tMs,
                         const AircraftSprites::Sprite &sprite, const AircraftSprites::Livery &livery, bool greySprite,
                         const Path &path)
 {
@@ -63,15 +63,14 @@ void FlyAcross::compose(FrameCanvas &out, const FrameCanvas &oldFrame, uint32_t 
     const int planeY   = (int)lroundf(path.startY + q * (path.endY - path.startY));
     const int edge     = planeX + sprite.w / 2;   // boundary between old and new
 
-    uint16_t       *px  = out.pixels();
-    const uint16_t *old = oldFrame.pixels();
+    uint16_t *px = out.pixels();
     for (int y = 0; y < FrameCanvas::H; ++y)
         for (int x = 0; x < FrameCanvas::W; ++x)
         {
             const int i = y * FrameCanvas::W + x;
             // Distance behind the plane (into the newly revealed card).
             const int d = path.rightward ? edge - x : x - edge;
-            if (d < 0) { px[i] = old[i]; continue; }
+            if (d < 0) { px[i] = oldFrame.get(i); continue; }
             if (d >= kFlashWidth || px[i] == 0) continue;
             const float m = (1.0f - (float)d / kFlashWidth) * kFlashPeak;
             Rgb c = FrameCanvas::unpack(px[i]);
