@@ -118,6 +118,17 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
     // One aircraft at a time from the stream (adsb.lol lists them under "ac",
     // adsb.fi under "aircraft"), then the rest of the reply is read so the
     // kept-open connection starts clean for the next request.
+    // At most kMaxAircraft, reserved up front when there is room for them
+    // (adsb.lol's 11 nm round Heathrow is usually 10-20).
+    constexpr size_t kMaxAircraft = 40;
+    if (ESP.getMaxAllocHeap() < kMaxAircraft * sizeof(StateVector) + 4096)
+    {
+        Log.println("AdsbAggregatorFetcher: not enough memory for the list, skipping this fetch");
+        http.end();
+        if (i == 0) closeSecure();   // the unread reply would spoil the kept-open connection
+        return false;
+    }
+    out.reserve(kMaxAircraft);
     Stream &body = http.getStream();
     const int n = ReadsbParser::parseStream(body, i == 0 ? "ac" : "aircraft", centerLat, centerLon, radiusKm, out);
     if (n >= 0) body.find((char *)"}");   // after the array: a few flat fields, then the closing brace

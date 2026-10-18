@@ -105,7 +105,11 @@ int ReadsbParser::parseStream(Stream &in, const char *arrayKey, double centerLat
         if (deserializeJson(doc, in, DeserializationOption::Filter(filter))) break;
         ++tracked;
         StateVector s;
-        if (one(doc.as<JsonObject>(), centerLat, centerLon, radiusKm, s)) out.push_back(s);
+        // Never past the capacity the caller reserved (a reallocation needs
+        // a second, larger block while the old one is still held).
+        if (one(doc.as<JsonObject>(), centerLat, centerLon, radiusKm, s) &&
+            (out.capacity() == 0 || out.size() < out.capacity()))
+            out.push_back(s);
     }
     return tracked;
 }
