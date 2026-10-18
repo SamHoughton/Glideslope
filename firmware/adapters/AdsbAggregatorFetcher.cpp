@@ -1,5 +1,6 @@
 #include "adapters/AdsbAggregatorFetcher.h"
 #include "adapters/ReadsbParser.h"
+#include "utils/ChunkedStream.h"
 #include "config/RuntimeConfig.h"
 #include "utils/TelnetLogger.h"
 #include "utils/GeoUtils.h"
@@ -13,6 +14,10 @@
 namespace
 {
     constexpr uint32_t kTimeoutMs = 6000;
+    // At most this many aircraft per fetch, reserved once (11 nm round
+    // Heathrow is usually 10-20): a growing vector needs a second, larger
+    // block while the first is still held.
+    constexpr size_t   kMaxAircraft = 24;
     constexpr uint32_t kBackoffMs = 30000;   // rest a service for half a minute after HTTP 429
     constexpr uint32_t kErrorRestMs = 30000; // and half a minute after a timeout or other error
 }
@@ -25,10 +30,10 @@ namespace
 
 void AdsbAggregatorFetcher::closeSecure()
 {
-    if (!_lolHttp && !_lolTls) return;
-    if (_lolHttp) { _lolHttp->end(); delete _lolHttp; _lolHttp = nullptr; }
-    if (_lolTls)  { _lolTls->stop(); delete _lolTls; _lolTls = nullptr; }
-    Log.println("AdsbAggregatorFetcher: adsb.lol connection closed (room for another TLS request)");
+    if (!_keepHttp && !_keepTls) return;
+    if (_keepHttp) { _keepHttp->end(); delete _keepHttp; _keepHttp = nullptr; }
+    if (_keepTls)  { _keepTls->stop(); delete _keepTls; _keepTls = nullptr; }
+    Log.println("AdsbAggregatorFetcher: feed connection closed (room for another TLS request)");
 }
 
 bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name, double centerLat,
@@ -40,28 +45,26 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
     _restUntil[i] = 0;
     if (!s_self) { s_self = this; g_tlsReleaser = releaseTls; }
 
-    // Both services are HTTPS only (adsb.lol stopped answering plain HTTP in
-    // October 2026). A TLS handshake needs ~60 KB of heap at its peak, too
-    // much every few seconds, so adsb.lol's connection is opened once and
-    // kept open (HTTP/1.1 keep-alive; it sends Content-Length, so the body
-    // streams into the parser). adsb.fi, only used while adsb.lol is down,
-    // gets a one-off connection.
+    // Both services are HTTPS only. A TLS handshake needs ~60 KB of heap at
+    // its peak, too much every few seconds, so the primary's connection
+    // (adsb.fi) is opened once and kept open (HTTP/1.1 keep-alive). The
+    // backup (adsb.lol, 500 requests a day) gets a one-off connection.
     std::unique_ptr<WiFiClientSecure> oneOff;
     std::unique_ptr<HTTPClient>       oneOffHttp;
     HTTPClient *httpp;
     if (i == 0)
     {
-        if (!_lolTls)
+        if (!_keepTls)
         {
             if (!tlsAffordable(name)) return false;
-            _lolTls = new WiFiClientSecure;
-            _lolTls->setInsecure();   // public open data; matches the project's other HTTPS clients
-            _lolHttp = new HTTPClient;
-            _lolHttp->setReuse(true);
-            Log.println("AdsbAggregatorFetcher: opening the adsb.lol connection");
+            _keepTls = new WiFiClientSecure;
+            _keepTls->setInsecure();   // public open data; matches the project's other HTTPS clients
+            _keepHttp = new HTTPClient;
+            _keepHttp->setReuse(true);
+            Log.println("AdsbAggregatorFetcher: opening the adsb.fi connection");
         }
-        httpp = _lolHttp;
-        if (!httpp->begin(*_lolTls, url)) { closeSecure(); return false; }
+        httpp = _keepHttp;
+        if (!httpp->begin(*_keepTls, url)) { closeSecure(); return false; }
         httpp->useHTTP10(false);
     }
     else
@@ -73,18 +76,27 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
         oneOffHttp.reset(new HTTPClient);
         httpp = oneOffHttp.get();
         if (!httpp->begin(*oneOff, url)) return false;
-        httpp->useHTTP10(true);   // no chunked encoding, so the body streams straight into the parser
+        httpp->useHTTP10(false);   // adsb.lol refuses HTTP/1.0 (426); chunked replies are decoded below
     }
     HTTPClient &http = *httpp;
+    static const char *kHeaders[] = {"Transfer-Encoding"};
+    http.collectHeaders(kHeaders, 1);
     http.setTimeout(kTimeoutMs);
     http.setUserAgent("Glideslope/1.0 (+https://github.com/SamHoughton/Glideslope)");
 
-    const bool reused = i == 0 && _lolHttp && _lolTls && _lolTls->connected();
+    // Room for the list first, before anything is sent (see below).
+    if (ESP.getMaxAllocHeap() < kMaxAircraft * sizeof(StateVector) + 2048)
+    {
+        Log.println("AdsbAggregatorFetcher: not enough memory for the list, skipping this fetch");
+        if (i != 0) http.end();
+        return false;
+    }
+    const bool reused = i == 0 && _keepHttp && _keepTls && _keepTls->connected();
     const int code = http.GET();
     if (code < 0 && reused && mayRetry)
     {
         // The server closed the kept-open connection while it was idle: one
-        // more try on a fresh one, rather than resting adsb.lol for 30 s.
+        // more try on a fresh one, rather than resting the service for 30 s.
         http.end();
         closeSecure();
         return fetchFrom(i, url, name, centerLat, centerLon, radiusKm, out, false);
@@ -96,12 +108,12 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
             _restUntil[i] = millis() + kBackoffMs;
             if (i == 0)
             {
-                const unsigned long base = max(_lolGapMs, (unsigned long)g_config.local_fetch_interval_seconds * 1000UL);
-                _lolGapMs  = min(base + 2000UL, 20000UL);
-                _lolStreak = 0;
+                const unsigned long base = max(_gapMs, (unsigned long)g_config.local_fetch_interval_seconds * 1000UL);
+                _gapMs  = min(base + 2000UL, 20000UL);
+                _streak = 0;
             }
             Log.printf("AdsbAggregatorFetcher: %s rate-limited, resting it for %lu s (fetches now at least %lu s apart)\n",
-                       name, kBackoffMs / 1000, _lolGapMs / 1000);
+                       name, kBackoffMs / 1000, _gapMs / 1000);
         }
         else
         {
@@ -115,23 +127,20 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
         return false;
     }
 
-    // One aircraft at a time from the stream (adsb.lol lists them under "ac",
-    // adsb.fi under "aircraft"), then the rest of the reply is read so the
-    // kept-open connection starts clean for the next request.
-    // At most kMaxAircraft, reserved up front when there is room for them
-    // (adsb.lol's 11 nm round Heathrow is usually 10-20).
-    constexpr size_t kMaxAircraft = 40;
-    if (ESP.getMaxAllocHeap() < kMaxAircraft * sizeof(StateVector) + 4096)
-    {
-        Log.println("AdsbAggregatorFetcher: not enough memory for the list, skipping this fetch");
-        http.end();
-        if (i == 0) closeSecure();   // the unread reply would spoil the kept-open connection
-        return false;
-    }
-    out.reserve(kMaxAircraft);
+    // One aircraft at a time from the stream, then the rest of the reply is
+    // read so the kept-open connection starts clean for the next request.
+    out.reserve(kMaxAircraft);   // checked before the request
     Stream &body = http.getStream();
-    const int n = ReadsbParser::parseStream(body, i == 0 ? "ac" : "aircraft", centerLat, centerLon, radiusKm, out);
-    if (n >= 0) body.find((char *)"}");   // after the array: a few flat fields, then the closing brace
+    // adsb.fi lists aircraft under "aircraft", adsb.lol under "ac". adsb.fi
+    // answers HTTP/1.1 chunked: decoded on the fly, and read to its end so
+    // the kept-open connection starts clean.
+    const char *key = strcmp(name, "adsb.lol") == 0 ? "ac" : "aircraft";
+    const bool chunked = http.header("Transfer-Encoding").equalsIgnoreCase("chunked");
+    ChunkedStream dechunk(body);
+    Stream &in = chunked ? static_cast<Stream &>(dechunk) : body;
+    const int n = ReadsbParser::parseStream(in, key, centerLat, centerLon, radiusKm, out);
+    if (chunked) dechunk.finish();
+    else if (n >= 0) body.find((char *)"}");   // after the array: flat fields, then the closing brace
     http.end();
     if (n < 0)
     {
@@ -141,12 +150,12 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
         return false;
     }
     _lastSource = name;
-    if (i == 0) _lolOkMs = millis();
-    if (i == 0 && _lolGapMs && ++_lolStreak >= 20)
+    if (i == 0) _primaryOkMs = millis();
+    if (i == 0 && _gapMs && ++_streak >= 20)
     {
-        _lolGapMs -= min(_lolGapMs, 500UL);
-        if (_lolGapMs <= (unsigned long)g_config.local_fetch_interval_seconds * 1000UL) _lolGapMs = 0;
-        _lolStreak = 0;
+        _gapMs -= min(_gapMs, 500UL);
+        if (_gapMs <= (unsigned long)g_config.local_fetch_interval_seconds * 1000UL) _gapMs = 0;
+        _streak = 0;
     }
     return true;
 }
@@ -157,9 +166,9 @@ bool AdsbAggregatorFetcher::fetchArea(double lat, double lon, double radiusKm, s
     if (_restUntil[0] && (long)(millis() - _restUntil[0]) < 0) return false;
     const int nm = max(1, (int)ceil(radiusKm / 1.852));
     char url[80];
-    snprintf(url, sizeof(url), "https://api.adsb.lol/v2/point/%.4f/%.4f/%d", lat, lon, nm);
+    snprintf(url, sizeof(url), "https://opendata.adsb.fi/api/v2/lat/%.4f/lon/%.4f/dist/%d", lat, lon, nm);
     const char *source = _lastSource;
-    const bool ok = fetchFrom(0, String(url), "adsb.lol", lat, lon, radiusKm, out);
+    const bool ok = fetchFrom(0, String(url), "adsb.fi", lat, lon, radiusKm, out);
     _lastSource = source;
     return ok;
 }
@@ -167,8 +176,8 @@ bool AdsbAggregatorFetcher::fetchArea(double lat, double lon, double radiusKm, s
 unsigned long AdsbAggregatorFetcher::holdOffMs() const
 {
     const unsigned long now = millis();
-    if (!_restUntil[0] || (long)(now - _restUntil[0]) >= 0) return 0;   // adsb.lol ready
-    if (!_lolOkMs || now - _lolOkMs > 90000UL) return 0;               // down for a while: use adsb.fi
+    if (!_restUntil[0] || (long)(now - _restUntil[0]) >= 0) return 0;   // primary ready
+    if (!_primaryOkMs || now - _primaryOkMs > 90000UL) return 0;               // down for a while: use the backup
     return _restUntil[0] - now;
 }
 
@@ -184,29 +193,32 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
     char lat[16], lon[16];
     snprintf(lat, sizeof(lat), "%.4f", centerLat);
     snprintf(lon, sizeof(lon), "%.4f", centerLon);
+    // adsb.fi first, over a connection kept open between fetches; adsb.lol
+    // only as the backup: since October 2026 it allows 500 requests a day
+    // per address (and 60 a minute), about 40 minutes of fetches every 5 s.
     const String urls[2] = {
-        String("https://api.adsb.lol/v2/point/") + lat + "/" + lon + "/" + nm,
         String("https://opendata.adsb.fi/api/v2/lat/") + lat + "/lon/" + lon + "/dist/" + nm,
+        String("https://api.adsb.lol/v2/point/") + lat + "/" + lon + "/" + nm,
     };
-    static const char *const kNames[2] = { "adsb.lol", "adsb.fi" };
+    static const char *const kNames[2] = { "adsb.fi", "adsb.lol" };
 
     // The caller's list holds the previous fetch's aircraft. Set it aside
     // (a swap: nothing copied; with 40 aircraft a copy was ~9 KB of heap).
     std::vector<StateVector> previous;
     previous.swap(outStateVectors);
 
-    // adsb.lol first (plain HTTP, light on memory).
+    // The primary first (adsb.fi, kept-open connection).
     if (fetchFrom(0, urls[0], kNames[0], centerLat, centerLon, radiusKm, outStateVectors))
     {
         _carriedMs = millis();
         return true;
     }
 
-    // adsb.lol resting or refused, but it answered recently: carry its last
+    // Primary resting or refused, but it answered recently: carry its last
     // answer forward (each aircraft moved along its track and climb rate to
-    // now) rather than pay for adsb.fi's TLS handshake (~65 KB of heap).
+    // now) rather than pay for the backup's TLS handshake (~65 KB of heap).
     const unsigned long now = millis();
-    if (_lolOkMs && now - _lolOkMs <= 90000UL && !previous.empty() && _carriedMs)
+    if (_primaryOkMs && now - _primaryOkMs <= 90000UL && !previous.empty() && _carriedMs)
     {
         const double dt = (now - _carriedMs) / 1000.0;
         _carriedMs = now;
@@ -224,13 +236,13 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
             s.distance_km = haversineKm(centerLat, centerLon, s.lat, s.lon);
             s.bearing_deg = computeBearingDeg(centerLat, centerLon, s.lat, s.lon);
         }
-        _lastSource = "adsb.lol (carried forward)";
+        _lastSource = "adsb.fi (carried forward)";
         return true;
     }
 
-    // adsb.lol down for a while: adsb.fi (HTTPS), if there is room for TLS.
+    // Primary down for a while: the backup (adsb.lol), if there is room for TLS.
     outStateVectors.clear();
-    if (tlsAffordable("adsb.fi") && fetchFrom(1, urls[1], kNames[1], centerLat, centerLon, radiusKm, outStateVectors))
+    if (tlsAffordable("adsb.lol") && fetchFrom(1, urls[1], kNames[1], centerLat, centerLon, radiusKm, outStateVectors))
     {
         _carriedMs = millis();
         return true;
