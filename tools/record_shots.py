@@ -55,7 +55,7 @@ def clip(samples, t0, t1, fps=20):
 def post(base, path):
     for _ in range(3):
         try:
-            urllib.request.urlopen(urllib.request.Request(base + path, data=b'', method='POST'), timeout=15).read()
+            urllib.request.urlopen(urllib.request.Request(base + path, data=b'', method='POST', headers=rd.POST_HEADERS), timeout=15).read()
             return
         except OSError:
             time.sleep(2)

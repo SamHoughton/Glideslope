@@ -16,6 +16,7 @@ exactly on the timeline: no interleaving, no guessed timestamps.
 Needs only Pillow.
 """
 import argparse
+import os
 import http.client
 import pickle
 import time
@@ -26,6 +27,11 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 W, H = 128, 64
+
+# Every POST to the board carries X-Glideslope (4.1); the demos need no code.
+POST_HEADERS = {'X-Glideslope': '1'}
+if os.environ.get('GLIDESLOPE_TOKEN'):
+    POST_HEADERS['X-Glideslope-Token'] = os.environ['GLIDESLOPE_TOKEN']
 
 # Showcase timeline (s), matching NeoMatrixDisplay::stepShowcase.
 END = 39.5 + 3.4         # the end of the take-off scene
@@ -60,7 +66,7 @@ def start(base, look):
     url = base + '/api/demo/showcase' + (f'?look={look}' if look else '')
     for _ in range(3):
         try:
-            urllib.request.urlopen(urllib.request.Request(url, data=b'', method='POST'), timeout=10).read()
+            urllib.request.urlopen(urllib.request.Request(url, data=b'', method='POST', headers=POST_HEADERS), timeout=10).read()
             return
         except OSError:
             time.sleep(2)

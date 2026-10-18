@@ -385,6 +385,7 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["opensky_priority"]      = g_config.opensky_priority;
     doc["use_community_feeds"]   = g_config.use_community_feeds;
     doc["ntfy_topic"]            = g_config.ntfy_topic;
+    doc["ntfy_token"]            = g_config.ntfy_token[0] ? "***" : "";
     doc["notify_mask"]           = g_config.notify_mask;
     doc["aeroapi_key"]           = (strlen(g_config.aeroapi_key)           > 0) ? "***" : "";
 
@@ -458,6 +459,11 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
         String t = doc["ntfy_topic"].as<const char *>();
         t.trim();
         strlcpy(next.ntfy_topic, t.c_str(), sizeof(next.ntfy_topic));
+    }
+    {
+        const char *v = doc["ntfy_token"] | "";
+        if (strcmp(v, "***") != 0 && doc["ntfy_token"].is<const char *>())
+            strlcpy(next.ntfy_token, v, sizeof(next.ntfy_token));   // "" clears it
     }
 
     next.fetch_interval_seconds        = doc["fetch_interval_seconds"]        | next.fetch_interval_seconds;

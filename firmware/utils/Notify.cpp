@@ -62,8 +62,9 @@ void Notify::loop()
     --s_count;
     portEXIT_CRITICAL(&s_mux);
 
-    char topic[sizeof(g_config.ntfy_topic)];
-    strlcpy(topic, configSnapshot().ntfy_topic, sizeof(topic));
+    const RuntimeConfig cfg = configSnapshot();
+    char topic[sizeof(cfg.ntfy_topic)];
+    strlcpy(topic, cfg.ntfy_topic, sizeof(topic));
     const bool full = strncmp(topic, "http://", 7) == 0 || strncmp(topic, "https://", 8) == 0;
     const bool tls  = strncmp(topic, "https://", 8) == 0;
     if (tls && !tlsAffordable("ntfy")) return;   // dropped: better than starving the fetches
@@ -80,6 +81,10 @@ void Notify::loop()
     http.addHeader("Title", m.title);
     if (m.tags[0]) http.addHeader("Tags", m.tags);
     http.addHeader("Priority", String(m.priority));
+    // An access token goes only over HTTPS: over plain HTTP anyone on the
+    // way could read it, which is worse than an unguessable public topic.
+    if (cfg.ntfy_token[0] && tls) http.addHeader("Authorization", String("Bearer ") + cfg.ntfy_token);
+    else if (cfg.ntfy_token[0]) Log.println("Notify: access token not sent (topic is not https)");
     const int code = http.POST((uint8_t *)m.body, strlen(m.body));
     http.end();
     if (code == 200) Log.printf("Notify: sent \"%s\"\n", m.title);

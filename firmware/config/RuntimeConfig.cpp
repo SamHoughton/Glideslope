@@ -143,6 +143,8 @@ void loadConfig()
     {
         String v = p.getString("ntfy", String(g_config.ntfy_topic));
         strlcpy(g_config.ntfy_topic, v.c_str(), sizeof(g_config.ntfy_topic));
+        v = p.getString("ntfy_tok", String(g_config.ntfy_token));
+        strlcpy(g_config.ntfy_token, v.c_str(), sizeof(g_config.ntfy_token));
     }
     g_config.min_altitude_ft               = p.getInt("min_alt",   g_config.min_altitude_ft);
 
@@ -218,6 +220,7 @@ void saveConfig()
     p.putBool("community", g_config.use_community_feeds);
     p.putUInt("ntfy_m",    g_config.notify_mask);
     p.putString("ntfy",    g_config.ntfy_topic);
+    p.putString("ntfy_tok", g_config.ntfy_token);
     p.putInt("min_alt",    g_config.min_altitude_ft);
 
     p.putUInt("fetch_iv",  g_config.fetch_interval_seconds);

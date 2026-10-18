@@ -246,8 +246,18 @@ Open the board's web page, choose `firmware.bin` (from a
 [release](../../releases), or `firmware/.pio/build/hd_wf2/firmware.bin` from
 your own build) under **Firmware**, and press **Install update**. It takes
 about 10 seconds and the board restarts into the new version; if anything
-goes wrong the old one keeps running. The web page has no password, so this
-is only safe on a network you trust (as is the rest of the page).
+goes wrong the old one keeps running. A new version is on trial until it has
+fetched positions (or run for five minutes): if it crashes before then, the
+board goes back to the previous version by itself.
+
+Anything that changes the board (an update, an airport pack, settings, a
+restart) needs the board's **code**. The first time, the page asks for it
+and shows it on the panel for 30 seconds; your browser remembers it after
+that. The board also answers only to its own names (its address and
+`glideslope.local`) and only to its own page, so a web page elsewhere can't
+reach it through your browser. Scripts that call the API send
+`X-Glideslope: 1` and, for those changes, `X-Glideslope-Token: <code>` (the
+tools in `tools/` read the code from `GLIDESLOPE_TOKEN`).
 
 If the board ever restarts unexpectedly, `http://glideslope.local/api/status`
 says why (and what each task was doing), and `/api/coredump` gives the

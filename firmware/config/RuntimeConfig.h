@@ -62,6 +62,7 @@ struct RuntimeConfig
     // Phone notifications (utils/Notify.h): ntfy topic ("" = off) or a full
     // URL, and which events (Notify::Kind bits).
     char     ntfy_topic[64];
+    char     ntfy_token[48];             // access token for a protected topic (sent over https only)
     uint8_t  notify_mask;
 
     // Route lookup source priority
