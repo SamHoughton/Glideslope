@@ -268,8 +268,7 @@ void test_replay_counts_arrivals()
         int inLine = 0;
         for (size_t p = line.find("\"hex\""); p != std::string::npos; p = line.find("\"hex\"", p + 1)) ++inLine;
         static int shown = 0;
-        if (got != inLine && shown++ < 5) printf("line %lu: parsed %d of %d aircraft
-", now / 10000, got, inLine);
+        if (got != inLine && shown++ < 5) printf("line %lu: parsed %d of %d aircraft\n", now / 10000, got, inLine);
         now += 10000;
         g_fakeMillis = now;
         stats.noteTraffic(v);
