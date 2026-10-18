@@ -123,6 +123,7 @@ public:
     // Today in a sentence or two, for the evening round-up.
     void dailySummary(char *out, size_t len);
     bool statsSnapshot(std::vector<uint8_t> &out);   // false if unchanged
+    size_t statsSize();                              // bytes a snapshot needs; 0 if unchanged
     void loadStats();
 
     // Arrivals board rows, soonest first (call once per fetch).

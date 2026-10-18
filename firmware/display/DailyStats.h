@@ -44,6 +44,7 @@ public:
     // called under the display lock; the file write happens outside it.
     bool dirty() const { return _dirty; }
     void serialise(std::vector<uint8_t> &out);
+    size_t serialisedSize() const;   // exactly what serialise() writes (~7 KB)
     static bool writeFile(const std::vector<uint8_t> &data);
     void load();
 

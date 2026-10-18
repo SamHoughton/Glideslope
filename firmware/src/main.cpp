@@ -96,7 +96,7 @@ static int           g_nextStack = 0;
 static bool stackDue(unsigned long now)
 {
     return g_airport.holdCount && g_config.use_community_feeds && !g_feeds.holdOffMs() &&
-           (!g_lastStackMs || now - g_lastStackMs >= 45000UL) && ESP.getFreeHeap() > 60000;
+           (!g_lastStackMs || now - g_lastStackMs >= 45000UL) && ESP.getFreeHeap() > 26000;
 }
 
 static void sampleStack()
@@ -577,7 +577,8 @@ void loop()
         {
             static int failStreak = 0;
             // A fetch skipped for lack of heap (tlsAffordable) is not a dead link.
-            const bool memoryShort = ESP.getFreeHeap() < 75000;
+            // (The adsb.lol connection holds ~40 KB, so "short" is well below that.)
+            const bool memoryShort = ESP.getFreeHeap() < 26000;
             if (g_fetcher->lastFetchOk()) failStreak = 0;
             else if (!memoryShort)        ++failStreak;
             if (failStreak == 6 || failStreak == 12)
@@ -728,13 +729,24 @@ void loop()
     // write happens outside the display lock).
     {
         static unsigned long lastSaveMs = 0;
-        if (millis() - lastSaveMs >= 5UL * 60 * 1000 && ESP.getFreeHeap() > 40000)
+        if (millis() - lastSaveMs >= 5UL * 60 * 1000 && ESP.getFreeHeap() > 26000)
         {
             lastSaveMs = millis();
             StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
-            std::vector<uint8_t> data;
-            if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
-                Log.println("Stats: could not save");
+            // ~7 KB in one block: with the feed's TLS connection open the
+            // largest free block can be smaller, so close it first if need
+            // be (it reopens on the next fetch), and skip a round rather
+            // than fail an allocation.
+            const size_t need = g_display.statsSize();
+            if (need && ESP.getMaxAllocHeap() < need + 4096 && g_tlsReleaser) g_tlsReleaser();
+            if (need && ESP.getMaxAllocHeap() >= need + 4096)
+            {
+                std::vector<uint8_t> data;
+                if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
+                    Log.println("Stats: could not save");
+            }
+            else if (need)
+                Log.println("Stats: no room to save now, trying again in 5 minutes");
         }
     }
 

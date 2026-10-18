@@ -54,7 +54,7 @@ void Notify::post(Kind kind, uint8_t priority, const char *tags, const char *tit
 
 void Notify::loop()
 {
-    if (!s_count || ESP.getFreeHeap() < 50000) return;
+    if (!s_count || ESP.getFreeHeap() < 26000) return;
     Msg m;
     portENTER_CRITICAL(&s_mux);
     m = s_q[s_head];

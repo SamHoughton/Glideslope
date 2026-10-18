@@ -19,4 +19,12 @@ namespace ReadsbParser
     // Returns the number of aircraft in the array (before filtering).
     int parse(JsonArray aircraft, double centerLat, double centerLon, double radiusKm,
               std::vector<StateVector> &out);
+
+    // The same, read from a stream one aircraft at a time: a few hundred
+    // bytes of JSON document instead of one for the whole reply (an 18 KB
+    // reply took ~10 KB parsed, more than the heap spares with a TLS
+    // connection held open). Finds "<arrayKey>":[ and stops after its ].
+    // Returns the number of aircraft, or -1 if the array was not found.
+    int parseStream(Stream &in, const char *arrayKey, double centerLat, double centerLon,
+                    double radiusKm, std::vector<StateVector> &out);
 }

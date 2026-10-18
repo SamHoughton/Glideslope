@@ -23,10 +23,21 @@ struct NetBusy
     ~NetBusy() { g_netBusy = false; }
 };
 
+// The one long-lived TLS session (adsb.lol's, kept open between fetches)
+// registers how to close it; any other TLS user that finds too little heap
+// closes it first and tries again. It reopens on the next position fetch.
+inline void (*g_tlsReleaser)() = nullptr;
+
 inline bool tlsAffordable(const char *what)
 {
     static constexpr uint32_t kMinFree = 75000;
-    if (ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= 20000) return true;
+    auto room = [] { return ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= 20000; };
+    if (room()) return true;
+    if (g_tlsReleaser)
+    {
+        g_tlsReleaser();
+        if (room()) return true;
+    }
     static unsigned long lastLog = 0;
     if (millis() - lastLog > 60000)
     {

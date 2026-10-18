@@ -188,6 +188,7 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
 
     HTTPClient http;
     http.begin(url);
+    http.useHTTP10(true);   // no chunked encoding: the reply is parsed straight from the stream
     http.setTimeout(TimingConfiguration::OPENSKY_TIMEOUT_MS);
     // OAuth Bearer required
     http.addHeader("Authorization", String("Bearer ") + m_accessToken);
@@ -206,6 +207,7 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
             {
                 HTTPClient retry;
                 retry.begin(url);
+                retry.useHTTP10(true);
                 retry.addHeader("Authorization", String("Bearer ") + m_accessToken);
                 retry.collectHeaders(trackedHeaders, 1);
                 code = retry.GET();
@@ -215,86 +217,9 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
                     retry.end();
                     return false;
                 }
-                String payload = retry.getString();
-                String retryRl = retry.header("X-Rate-Limit-Remaining");
-                if (retryRl.length() > 0)
-                    Log.printf("OpenSkyFetcher: X-Rate-Limit-Remaining: %s\n", retryRl.c_str());
+                const bool ok = parseStates(retry, centerLat, centerLon, radiusKm, outStateVectors);
                 retry.end();
-
-                JsonDocument doc;
-                DeserializationError err = deserializeJson(doc, payload);
-                if (err)
-                {
-                    Log.printf("OpenSkyFetcher: JSON deserialization error: %s\n", err.c_str());
-                    return false;
-                }
-
-                JsonArray states = doc["states"].as<JsonArray>();
-                if (states.isNull())
-                {
-                    return true; // no states is not an error
-                }
-
-                int belowMinAlt = 0;   // logged once below, not per aircraft
-                for (JsonVariant v : states)
-                {
-                    if (!v.is<JsonArray>())
-                    {
-                        Log.println("OpenSkyFetcher: Expected array element in states");
-                        continue;
-                    }
-                    JsonArray a = v.as<JsonArray>();
-                    if (a.size() < 17)
-                    {
-                        Log.println("OpenSkyFetcher: State vector array has insufficient elements");
-                        continue;
-                    }
-
-                    StateVector s;
-                    s.icao24 = a[0].as<const char *>();
-                    s.callsign = a[1].isNull() ? String("") : String(a[1].as<const char *>());
-                    s.callsign.trim();
-                    s.origin_country = a[2].isNull() ? String("") : String(a[2].as<const char *>());
-                    s.time_position = a[3].isNull() ? 0 : a[3].as<long>();
-                    s.last_contact = a[4].isNull() ? 0 : a[4].as<long>();
-                    s.lon = a[5].isNull() ? NAN : a[5].as<double>();
-                    s.lat = a[6].isNull() ? NAN : a[6].as<double>();
-                    s.baro_altitude = a[7].isNull() ? NAN : a[7].as<double>();
-                    s.on_ground = a[8].isNull() ? false : a[8].as<bool>();
-                    s.velocity = a[9].isNull() ? NAN : a[9].as<double>();
-                    s.heading = a[10].isNull() ? NAN : a[10].as<double>();
-                    s.vertical_rate = a[11].isNull() ? NAN : a[11].as<double>();
-                    s.sensors = a[12].isNull() ? 0 : a[12].as<long>();
-                    s.geo_altitude = a[13].isNull() ? NAN : a[13].as<double>();
-                    s.squawk = a[14].isNull() ? String("") : String(a[14].as<const char *>());
-                    s.spi = a[15].isNull() ? false : a[15].as<bool>();
-                    s.position_source = a[16].isNull() ? 0 : a[16].as<int>();
-
-                    if (isnan(s.lat) || isnan(s.lon))
-                    {
-                        Log.println("OpenSkyFetcher: Skipping state vector with invalid coordinates");
-                        continue;
-                    }
-
-                    if (g_config.min_altitude_ft >= 0 &&
-                        (isnan(s.baro_altitude) || s.baro_altitude < g_config.min_altitude_ft / 3.28084f))
-                    {
-                        ++belowMinAlt;
-                        continue;
-                    }
-
-                    s.distance_km = haversineKm(centerLat, centerLon, s.lat, s.lon);
-                    if (s.distance_km > radiusKm)
-                        continue;
-                    s.bearing_deg = computeBearingDeg(centerLat, centerLon, s.lat, s.lon);
-
-                    outStateVectors.push_back(s);
-                }
-
-                if (belowMinAlt)
-                    Log.printf("OpenSkyFetcher: %d aircraft below %d ft ignored\n", belowMinAlt, g_config.min_altitude_ft);
-
-                return true;
+                return ok;
             }
             attemptedRefresh = true;
         }
@@ -305,51 +230,75 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
             Log.println("OpenSkyFetcher: Token refresh attempt failed");
         return false;
     }
-    String payload = http.getString();
+    const bool ok = parseStates(http, centerLat, centerLon, radiusKm, outStateVectors);
+    http.end();
+    return ok;
+}
+
+// ---------------------------------------------------------------------------
+// The states in a 200 reply, within radiusKm of the centre and at or above
+// the minimum altitude. Parsed straight from the connection (holding the
+// reply as a String too, inside a TLS session, ran the heap out), into a
+// list of its own that replaces outStateVectors at the end: the caller's
+// still holds the previous fetch, and appending to it grew the vector until
+// an allocation failed (4.0.1 crashed on exactly that). At most 32 aircraft.
+bool OpenSkyFetcher::parseStates(HTTPClient &http, double centerLat, double centerLon, double radiusKm,
+                                 std::vector<StateVector> &outStateVectors)
+{
+    constexpr size_t kMaxStates = 32;
     String rl = http.header("X-Rate-Limit-Remaining");
     if (rl.length() > 0)
         Log.printf("OpenSkyFetcher: X-Rate-Limit-Remaining: %s\n", rl.c_str());
-    http.end();
 
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, payload);
+    const DeserializationError err = deserializeJson(doc, http.getStream());
     if (err)
     {
         Log.printf("OpenSkyFetcher: JSON deserialization error: %s\n", err.c_str());
         return false;
     }
-
     JsonArray states = doc["states"].as<JsonArray>();
     if (states.isNull())
     {
-        return true; // no states is not an error
+        outStateVectors.clear();
+        return true;   // no states is not an error
     }
+    if (ESP.getMaxAllocHeap() < kMaxStates * sizeof(StateVector) + 4096)
+    {
+        Log.println("OpenSkyFetcher: not enough memory for the list, skipping");
+        return false;
+    }
+    std::vector<StateVector> fresh;
+    fresh.reserve(kMaxStates);
 
     int belowMinAlt = 0;   // logged once below, not per aircraft
     for (JsonVariant v : states)
     {
-        if (!v.is<JsonArray>())
-        {
-            Log.println("OpenSkyFetcher: Expected array element in states");
-            continue;
-        }
+        if (fresh.size() >= kMaxStates) break;
+        if (!v.is<JsonArray>()) continue;
         JsonArray a = v.as<JsonArray>();
-        if (a.size() < 17)
-        {
-            Log.println("OpenSkyFetcher: State vector array has insufficient elements");
-            continue;
-        }
+        if (a.size() < 17) continue;
 
         StateVector s;
+        s.lon = a[5].isNull() ? NAN : a[5].as<double>();
+        s.lat = a[6].isNull() ? NAN : a[6].as<double>();
+        if (isnan(s.lat) || isnan(s.lon)) continue;
+        s.baro_altitude = a[7].isNull() ? NAN : a[7].as<double>();
+        if (g_config.min_altitude_ft >= 0 &&
+            (isnan(s.baro_altitude) || s.baro_altitude < g_config.min_altitude_ft / 3.28084f))
+        {
+            ++belowMinAlt;
+            continue;
+        }
+        s.distance_km = haversineKm(centerLat, centerLon, s.lat, s.lon);
+        if (s.distance_km > radiusKm) continue;
+
         s.icao24 = a[0].as<const char *>();
         s.callsign = a[1].isNull() ? String("") : String(a[1].as<const char *>());
         s.callsign.trim();
         s.origin_country = a[2].isNull() ? String("") : String(a[2].as<const char *>());
         s.time_position = a[3].isNull() ? 0 : a[3].as<long>();
         s.last_contact = a[4].isNull() ? 0 : a[4].as<long>();
-        s.lon = a[5].isNull() ? NAN : a[5].as<double>();
-        s.lat = a[6].isNull() ? NAN : a[6].as<double>();
-        s.baro_altitude = a[7].isNull() ? NAN : a[7].as<double>();
         s.on_ground = a[8].isNull() ? false : a[8].as<bool>();
         s.velocity = a[9].isNull() ? NAN : a[9].as<double>();
         s.heading = a[10].isNull() ? NAN : a[10].as<double>();
@@ -359,31 +308,12 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
         s.squawk = a[14].isNull() ? String("") : String(a[14].as<const char *>());
         s.spi = a[15].isNull() ? false : a[15].as<bool>();
         s.position_source = a[16].isNull() ? 0 : a[16].as<int>();
-
-        if (isnan(s.lat) || isnan(s.lon))
-        {
-            Log.println("OpenSkyFetcher: Skipping state vector with invalid coordinates");
-            continue;
-        }
-
-        if (g_config.min_altitude_ft >= 0 &&
-            (isnan(s.baro_altitude) || s.baro_altitude < g_config.min_altitude_ft / 3.28084f))
-        {
-            ++belowMinAlt;
-            continue;
-        }
-
-        s.distance_km = haversineKm(centerLat, centerLon, s.lat, s.lon);
-        if (s.distance_km > radiusKm)
-            continue;
         s.bearing_deg = computeBearingDeg(centerLat, centerLon, s.lat, s.lon);
-
-        outStateVectors.push_back(s);
+        fresh.push_back(s);
     }
-
+    outStateVectors.swap(fresh);
     if (belowMinAlt)
         Log.printf("OpenSkyFetcher: %d aircraft below %d ft ignored\n", belowMinAlt, g_config.min_altitude_ft);
-
     return true;
 }
 
