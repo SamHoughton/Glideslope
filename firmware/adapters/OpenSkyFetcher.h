@@ -30,6 +30,8 @@ public:
                           String       &outDestIcao);
 
 private:
+    bool parseStates(class HTTPClient &http, double centerLat, double centerLon, double radiusKm,
+                     std::vector<StateVector> &outStateVectors);
     String m_accessToken;
     unsigned long m_tokenExpiryMs = 0;
 
