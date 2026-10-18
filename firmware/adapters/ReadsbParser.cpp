@@ -10,33 +10,29 @@ void ReadsbParser::buildFilter(JsonDocument &filter, const char *arrayKey)
         f[k] = true;
 }
 
-int ReadsbParser::parse(JsonArray aircraft, double centerLat, double centerLon, double radiusKm,
-                        std::vector<StateVector> &out)
+namespace
 {
-    int tracked = 0;
-    for (JsonObject a : aircraft)
+    // One aircraft: false if it is stale, outside the radius, on the ground
+    // or below the minimum altitude.
+    bool one(JsonObject a, double centerLat, double centerLon, double radiusKm, StateVector &s)
     {
-        ++tracked;
-
         // Stale position (> 30 s since the last fix), or none at all.
-        if ((a["seen_pos"] | 999.0f) > 30.0f) continue;
-        if (a["lat"].isNull() || a["lon"].isNull()) continue;
+        if ((a["seen_pos"] | 999.0f) > 30.0f) return false;
+        if (a["lat"].isNull() || a["lon"].isNull()) return false;
 
         const double lat = a["lat"].as<double>();
         const double lon = a["lon"].as<double>();
         const double dist = haversineKm(centerLat, centerLon, lat, lon);
-        if (dist > radiusKm) continue;
+        if (dist > radiusKm) return false;
 
         // readsb reports aircraft on the ground as alt_baro "ground" (a string).
-        const bool onGround = a["alt_baro"].is<const char *>();
-        if (onGround) continue;
+        if (a["alt_baro"].is<const char *>()) return false;
         if (g_config.min_altitude_ft >= 0)
         {
             const float altFt = a["alt_baro"] | -1.0f;
-            if (altFt >= 0 && altFt < (float)g_config.min_altitude_ft) continue;
+            if (altFt >= 0 && altFt < (float)g_config.min_altitude_ft) return false;
         }
 
-        StateVector s;
         s.icao24 = a["hex"] | "";
         String cs = a["flight"] | "";
         cs.trim();
@@ -59,7 +55,57 @@ int ReadsbParser::parse(JsonArray aircraft, double centerLat, double centerLon, 
 
         s.distance_km = dist;
         s.bearing_deg = computeBearingDeg(centerLat, centerLon, lat, lon);
-        out.push_back(s);
+        return true;
+    }
+}
+
+int ReadsbParser::parse(JsonArray aircraft, double centerLat, double centerLon, double radiusKm,
+                        std::vector<StateVector> &out)
+{
+    int tracked = 0;
+    for (JsonObject a : aircraft)
+    {
+        ++tracked;
+        StateVector s;
+        if (one(a, centerLat, centerLon, radiusKm, s)) out.push_back(s);
+    }
+    return tracked;
+}
+
+int ReadsbParser::parseStream(Stream &in, const char *arrayKey, double centerLat, double centerLon,
+                              double radiusKm, std::vector<StateVector> &out)
+{
+    char key[16];
+    snprintf(key, sizeof(key), "\"%s\":[", arrayKey);
+    if (!in.find(key)) return -1;
+
+    JsonDocument filter;
+    for (const char *k : {"hex", "flight", "r", "t", "lat", "lon", "alt_baro", "gs",
+                          "track", "baro_rate", "seen_pos", "squawk"})
+        filter[k] = true;
+    // peek() does not wait (on a TLS stream the next record may still be on
+    // its way), so wait for a byte first, up to the stream's timeout.
+    auto next = [&in]() -> int {
+        const unsigned long t0 = millis();
+        while (!in.available() && millis() - t0 < 4000) delay(1);
+        return in.peek();
+    };
+    JsonDocument doc;
+    int tracked = 0;
+    for (;;)
+    {
+        // Skip separators and stop at the end of the array.
+        int ch;
+        while ((ch = next()) == ' ' || ch == '\n' || ch == '\r' || ch == '\t' || ch == ',') in.read();
+        if (ch == ']' || ch < 0)
+        {
+            if (ch == ']') in.read();
+            break;
+        }
+        if (deserializeJson(doc, in, DeserializationOption::Filter(filter))) break;
+        ++tracked;
+        StateVector s;
+        if (one(doc.as<JsonObject>(), centerLat, centerLon, radiusKm, s)) out.push_back(s);
     }
     return tracked;
 }

@@ -43,6 +43,10 @@ public:
     // ready, never adsb.fi. Leaves the pacing and lastSource as they were.
     bool fetchArea(double lat, double lon, double radiusKm, std::vector<StateVector> &out);
 
+    // Close the kept-open adsb.lol connection (frees ~40 KB); it reopens on
+    // the next fetch. Registered with HeapWatch, so other TLS users call it.
+    void closeSecure();
+
 private:
     const char *_lastSource = "";
     unsigned long _restUntil[2] = {0, 0};   // millis() until which a rate-limited service is skipped
@@ -50,6 +54,8 @@ private:
     uint8_t       _lolStreak = 0;           // adsb.lol answers since the last change
     unsigned long _lolOkMs = 0;             // when adsb.lol last answered
     unsigned long _carriedMs = 0;           // time the positions in the caller's list are for
+    class WiFiClientSecure *_lolTls = nullptr;   // adsb.lol's connection, kept open (HTTP keep-alive)
+    class HTTPClient       *_lolHttp = nullptr;
     bool fetchFrom(int i, const String &url, const char *name, double centerLat, double centerLon,
-                   double radiusKm, std::vector<StateVector> &out);
+                   double radiusKm, std::vector<StateVector> &out, bool mayRetry = true);
 };

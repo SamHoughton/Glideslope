@@ -7,6 +7,7 @@
 #include <math.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <memory>
 #include <ArduinoJson.h>
 
 namespace
@@ -16,27 +17,78 @@ namespace
     constexpr uint32_t kErrorRestMs = 30000; // and half a minute after a timeout or other error
 }
 
+namespace
+{
+    AdsbAggregatorFetcher *s_self = nullptr;
+    void releaseTls() { if (s_self) s_self->closeSecure(); }
+}
+
+void AdsbAggregatorFetcher::closeSecure()
+{
+    if (!_lolHttp && !_lolTls) return;
+    if (_lolHttp) { _lolHttp->end(); delete _lolHttp; _lolHttp = nullptr; }
+    if (_lolTls)  { _lolTls->stop(); delete _lolTls; _lolTls = nullptr; }
+    Log.println("AdsbAggregatorFetcher: adsb.lol connection closed (room for another TLS request)");
+}
+
 bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name, double centerLat,
-                                      double centerLon, double radiusKm, std::vector<StateVector> &out)
+                                      double centerLon, double radiusKm, std::vector<StateVector> &out,
+                                      bool mayRetry)
 {
     if (_restUntil[i] && (long)(millis() - _restUntil[i]) < 0)
         return false;
     _restUntil[i] = 0;
+    if (!s_self) { s_self = this; g_tlsReleaser = releaseTls; }
 
-    // adsb.lol is fetched over plain HTTP: no TLS handshake (40-50 KB of heap
-    // at its peak) every few seconds. adsb.fi only answers over HTTPS.
-    const bool tls = url.startsWith("https://");
-    WiFiClient       plain;
-    WiFiClientSecure secure;
-    if (tls) secure.setInsecure();   // public open data; matches the project's other HTTPS clients
-    HTTPClient http;
-    if (!http.begin(tls ? static_cast<WiFiClient &>(secure) : plain, url))
-        return false;
+    // Both services are HTTPS only (adsb.lol stopped answering plain HTTP in
+    // October 2026). A TLS handshake needs ~60 KB of heap at its peak, too
+    // much every few seconds, so adsb.lol's connection is opened once and
+    // kept open (HTTP/1.1 keep-alive; it sends Content-Length, so the body
+    // streams into the parser). adsb.fi, only used while adsb.lol is down,
+    // gets a one-off connection.
+    std::unique_ptr<WiFiClientSecure> oneOff;
+    std::unique_ptr<HTTPClient>       oneOffHttp;
+    HTTPClient *httpp;
+    if (i == 0)
+    {
+        if (!_lolTls)
+        {
+            if (!tlsAffordable(name)) return false;
+            _lolTls = new WiFiClientSecure;
+            _lolTls->setInsecure();   // public open data; matches the project's other HTTPS clients
+            _lolHttp = new HTTPClient;
+            _lolHttp->setReuse(true);
+            Log.println("AdsbAggregatorFetcher: opening the adsb.lol connection");
+        }
+        httpp = _lolHttp;
+        if (!httpp->begin(*_lolTls, url)) { closeSecure(); return false; }
+        httpp->useHTTP10(false);
+    }
+    else
+    {
+        closeSecure();
+        if (!tlsAffordable(name)) return false;
+        oneOff.reset(new WiFiClientSecure);
+        oneOff->setInsecure();
+        oneOffHttp.reset(new HTTPClient);
+        httpp = oneOffHttp.get();
+        if (!httpp->begin(*oneOff, url)) return false;
+        httpp->useHTTP10(true);   // no chunked encoding, so the body streams straight into the parser
+    }
+    HTTPClient &http = *httpp;
     http.setTimeout(kTimeoutMs);
     http.setUserAgent("Glideslope/1.0 (+https://github.com/SamHoughton/Glideslope)");
-    http.useHTTP10(true);   // no chunked encoding, so the body streams straight into the parser
 
+    const bool reused = i == 0 && _lolHttp && _lolTls && _lolTls->connected();
     const int code = http.GET();
+    if (code < 0 && reused && mayRetry)
+    {
+        // The server closed the kept-open connection while it was idle: one
+        // more try on a fresh one, rather than resting adsb.lol for 30 s.
+        http.end();
+        closeSecure();
+        return fetchFrom(i, url, name, centerLat, centerLon, radiusKm, out, false);
+    }
     if (code != 200)
     {
         if (code == 429)
@@ -59,30 +111,24 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
             Log.printf("AdsbAggregatorFetcher: %s HTTP %d, resting it for 30 s\n", name, code);
         }
         http.end();
+        if (i == 0) closeSecure();
         return false;
     }
 
-    // adsb.lol lists aircraft under "ac", adsb.fi under "aircraft": keep both.
-    JsonDocument filter;
-    ReadsbParser::buildFilter(filter, "ac");
-    ReadsbParser::buildFilter(filter, "aircraft");
-    JsonDocument doc;
-    const DeserializationError err = deserializeJson(doc, http.getStream(),
-                                                     DeserializationOption::Filter(filter));
+    // One aircraft at a time from the stream (adsb.lol lists them under "ac",
+    // adsb.fi under "aircraft"), then the rest of the reply is read so the
+    // kept-open connection starts clean for the next request.
+    Stream &body = http.getStream();
+    const int n = ReadsbParser::parseStream(body, i == 0 ? "ac" : "aircraft", centerLat, centerLon, radiusKm, out);
+    if (n >= 0) body.find((char *)"}");   // after the array: a few flat fields, then the closing brace
     http.end();
-    if (err)
-    {
-        Log.printf("AdsbAggregatorFetcher: %s JSON error: %s\n", name, err.c_str());
-        return false;
-    }
-    JsonArray ac = doc["ac"].as<JsonArray>();
-    if (ac.isNull()) ac = doc["aircraft"].as<JsonArray>();
-    if (ac.isNull())
+    if (n < 0)
     {
         Log.printf("AdsbAggregatorFetcher: %s returned no aircraft list\n", name);
+        if (i == 0) closeSecure();
+        out.clear();
         return false;
     }
-    ReadsbParser::parse(ac, centerLat, centerLon, radiusKm, out);
     _lastSource = name;
     if (i == 0) _lolOkMs = millis();
     if (i == 0 && _lolGapMs && ++_lolStreak >= 20)
@@ -100,7 +146,7 @@ bool AdsbAggregatorFetcher::fetchArea(double lat, double lon, double radiusKm, s
     if (_restUntil[0] && (long)(millis() - _restUntil[0]) < 0) return false;
     const int nm = max(1, (int)ceil(radiusKm / 1.852));
     char url[80];
-    snprintf(url, sizeof(url), "http://api.adsb.lol/v2/point/%.4f/%.4f/%d", lat, lon, nm);
+    snprintf(url, sizeof(url), "https://api.adsb.lol/v2/point/%.4f/%.4f/%d", lat, lon, nm);
     const char *source = _lastSource;
     const bool ok = fetchFrom(0, String(url), "adsb.lol", lat, lon, radiusKm, out);
     _lastSource = source;
@@ -128,7 +174,7 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
     snprintf(lat, sizeof(lat), "%.4f", centerLat);
     snprintf(lon, sizeof(lon), "%.4f", centerLon);
     const String urls[2] = {
-        String("http://api.adsb.lol/v2/point/") + lat + "/" + lon + "/" + nm,
+        String("https://api.adsb.lol/v2/point/") + lat + "/" + lon + "/" + nm,
         String("https://opendata.adsb.fi/api/v2/lat/") + lat + "/lon/" + lon + "/dist/" + nm,
     };
     static const char *const kNames[2] = { "adsb.lol", "adsb.fi" };

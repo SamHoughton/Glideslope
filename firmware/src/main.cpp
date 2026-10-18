@@ -96,7 +96,7 @@ static int           g_nextStack = 0;
 static bool stackDue(unsigned long now)
 {
     return g_airport.holdCount && g_config.use_community_feeds && !g_feeds.holdOffMs() &&
-           (!g_lastStackMs || now - g_lastStackMs >= 45000UL) && ESP.getFreeHeap() > 60000;
+           (!g_lastStackMs || now - g_lastStackMs >= 45000UL) && ESP.getFreeHeap() > 26000;
 }
 
 static void sampleStack()
@@ -577,7 +577,8 @@ void loop()
         {
             static int failStreak = 0;
             // A fetch skipped for lack of heap (tlsAffordable) is not a dead link.
-            const bool memoryShort = ESP.getFreeHeap() < 75000;
+            // (The adsb.lol connection holds ~40 KB, so "short" is well below that.)
+            const bool memoryShort = ESP.getFreeHeap() < 26000;
             if (g_fetcher->lastFetchOk()) failStreak = 0;
             else if (!memoryShort)        ++failStreak;
             if (failStreak == 6 || failStreak == 12)
@@ -728,7 +729,7 @@ void loop()
     // write happens outside the display lock).
     {
         static unsigned long lastSaveMs = 0;
-        if (millis() - lastSaveMs >= 5UL * 60 * 1000 && ESP.getFreeHeap() > 40000)
+        if (millis() - lastSaveMs >= 5UL * 60 * 1000 && ESP.getFreeHeap() > 26000)
         {
             lastSaveMs = millis();
             StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
