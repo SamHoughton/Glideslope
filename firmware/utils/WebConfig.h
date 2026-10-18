@@ -78,6 +78,7 @@ private:
         String query;
         String body;
         int    contentLength = 0;
+        bool   allowUnsigned = false;   // X-Glideslope-Unsigned: 1 (the page asked first)
     };
 
     // Requests are accepted only for this board's own names (DNS rebinding),
@@ -111,7 +112,7 @@ private:
     void handleGetDisplay(WiFiClient &c);
     void handleGetFrame(WiFiClient &c, const Req &r);
     void handleGetStatus(WiFiClient &c);
-    void handleUpdate(WiFiClient &c, int length);
+    void handleUpdate(WiFiClient &c, int length, bool allowUnsigned);
     void handleAirport(WiFiClient &c, int length);
     void handleAirportReset(WiFiClient &c);
 };

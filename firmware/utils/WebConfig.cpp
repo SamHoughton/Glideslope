@@ -9,6 +9,7 @@ WebServer library to avoid framework include-path issues.
 #include "utils/WifiProvisioner.h"
 #include "utils/StageTrace.h"
 #include "utils/ImageCheck.h"
+#include "utils/FirmwareSig.h"
 #include "config/RuntimeConfig.h"
 #include "config/Airport.h"
 #include <LittleFS.h>
@@ -174,6 +175,7 @@ void WebConfig::loop()
             client.stop();
             return;
         }
+        r.allowUnsigned = header(raw, "X-Glideslope-Unsigned") == "1";
         if (needsToken(r.path) && header(raw, "X-Glideslope-Token") != _token)
         {
             sendHttp(client, 401, "application/json", "{\"ok\":false,\"error\":\"code needed\"}");
@@ -222,7 +224,7 @@ void WebConfig::loop()
     else if (r.path == "/api/display"       && r.method == "GET")  handleGetDisplay(client);
     else if (r.path == "/api/frame"         && r.method == "GET")  handleGetFrame(client, r);
     else if (r.path == "/api/status"        && r.method == "GET")  handleGetStatus(client);
-    else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength);
+    else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength, r.allowUnsigned);
     else if (r.path == "/api/airport"       && r.method == "POST") handleAirport(client, r.contentLength);
     else if (r.path == "/api/airport/reset" && r.method == "POST") handleAirportReset(client);
     else if (r.path == "/api/demo/showcase" && r.method == "POST") { requestShowcase(qparam(r.query, "look").c_str()); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -632,7 +634,7 @@ void WebConfig::setWeather(const char *metar)
 // PlatformIO builds, or firmware.bin from a GitHub release). It is written to
 // the spare app slot and the board restarts into it; anything that fails
 // leaves the running firmware untouched.
-void WebConfig::handleUpdate(WiFiClient &c, int length)
+void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
 {
     auto fail = [&](const char *why) {
         Log.printf("Update: failed: %s\n", why);
@@ -655,6 +657,9 @@ void WebConfig::handleUpdate(WiFiClient &c, int length)
     if (!Update.begin(length, U_FLASH)) { fail(Update.errorString()); return; }
     Log.printf("Update: receiving %d bytes\n", length);
     requestPanelMessage("UPDATING");
+    // Signature check as the image streams in (utils/FirmwareSig.h).
+    static FirmwareSig sig;   // ~200 bytes: not on the web task's stack
+    sig.begin(length);
 
     uint8_t buf[1024];
     int got = 0, lastTenth = -1;
@@ -690,6 +695,7 @@ void WebConfig::handleUpdate(WiFiClient &c, int length)
                 return;
             }
         }
+        sig.update(buf, n);
         if (Update.write(buf, n) != (size_t)n)
         {
             Update.abort();
@@ -708,9 +714,12 @@ void WebConfig::handleUpdate(WiFiClient &c, int length)
         }
     }
     if (got != length) { Update.abort(); fail("upload interrupted"); return; }
+    const FirmwareSig::Result verdict = sig.finish();
+    if (verdict == FirmwareSig::Bad) { Update.abort(); fail("signature does not match: not a genuine release"); return; }
+    if (verdict == FirmwareSig::Unsigned && !allowUnsigned) { Update.abort(); fail("unsigned"); return; }
     if (!Update.end(true)) { fail(Update.errorString()); return; }
 
-    Log.println("Update: installed, restarting");
+    Log.printf("Update: installed (%s), restarting\n", verdict == FirmwareSig::Signed ? "signed release" : "unsigned build");
     requestPanelMessage("RESTARTING");
     sendHttp(c, 200, "application/json", "{\"ok\":true}");
     c.flush();

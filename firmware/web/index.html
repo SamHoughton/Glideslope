@@ -350,11 +350,12 @@ $('resf').addEventListener('change',function(e){var f=e.target.files[0];if(!f)re
   if(!confirm('Restore settings from '+f.name+'?'))return;post('/api/config',d).then(function(r){return r.json();}).then(function(j){status(j.ok?'Restored':'Error',3000);load();});});e.target.value='';});
 $('upd').addEventListener('click',function(){var f=$('fw').files[0],u=$('ust');if(!f){u.textContent='Choose a .bin file first';return;}
   if(!confirm('Install '+f.name+' and restart the board?'))return;upload(f,u,false);});
-function upload(f,u,retried){var x=new XMLHttpRequest();x.open('POST','/api/update');
+function upload(f,u,retried,unsigned){var x=new XMLHttpRequest();x.open('POST','/api/update');
   x.upload.onprogress=function(e){if(e.lengthComputable)u.textContent='Uploading '+Math.round(e.loaded*100/e.total)+'%';};
-  x.onload=function(){if(x.status===401&&!retried){askCode().then(function(ok){if(ok)upload(f,u,true);else u.textContent='The board\'s code is needed';});return;}
-    var j={};try{j=JSON.parse(x.responseText);}catch(e){}if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}else u.textContent='Failed: '+(j.error||x.status);};
-  x.onerror=function(){u.textContent='Upload failed (connection lost)';};var h=hdrs('application/octet-stream');
+  x.onload=function(){if(x.status===401&&!retried){askCode().then(function(ok){if(ok)upload(f,u,true,unsigned);else u.textContent='The board\'s code is needed';});return;}
+    var j={};try{j=JSON.parse(x.responseText);}catch(e){}
+    if(j.error==='unsigned'&&!unsigned){if(confirm('This firmware is not a signed Glideslope release (your own build?). Install it anyway?'))upload(f,u,true,true);else u.textContent='Not installed';return;}if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}else u.textContent='Failed: '+(j.error||x.status);};
+  x.onerror=function(){u.textContent='Upload failed (connection lost)';};var h=hdrs('application/octet-stream');if(unsigned)h['X-Glideslope-Unsigned']='1';
   Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send(f);}
 
 // Airport.
