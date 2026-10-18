@@ -91,6 +91,9 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
         if (i != 0) http.end();
         return false;
     }
+    // Claimed now, while the check above still holds: the request's TLS
+    // buffers come next (reserving after the GET failed once).
+    out.reserve(kMaxAircraft);
     const bool reused = i == 0 && _keepHttp && _keepTls && _keepTls->connected();
     const int code = http.GET();
     if (code < 0 && reused && mayRetry)
@@ -129,7 +132,6 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
 
     // One aircraft at a time from the stream, then the rest of the reply is
     // read so the kept-open connection starts clean for the next request.
-    out.reserve(kMaxAircraft);   // checked before the request
     Stream &body = http.getStream();
     // adsb.fi lists aircraft under "aircraft", adsb.lol under "ac". adsb.fi
     // answers HTTP/1.1 chunked: decoded on the fly, and read to its end so
