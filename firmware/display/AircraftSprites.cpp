@@ -1,6 +1,7 @@
 #include "display/AircraftSprites.h"
 
 #include "display/SpriteData.h"
+#include "config/AirlineCodes.h"
 
 namespace
 {
@@ -151,6 +152,41 @@ namespace
 
 const AircraftSprites::Sprite &AircraftSprites::get(Kind k)      { return entry(SpriteData::kCard, k); }
 const AircraftSprites::Sprite &AircraftSprites::getScene(Kind k) { return entry(SpriteData::kScene, k); }
+
+Rgb AircraftSprites::airlineColour(const char *code)
+{
+    const size_t n = code ? strlen(code) : 0;
+    for (const SpriteData::LiveryRow &r : SpriteData::kLiveries)
+    {
+        bool match = n == 3 && strcmp(r.code, code) == 0;
+        if (!match && n == 2)
+        {
+            const char *iata = airlineIata(r.code);
+            match = iata && strcmp(iata, code) == 0;
+        }
+        if (!match) continue;
+        // Most saturated of tail (3), stripe (2), trim (4), engines (5).
+        float best = -1;
+        Rgb out{150, 160, 175};
+        for (int i : {3, 2, 4, 5})
+        {
+            const uint8_t *c = r.rgb[i];
+            const int mx = max(c[0], max(c[1], c[2])), mn = min(c[0], min(c[1], c[2]));
+            if (mx < 30) continue;
+            const float sat = (float)(mx - mn) / mx;
+            if (sat > best) { best = sat; out = Rgb{c[0], c[1], c[2]}; }
+        }
+        // Full brightness reads better on LEDs (navy tails become blue).
+        const int mx = max(out.r, max(out.g, out.b));
+        const float k = 235.0f / (mx ? mx : 1);
+        return Rgb{(uint8_t)min(255.0f, out.r * k), (uint8_t)min(255.0f, out.g * k), (uint8_t)min(255.0f, out.b * k)};
+    }
+    static const Rgb kPalette[] = {{90, 170, 255}, {120, 220, 160}, {255, 170, 60}, {230, 120, 200},
+                                   {255, 225, 90}, {100, 210, 230}, {250, 120, 100}, {180, 150, 255}};
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < n; ++i) h = (h ^ (uint8_t)code[i]) * 16777619u;
+    return kPalette[h % (sizeof(kPalette) / sizeof(kPalette[0]))];
+}
 
 AircraftSprites::Livery AircraftSprites::liveryFor(const FlightInfo &f, Rgb accent)
 {

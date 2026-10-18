@@ -171,6 +171,37 @@ String DailyStats::busiestAirline(int &count) const
     return best;
 }
 
+namespace
+{
+    // Insert (code, n) into out[0..len) kept in descending order of n.
+    void insertTop(DailyStats::Top *out, int &len, int cap, const char *code, size_t codeLen, int n)
+    {
+        int i = len < cap ? len : cap - 1;
+        if (len == cap && n <= out[cap - 1].n) return;
+        while (i > 0 && out[i - 1].n < n) { out[i] = out[i - 1]; --i; }
+        memset(out[i].code, 0, sizeof(out[i].code));
+        memcpy(out[i].code, code, min(codeLen, sizeof(out[i].code) - 1));
+        out[i].n = n;
+        if (len < cap) ++len;
+    }
+}
+
+int DailyStats::topAirlines(Top *out, int cap) const
+{
+    int len = 0;
+    for (uint8_t i = 0; i < _nAirlines; ++i)
+        insertTop(out, len, cap, _airlines[i].code, strnlen(_airlines[i].code, sizeof(_airlines[i].code)), _airlines[i].n);
+    return len;
+}
+
+int DailyStats::topTypes(Top *out, int cap) const
+{
+    int len = 0;
+    for (uint8_t i = 0; i < _nTypes; ++i)
+        insertTop(out, len, cap, _types[i].t, strnlen(_types[i].t, sizeof(_types[i].t)), _types[i].n);
+    return len;
+}
+
 String DailyStats::rarestType() const
 {
     String best;

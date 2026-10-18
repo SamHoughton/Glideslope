@@ -92,7 +92,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.display_cycle_seconds         = TimingConfiguration::DISPLAY_CYCLE_SECONDS;
     c.card_lead_seconds             = 120;
     c.interlude_seconds             = 15;
-    c.screens                       = 0x1F;   // map, arrivals, stats, weather, holding
+    c.screens                       = 0x5F;   // map, arrivals, stats, weather, holding, globe
     c.aeroapi_cache_ttl_seconds     = TimingConfiguration::AEROAPI_CACHE_TTL_SECONDS;
     c.aeroapi_fail_cache_ttl_seconds = TimingConfiguration::AEROAPI_FAIL_CACHE_TTL_SECONDS;
 }
@@ -157,6 +157,7 @@ void loadConfig()
     g_config.interlude_seconds             = p.getUInt("interlude",  g_config.interlude_seconds);
     g_config.screens                       = (uint8_t)p.getUInt("screens", g_config.screens);
     if (!p.isKey("scr_v3")) g_config.screens |= 0x10;   // holding screen (3.0): on for older settings too
+    if (!p.isKey("scr_v5")) g_config.screens |= 0x40;   // route globe (5.0)
     g_config.aeroapi_cache_ttl_seconds     = p.getUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     g_config.aeroapi_fail_cache_ttl_seconds = p.getUInt("api_fttl", g_config.aeroapi_fail_cache_ttl_seconds);
 
@@ -233,6 +234,7 @@ void saveConfig()
     p.putUInt("interlude", g_config.interlude_seconds);
     p.putUInt("screens",   g_config.screens);
     p.putBool("scr_v3",    true);
+    p.putBool("scr_v5",    true);
     p.putUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     p.putUInt("api_fttl",  g_config.aeroapi_fail_cache_ttl_seconds);
 

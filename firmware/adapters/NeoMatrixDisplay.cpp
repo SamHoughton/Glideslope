@@ -43,6 +43,7 @@ static constexpr unsigned long kShortCardMs     = 8000;              // departur
 static constexpr float         kImminentSec     = 45.0f;             // lands this soon: skip the break
 static constexpr unsigned long kMapDwellMs      = 20000;             // rotation: map ...
 static constexpr unsigned long kScreenDwellMs   = 10000;             // ... each other screen
+static constexpr unsigned long kStatsPageMs     = 7000;              // each extra stats page
 static constexpr float         kAltEaseSec      = 0.8f;              // altitude smoothing time constant
 static constexpr uint32_t      kAmbientFadeMs   = 700;               // card -> map cross-fade
 static constexpr uint32_t      kFlourishMs      = 1600;              // rare-spot banner before the fly-across
@@ -545,19 +546,21 @@ void NeoMatrixDisplay::startShowcase(unsigned long now)
 }
 
 // Timeline from the start: card (with its countdown) to 9 s, landing, the
-// LANDED card, then map 5 s, arrivals 4 s, weather 4 s, a take-off, done.
+// LANDED card, then the globe 5 s, map 5 s, arrivals 5 s, weather 5 s,
+// stats 4.5 s, holding 4.5 s, a take-off, done.
 void NeoMatrixDisplay::stepShowcase(unsigned long now)
 {
     const uint32_t t = now - _showcaseStartMs;
     switch (_showcaseStep)
     {
         case 0: if (t >= 9000)  { startLanding(now, false); ++_showcaseStep; } break;
-        case 1: if (t >= 15500) { s_mapPreviewUntil = now + 5000; ++_showcaseStep; } break;
-        case 2: if (t >= 20500) { s_mapPreviewUntil = 0; s_screenPreviewUntil = now + 5000; s_screenPreview = 3; ++_showcaseStep; } break;
-        case 3: if (t >= 25500) { s_screenPreviewUntil = now + 5000; s_screenPreview = 4; ++_showcaseStep; } break;
-        case 4: if (t >= 30500) { s_screenPreviewUntil = now + 4500; s_screenPreview = 1; ++_showcaseStep; } break;
-        case 5: if (t >= 35000) { s_screenPreviewUntil = now + 4500; s_screenPreview = 5; ++_showcaseStep; } break;
-        case 6: if (t >= 39500)
+        case 1: if (t >= 15500) { noteGlobe(_current); s_screenPreviewUntil = now + 5000; s_screenPreview = 6; ++_showcaseStep; } break;
+        case 2: if (t >= 20500) { s_screenPreview = 0; s_mapPreviewUntil = now + 5000; ++_showcaseStep; } break;
+        case 3: if (t >= 25500) { s_mapPreviewUntil = 0; s_screenPreviewUntil = now + 5000; s_screenPreview = 3; ++_showcaseStep; } break;
+        case 4: if (t >= 30500) { s_screenPreviewUntil = now + 5000; s_screenPreview = 4; ++_showcaseStep; } break;
+        case 5: if (t >= 35500) { s_screenPreviewUntil = now + 4500; s_screenPreview = 1; ++_showcaseStep; } break;
+        case 6: if (t >= 40000) { s_screenPreviewUntil = now + 4500; s_screenPreview = 5; ++_showcaseStep; } break;
+        case 7: if (t >= 44500)
                 {
                     s_screenPreview = 0;
                     _ambientActive = false;
@@ -566,7 +569,7 @@ void NeoMatrixDisplay::stepShowcase(unsigned long now)
                 }
                 break;
         default:
-            if (t >= 39500 + LandingScene::DURATION_MS + 1500)
+            if (t >= 44500 + LandingScene::DURATION_MS + 1500)
             {
                 _showcaseActive = false;
                 _hasCurrent = false;   // back to normal service
@@ -879,7 +882,7 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         if (startBreak) _current.breakTaken = true;
         _interludeUntilMs = startBreak ? now + (unsigned long)g_config.interlude_seconds * 1000UL : now;
         nextScreen();
-        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather", "holding"};
+        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather", "holding", "-", "globe"};
         if (!preview && _mode == Mode::Auto)
             Log.printf("Display: %s, %s\n", _interludeUntilMs != now ? "break after landing" : "screens",
                        kScreenNames[(int)_screen]);
@@ -970,6 +973,8 @@ bool NeoMatrixDisplay::screenAvailable(Screen s) const
         case Screen::Arrivals: return _arrivalCount > 0 || departuresPage();
         case Screen::Weather:  return _metar.valid;
         case Screen::Holding:  return _holds.total(millis()) > 0;
+        case Screen::Departures: return false;   // a page of the arrivals board
+        case Screen::Globe:    return _globe.valid;
         default:               return true;
     }
 }
@@ -988,6 +993,7 @@ unsigned long NeoMatrixDisplay::screenDwellMs(Screen s) const
 {
     if (s == Screen::Arrivals && departuresPage() && _arrivalCount > 0)
         return 2 * kScreenDwellMs - 2000;   // arrivals page, then departures
+    if (s == Screen::Stats) return kScreenDwellMs + (statsPages() - 1) * kStatsPageMs;
     return s == Screen::Map ? kMapDwellMs : kScreenDwellMs;
 }
 
@@ -1014,6 +1020,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     else if (s_screenPreview == 3) s = Screen::Arrivals;
     else if (s_screenPreview == 4) s = Screen::Weather;
     else if (s_screenPreview == 5) s = Screen::Holding;
+    else if (s_screenPreview == 6) s = Screen::Globe;
     else if (s_mapPreviewUntil)    s = Screen::Map;
     else if (_mode == Mode::Map)      s = Screen::Map;
     else if (_mode == Mode::Arrivals) s = Screen::Arrivals;
@@ -1048,8 +1055,42 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
             return;
         }
         case Screen::Stats:
-            InfoScreens::renderStats(g_workFrame, _stats, now, shownFor(s, now));
+        {
+            // Today, then the top airlines and types once there are enough of them.
+            const uint32_t shown = shownFor(s, now);
+            const int pages = statsPages();
+            int page = 0;
+            uint32_t t = shown;
+            if (t >= kScreenDwellMs && pages > 1)
+            {
+                page = 1 + min((int)((t - kScreenDwellMs) / kStatsPageMs), pages - 2);
+                t = (t - kScreenDwellMs) - (page - 1) * kStatsPageMs;
+            }
+            if (page == 0) InfoScreens::renderStats(g_workFrame, _stats, now, shown);
+            else if (page == 1 && _stats.airlineCount() >= 3) InfoScreens::renderTopAirlines(g_workFrame, _stats, t);
+            else InfoScreens::renderTopTypes(g_workFrame, _stats, t);
             return;
+        }
+        case Screen::Globe:
+        {
+            refreshGlobe(now);
+            if (!_globe.valid && _hasCurrent) noteGlobe(_current);
+            if (_globe.valid)
+                Globe::render(g_workFrame, _globe, shownFor(s, now), time(nullptr));
+            else
+            {
+                // A preview before any flight with a route: New York to London, nearly in.
+                Globe::Route demo;
+                demo.valid = true;
+                strlcpy(demo.ident, "GS101", sizeof(demo.ident));
+                strlcpy(demo.from, "New York", sizeof(demo.from));
+                strlcpy(demo.to, "London", sizeof(demo.to));
+                demo.oLat = 40.64f; demo.oLon = -73.78f; demo.dLat = 51.47f; demo.dLon = -0.45f;
+                demo.lat = 51.30f; demo.lon = -1.20f; demo.speedKts = 250;
+                Globe::render(g_workFrame, demo, shownFor(s, now), time(nullptr));
+            }
+            return;
+        }
         case Screen::Weather:
             InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now,
                                        s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky);
@@ -1100,6 +1141,48 @@ void NeoMatrixDisplay::updateTraffic(const std::vector<TrafficPoint> &points)
     _traffic.update(points, millis());
 }
 
+// ── Route globe ──────────────────────────────────────────────────────────────
+
+// Keep the route of a card's flight for the globe, when both airports are in
+// the offline table and they are far enough apart to draw.
+void NeoMatrixDisplay::noteGlobe(const Entry &e)
+{
+    const FlightInfo &f = e.flight;
+    Airports::Place o, d;
+    if (!Airports::find(f.origin, o) || !Airports::find(f.destination, d) || !strcmp(o.icao, d.icao)) return;
+    if (fabsf(o.lat - d.lat) + fabsf(o.lon - d.lon) < 0.5f) return;
+    Globe::Route r;
+    r.valid = true;
+    strlcpy(r.ident, (f.ident_iata.length() ? f.ident_iata : f.ident).c_str(), sizeof(r.ident));
+    r.accent = e.accent;
+    if (!Airports::shortCity(o.iata, 10, r.from, sizeof(r.from))) strlcpy(r.from, o.iata, sizeof(r.from));
+    if (!Airports::shortCity(d.iata, 10, r.to, sizeof(r.to))) strlcpy(r.to, d.iata, sizeof(r.to));
+    r.oLat = o.lat; r.oLon = o.lon; r.dLat = d.lat; r.dLon = d.lon;
+    _globe = r;
+    refreshGlobe(millis());
+}
+
+// The aircraft's latest position and state, while it is still the current card.
+void NeoMatrixDisplay::refreshGlobe(unsigned long now)
+{
+    if (!_globe.valid || !_hasCurrent) return;
+    const FlightInfo &f = _current.flight;
+    if (strcmp(_globe.ident, (f.ident_iata.length() ? f.ident_iata : f.ident).c_str()) != 0) return;
+    _globe.lat = f.lat;
+    _globe.lon = f.lon;
+    _globe.speedKts = f.velocity;
+    _globe.landed = _current.landed;
+    _globe.landedAt = _current.landedAt;
+    const float eta = entryEta(_current, now);
+    const time_t t = time(nullptr);
+    _globe.eta = (!isnan(eta) && t > 1600000000) ? t + (time_t)eta : 0;
+}
+
+int NeoMatrixDisplay::statsPages() const
+{
+    return 1 + (_stats.airlineCount() >= 3) + (_stats.typeCount() >= 3);
+}
+
 void NeoMatrixDisplay::beginNextCard(unsigned long now)
 {
     g_oldFrame.copyFrom(g_shownFrame);   // exactly what is on the panel now (card or map)
@@ -1107,6 +1190,7 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
     _current    = _queue.front();
     _queue.pop_front();
     loadLogo(_current);
+    noteGlobe(_current);
     _hasCurrent = true;
     _inTransition = true;
     _transStartMs = now;

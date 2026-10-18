@@ -34,6 +34,13 @@ public:
     String busiestAirline(int &count) const;
     // Type seen least often today (the latest wins a tie); empty if none yet.
     String rarestType() const;
+    // The busiest airlines / types today, most first: fills up to cap rows
+    // and returns how many. Distinct counts for the page titles.
+    struct Top { char code[7]; int n; };
+    int topAirlines(Top *out, int cap) const;
+    int topTypes(Top *out, int cap) const;
+    int airlineCount() const { return _nAirlines; }
+    int typeCount() const { return _nTypes; }
 
     // Yesterday, for comparison: movements in each hour, and by this time of day.
     bool hasYesterday() const { return _hasYesterday; }

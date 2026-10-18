@@ -56,6 +56,10 @@ namespace AircraftSprites
     // The airline's livery (from the call sign, logo or operator code), or
     // white with accent on the fin.
     Livery liveryFor(const FlightInfo &f, Rgb accent);
+    // A bright colour for an airline (IATA or ICAO code) from its livery:
+    // the most saturated of tail, stripe and trim; a steady hash colour for
+    // airlines without one.
+    Rgb airlineColour(const char *code);
 
     // Draw with the top-left at (x, y). flipX mirrors the sprite (nose right).
     // grey draws the whole sprite in greys (the unknown-type fallback).

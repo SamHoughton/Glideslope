@@ -9,6 +9,7 @@
 #include "interfaces/BaseDisplay.h"
 #include "display/FrameCanvas.h"
 #include "display/FlyAcross.h"
+#include "display/Globe.h"
 #include "display/ApproachModel.h"
 #include "display/Traffic.h"
 #include "display/DailyStats.h"
@@ -196,8 +197,14 @@ private:
 
     // Button-selected mode (display task only)
     enum class Mode : uint8_t { Auto, Map, Arrivals, Stats, Weather };
-    // Rotation screens; bit n of g_config.screens enables Screen n.
-    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Count };
+    // Rotation screens; bit n of g_config.screens enables Screen n. Bit 5
+    // is the departures page of the arrivals board, not a screen of its own.
+    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Departures, Globe, Count };
+    // The route globe: the latest card's flight with both airports known.
+    Globe::Route         _globe;
+    void                 noteGlobe(const Entry &e);
+    void                 refreshGlobe(unsigned long now);
+    int                  statsPages() const;
     Screen               _screen = Screen::Weather;   // so the first rotation starts with the map
     Screen               _shownScreen = Screen::Count;
     unsigned long        _shownScreenMs = 0, _shownScreenLastMs = 0;

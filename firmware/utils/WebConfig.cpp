@@ -237,7 +237,8 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/sprites"  && r.method == "POST") { requestSpriteGallery(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/map"      && r.method == "POST") { requestMapPreview(30000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
-    else if (r.path == "/api/demo/stats"    && r.method == "POST") { requestScreenPreview(1, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/stats"    && r.method == "POST") { requestScreenPreview(1, 24000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/globe"    && r.method == "POST") { requestScreenPreview(6, 12000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/coredump"      && r.method == "GET")
     {
         static char text[300];
