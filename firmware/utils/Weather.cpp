@@ -1,7 +1,9 @@
 #include "utils/Weather.h"
 #include "utils/TelnetLogger.h"
+#ifndef NATIVE_TEST   // the unit tests build the parser only
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#endif
 #include <math.h>
 #include "config/Airport.h"
 
@@ -105,6 +107,7 @@ bool Weather::parse(const char *raw, Metar &m)
     return m.valid;
 }
 
+#ifndef NATIVE_TEST
 bool Weather::fetch(Metar &out)
 {
     WiFiClientSecure client;
@@ -133,6 +136,7 @@ bool Weather::fetch(Metar &out)
     }
     return true;
 }
+#endif
 
 void Weather::line(const Metar &m, char *out, size_t len, int maxChars)
 {
