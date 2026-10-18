@@ -805,6 +805,18 @@ void WebConfig::handleAirportReset(WiFiClient &c)
 void WebConfig::handleGetFrame(WiFiClient &c, const Req &r)
 {
     const size_t len = FrameCanvas::W * FrameCanvas::H * sizeof(uint16_t);
+    // While the code is on the panel the mirror shows nothing: reading it off
+    // the panel is the proof of being at the board.
+    if (_tokenShownMs && millis() - _tokenShownMs < 32000)
+    {
+        c.print("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nCache-Control: no-store\r\n"
+                "Connection: close\r\n\r\n");
+        uint8_t blank[3 * 33];
+        for (int k = 0; k < 33; ++k) { blank[3 * k] = k < 32 ? 255 : 32; blank[3 * k + 1] = blank[3 * k + 2] = 0; }
+        if (qparam(r.query, "z") == "1") sendChunked(c, blank, sizeof(blank), sizeof(blank));
+        else { static const uint8_t zeros[512] = {}; for (size_t n = 0; n < len; n += sizeof(zeros)) sendChunked(c, zeros, sizeof(zeros), sizeof(zeros)); }
+        return;
+    }
     if (qparam(r.query, "z") == "1")
     {
         // No length up front (the frame can change while it is encoded):
