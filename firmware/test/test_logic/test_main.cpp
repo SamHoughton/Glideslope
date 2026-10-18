@@ -254,10 +254,11 @@ void test_replay_counts_arrivals()
     int expected = 0;
     e >> expected;
 
-    DailyStats stats;
+    static DailyStats stats;
     RunwayTracker runways;
     std::string line;
     unsigned long now = 0;
+    std::vector<std::string> onFinal;   // aircraft the approach model put on final within 12 km
     while (std::getline(f, line))
     {
         StringStream in(line);
@@ -267,7 +268,18 @@ void test_replay_counts_arrivals()
         g_fakeMillis = now;
         stats.noteTraffic(v);
         runways.update(v, now);
+        for (const StateVector &s : v)
+        {
+            const ApproachStatus st = ApproachModel::evaluate(flight(s));
+            if ((st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing) && st.distKm < 12 &&
+                s.baro_altitude * 3.28084 <= 5000 &&
+                std::find(onFinal.begin(), onFinal.end(), s.icao24.c_str()) == onFinal.end())
+                onFinal.push_back(s.icao24.c_str());
+        }
     }
+    printf("on final within 12 km (%d):", (int)onFinal.size());
+    for (auto &h : onFinal) printf(" %s", h.c_str());
+    printf("\n");
     printf("replay: %d arrivals, %d departures (independent count %d), landing on %s\n",
            stats.arrivals(), stats.departures(), expected, runways.mainArrival());
     TEST_ASSERT_TRUE(expected > 0);
@@ -312,7 +324,7 @@ void test_fuzz_parsers()
         Metar m;
         Weather::parse(mangle(metar).c_str(), m);
         Weather::parse(junk.c_str(), m);
-        Airport ap;
+        Airport ap{};   // parseHeader leaves it untouched when the JSON is broken
         String err;
         AirportPack::parseHeader(mangle(pack).c_str(), ap, err);
         TEST_ASSERT_TRUE(ap.runwayCount <= Airport::kMaxRunways && ap.holdCount <= Airport::kMaxHolds);

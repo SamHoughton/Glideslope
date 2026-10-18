@@ -6,7 +6,7 @@ void ReadsbParser::buildFilter(JsonDocument &filter, const char *arrayKey)
 {
     JsonObject f = filter[arrayKey][0].to<JsonObject>();
     for (const char *k : {"hex", "flight", "r", "t", "lat", "lon", "alt_baro", "gs",
-                          "track", "baro_rate", "seen_pos", "squawk"})
+                          "track", "baro_rate", "geom_rate", "seen_pos", "squawk"})
         f[k] = true;
 }
 
@@ -51,7 +51,10 @@ namespace
         if (!a["alt_baro"].isNull()) s.baro_altitude = a["alt_baro"].as<double>() / 3.28084;  // ft -> m
         if (!a["gs"].isNull())       s.velocity      = a["gs"].as<double>() / 1.94384;        // kt -> m/s
         if (!a["track"].isNull())    s.heading       = a["track"].as<double>();
-        if (!a["baro_rate"].isNull()) s.vertical_rate = a["baro_rate"].as<double>() / 196.85; // fpm -> m/s
+        // Climb rate: barometric, else geometric (GNSS); low down adsb.lol
+        // often has only the second, and without it a departure looks level.
+        if (!a["baro_rate"].isNull())      s.vertical_rate = a["baro_rate"].as<double>() / 196.85; // fpm -> m/s
+        else if (!a["geom_rate"].isNull()) s.vertical_rate = a["geom_rate"].as<double>() / 196.85;
 
         s.distance_km = dist;
         s.bearing_deg = computeBearingDeg(centerLat, centerLon, lat, lon);
@@ -81,7 +84,7 @@ int ReadsbParser::parseStream(Stream &in, const char *arrayKey, double centerLat
 
     JsonDocument filter;
     for (const char *k : {"hex", "flight", "r", "t", "lat", "lon", "alt_baro", "gs",
-                          "track", "baro_rate", "seen_pos", "squawk"})
+                          "track", "baro_rate", "geom_rate", "seen_pos", "squawk"})
         filter[k] = true;
     // peek() does not wait (on a TLS stream the next record may still be on
     // its way), so wait for a byte first, up to the stream's timeout.
