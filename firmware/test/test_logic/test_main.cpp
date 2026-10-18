@@ -275,6 +275,49 @@ void test_replay_counts_arrivals()
     TEST_ASSERT_TRUE(runways.mainArrival()[0] != '\0');
 }
 
+// ── Robustness: random and mangled input must never crash a parser ──────────
+void test_fuzz_parsers()
+{
+    srand(12345);
+    const std::string good = R"({"ac":[{"hex":"406f79","flight":"BAW242  ","alt_baro":2650,"gs":159.0,"track":269.6,)"
+                             R"("baro_rate":-704,"lat":51.4649,"lon":-0.35,"seen_pos":0.4}],"msg":"No error"})";
+    const char *metar = "METAR EGLL 151720Z AUTO 21012G25KT 180V250 9999 -RA SCT043 17/15 Q1019";
+    const char *pack = R"({"v":1,"icao":"EGKK","name":"GATWICK","lat":51.148,"lon":-0.19,"runways":[{"n":"26L","lat":51.15,"lon":-0.17,"crs":257.8}],"map":{"n":51.25,"s":51.05,"w":-0.51,"e":0.13}})";
+    for (int round = 0; round < 3000; ++round)
+    {
+        // Mangle a copy: flip, drop, insert or truncate bytes.
+        auto mangle = [](std::string t) {
+            const int edits = 1 + rand() % 8;
+            for (int k = 0; k < edits && !t.empty(); ++k)
+            {
+                const size_t at = rand() % t.size();
+                switch (rand() % 4)
+                {
+                    case 0: t[at] = (char)(rand() % 256); break;
+                    case 1: t.erase(at, 1 + rand() % 4); break;
+                    case 2: t.insert(at, 1, "{}[],:\"0-9e"[rand() % 12]); break;
+                    case 3: t.resize(at); break;
+                }
+            }
+            return t;
+        };
+        std::string junk(rand() % 200, ' ');
+        for (char &c : junk) c = (char)(rand() % 256);
+
+        std::vector<StateVector> out;
+        StringStream a(mangle(good)), b(junk);
+        ReadsbParser::parseStream(a, "ac", kLat, kLon, 20, out);
+        ReadsbParser::parseStream(b, "ac", kLat, kLon, 20, out);
+        Metar m;
+        Weather::parse(mangle(metar).c_str(), m);
+        Weather::parse(junk.c_str(), m);
+        Airport ap;
+        String err;
+        AirportPack::parseHeader(mangle(pack).c_str(), ap, err);
+        TEST_ASSERT_TRUE(ap.runwayCount <= Airport::kMaxRunways && ap.holdCount <= Airport::kMaxHolds);
+    }
+}
+
 int main(int, char **)
 {
     UNITY_BEGIN();
@@ -290,6 +333,7 @@ int main(int, char **)
     RUN_TEST(test_parse_stream);
     RUN_TEST(test_parse_stream_empty_and_missing);
     RUN_TEST(test_pack_header);
+    RUN_TEST(test_fuzz_parsers);
     RUN_TEST(test_replay_counts_arrivals);
     return UNITY_END();
 }
