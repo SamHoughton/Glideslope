@@ -263,7 +263,13 @@ void test_replay_counts_arrivals()
     {
         StringStream in(line);
         std::vector<StateVector> v;
-        if (ReadsbParser::parseStream(in, "ac", kLat, kLon, 20, v) < 0) continue;
+        const int got = ReadsbParser::parseStream(in, "ac", kLat, kLon, 20, v);
+        if (got < 0) continue;
+        int inLine = 0;
+        for (size_t p = line.find("\"hex\""); p != std::string::npos; p = line.find("\"hex\"", p + 1)) ++inLine;
+        static int shown = 0;
+        if (got != inLine && shown++ < 5) printf("line %lu: parsed %d of %d aircraft
+", now / 10000, got, inLine);
         now += 10000;
         g_fakeMillis = now;
         stats.noteTraffic(v);
