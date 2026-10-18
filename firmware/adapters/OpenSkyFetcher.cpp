@@ -241,11 +241,11 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
 // reply as a String too, inside a TLS session, ran the heap out), into a
 // list of its own that replaces outStateVectors at the end: the caller's
 // still holds the previous fetch, and appending to it grew the vector until
-// an allocation failed (4.0.1 crashed on exactly that). At most 48 aircraft.
+// an allocation failed (4.0.1 crashed on exactly that). At most 32 aircraft.
 bool OpenSkyFetcher::parseStates(HTTPClient &http, double centerLat, double centerLon, double radiusKm,
                                  std::vector<StateVector> &outStateVectors)
 {
-    constexpr size_t kMaxStates = 48;
+    constexpr size_t kMaxStates = 32;
     String rl = http.header("X-Rate-Limit-Remaining");
     if (rl.length() > 0)
         Log.printf("OpenSkyFetcher: X-Rate-Limit-Remaining: %s\n", rl.c_str());
@@ -263,7 +263,7 @@ bool OpenSkyFetcher::parseStates(HTTPClient &http, double centerLat, double cent
         outStateVectors.clear();
         return true;   // no states is not an error
     }
-    if (ESP.getMaxAllocHeap() < kMaxStates * sizeof(StateVector) + 8192)
+    if (ESP.getMaxAllocHeap() < kMaxStates * sizeof(StateVector) + 4096)
     {
         Log.println("OpenSkyFetcher: not enough memory for the list, skipping");
         return false;
