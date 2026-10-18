@@ -212,6 +212,28 @@ void test_parse_stream()
     TEST_ASSERT_TRUE(in.find("}"));
 }
 
+void test_parse_stream_capacity()
+{
+    std::string many = R"({"ac":[)";
+    for (int i = 0; i < 6; ++i)
+    {
+        char one[160];
+        snprintf(one, sizeof(one), R"(%s{"hex":"a%d","lat":51.47,"lon":%.3f,"alt_baro":3000,"seen_pos":1})",
+                 i ? "," : "", i, -0.45 + i * 0.01);
+        many += one;
+    }
+    many += "]}";
+    std::vector<StateVector> grow;
+    StringStream a(many);
+    ReadsbParser::parseStream(a, "ac", kLat, kLon, 20, grow);
+    TEST_ASSERT_EQUAL(6, (int)grow.size());
+    std::vector<StateVector> capped;
+    capped.reserve(4);
+    StringStream b(many);
+    ReadsbParser::parseStream(b, "ac", kLat, kLon, 20, capped);
+    TEST_ASSERT_EQUAL(4, (int)capped.size());
+}
+
 void test_parse_stream_empty_and_missing()
 {
     StringStream empty(R"({"ac":[],"msg":"No error"})");
@@ -349,6 +371,7 @@ int main(int, char **)
     RUN_TEST(test_runway_tracker_follows_and_flips);
     RUN_TEST(test_hold_detected_by_turning);
     RUN_TEST(test_parse_stream);
+    RUN_TEST(test_parse_stream_capacity);
     RUN_TEST(test_parse_stream_empty_and_missing);
     RUN_TEST(test_pack_header);
     RUN_TEST(test_fuzz_parsers);

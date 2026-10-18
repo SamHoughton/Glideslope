@@ -94,6 +94,7 @@ int ReadsbParser::parseStream(Stream &in, const char *arrayKey, double centerLat
         return in.peek();
     };
     JsonDocument doc;
+    const size_t reserved = out.capacity();
     int tracked = 0;
     for (;;)
     {
@@ -108,10 +109,10 @@ int ReadsbParser::parseStream(Stream &in, const char *arrayKey, double centerLat
         if (deserializeJson(doc, in, DeserializationOption::Filter(filter))) break;
         ++tracked;
         StateVector s;
-        // Never past the capacity the caller reserved (a reallocation needs
-        // a second, larger block while the old one is still held).
-        if (one(doc.as<JsonObject>(), centerLat, centerLon, radiusKm, s) &&
-            (out.capacity() == 0 || out.size() < out.capacity()))
+        // Never past a capacity the caller reserved beforehand (a
+        // reallocation needs a second, larger block while the old one is
+        // still held). With none reserved the list grows as usual.
+        if (one(doc.as<JsonObject>(), centerLat, centerLon, radiusKm, s) && (!reserved || out.size() < reserved))
             out.push_back(s);
     }
     return tracked;
