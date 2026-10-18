@@ -188,6 +188,7 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
 
     HTTPClient http;
     http.begin(url);
+    http.useHTTP10(true);   // no chunked encoding: the reply is parsed straight from the stream
     http.setTimeout(TimingConfiguration::OPENSKY_TIMEOUT_MS);
     // OAuth Bearer required
     http.addHeader("Authorization", String("Bearer ") + m_accessToken);
@@ -206,6 +207,7 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
             {
                 HTTPClient retry;
                 retry.begin(url);
+                retry.useHTTP10(true);
                 retry.addHeader("Authorization", String("Bearer ") + m_accessToken);
                 retry.collectHeaders(trackedHeaders, 1);
                 code = retry.GET();
