@@ -60,7 +60,7 @@ public:
 
 private:
     WiFiServer _server{80};
-    static constexpr uint32_t kMinHeapToServe = 22000;
+    static constexpr uint32_t kMinHeapToServe = 16000;   // 22 KB turned requests away for spells once the TLS arena moved ~34 KB out of the heap
 
     // "Now showing" JSON, built on the main loop by setCurrentFlight() and read
     // by the web task; guarded by _displayMutex.
