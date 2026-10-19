@@ -94,7 +94,7 @@ struct RuntimeConfig
     // Screen rhythm: an approach card comes in this long before touchdown;
     // after each landing, one rotation screen for interlude_seconds; screens
     // is a bit mask of the rotation (1 map, 2 arrivals, 4 stats, 8 weather,
-    // 16 holding, 32 departures page, 64 route globe).
+    // 16 holding, 32 departures page, 64 route globe, 128 pages on final).
     uint32_t card_lead_seconds;
     uint32_t interlude_seconds;
     uint8_t  screens;

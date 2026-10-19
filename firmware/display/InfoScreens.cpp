@@ -246,6 +246,56 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
     }
 }
 
+void InfoScreens::renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent, float etaSec, const char *runway,
+                                 uint32_t shownMs)
+{
+    c.clear();
+    // Top: the flight, and the countdown so the landing is never out of mind.
+    const char *ident = f.ident_iata.length() ? f.ident_iata.c_str() : f.ident.c_str();
+    titleBand(c, ident, "");
+    c.text(3, 1, ident, accent);
+    if (etaSec >= 0)
+    {
+        char eta[16];
+        const int s = (int)lroundf(etaSec);
+        snprintf(eta, sizeof(eta), "%s %d:%02d", runway && runway[0] ? runway : "ETA", s / 60, s % 60);
+        c.text(FrameCanvas::W - 3 - FrameCanvas::textWidth(eta), 1, eta, kValue);
+    }
+
+    // The aircraft in its livery, sliding in from the left.
+    bool known = false;
+    const AircraftSprites::Kind kind = AircraftSprites::classify(f.aircraft_code, known);
+    const AircraftSprites::Sprite &sp = AircraftSprites::get(kind);   // card size: clear of the text
+    const float in = easeOut(shownMs / 600.0f);
+    const int sx = (int)lroundf(-sp.w + (2 + sp.w) * in);
+    AircraftSprites::draw(c, sp, sx, 13 + (19 - sp.h) / 2, AircraftSprites::liveryFor(f, accent), false, !known);
+
+    // Beside it: type, registration, which visit this is.
+    constexpr int kX = 50;
+    const char *type = f.aircraft_display_name_short.length() ? f.aircraft_display_name_short.c_str() : f.aircraft_code.c_str();
+    c.text(kX, 12, type, kTitle, 1, 0, 13);
+    if (f.registration.length()) c.text(kX, 21, f.registration.c_str(), Rgb{150, 200, 235}, 1, 0, 13);
+    char visit[16] = "";
+    if (f.seen_days == 1) snprintf(visit, sizeof(visit), "FIRST VISIT");
+    else if (f.seen_days > 1)
+    {
+        const unsigned n = f.seen_days, t = n % 100;
+        const char *suf = (t >= 11 && t <= 13) ? "TH" : n % 10 == 1 ? "ST" : n % 10 == 2 ? "ND" : n % 10 == 3 ? "RD" : "TH";
+        snprintf(visit, sizeof(visit), "%u%s VISIT", n, suf);
+    }
+    if (visit[0]) c.text(kX, 30, visit, kGold, 1, 0, 13);
+
+    // Below: the airline, then where it has come from.
+    for (int x = 4; x < FrameCanvas::W - 4; x += 2) c.set(x, 38, kDim);
+    if (f.airline_display_name_full.length())
+        c.text(3, 42, f.airline_display_name_full.c_str(), FrameCanvas::scale(accent, 0.85f), 1, 0, 20);
+    char from[32] = "";
+    const char *city = Airports::city(f.origin);
+    const String &code = f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao;
+    if (city || code.length()) snprintf(from, sizeof(from), "FROM %s", city ? city : code.c_str());
+    if (from[0]) c.text(3, 51, from, kTitle, 1, 0, 20);
+}
+
 // The day's busiest airlines: code and a bar in the airline's colour, growing in.
 void InfoScreens::renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs)
 {

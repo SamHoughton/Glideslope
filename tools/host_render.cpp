@@ -223,6 +223,22 @@ int main(int argc, char **argv)
         }
     }
 
+    // On final: the aircraft page between the card's turns.
+    {
+        FlightInfo f;
+        f.ident_iata = "BA178"; f.ident = "BAW178";
+        f.aircraft_code = "A35K"; f.aircraft_display_name_short = "A350-1000";
+        f.registration = "G-XWBA"; f.airline_display_name_full = "British Airways";
+        f.origin.code_icao = "KJFK"; f.origin.code_iata = "JFK";
+        f.destination.code_icao = "EGLL"; f.destination.code_iata = "LHR";
+        f.seen_days = 14;
+        InfoScreens::renderAircraft(c, f, AircraftSprites::airlineColour("BA"), 95, "27L", 2000);  save(c, "final_aircraft");
+        f.seen_days = 1; f.aircraft_code = "A388"; f.aircraft_display_name_short = "A380-800";
+        f.ident_iata = "EK1"; f.ident = "UAE1"; f.registration = "A6-EVB"; f.airline_display_name_full = "Emirates";
+        f.origin.code_icao = "OMDB"; f.origin.code_iata = "DXB";
+        InfoScreens::renderAircraft(c, f, AircraftSprites::airlineColour("EK"), 61, "27L", 2000);  save(c, "final_aircraft2");
+    }
+
     // The landing scene through the year.
     {
         const AircraftSprites::Livery ba(Rgb{28, 48, 110});

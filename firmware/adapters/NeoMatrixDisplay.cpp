@@ -974,9 +974,69 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
         return kCardFrameMs;
     }
 
-    renderCurrentCard(now);
+    renderHeld(now);
+    if (now - _storyFadeMs < kAmbientFadeMs)
+    {
+        crossFade(g_oldFrame, (float)(now - _storyFadeMs) / kAmbientFadeMs);
+        present();
+        return kAnimFrameMs;
+    }
     present();
     return kCardFrameMs;
+}
+
+// ── On final: the card, the globe, the aircraft ─────────────────────────────
+
+// Which page, and how long it has been up. The cycle from when the card came
+// on: card 12 s, globe 7 s, card 12 s, aircraft 6 s. A page only starts if it
+// will be over 40 s before touchdown.
+uint8_t NeoMatrixDisplay::storyPage(unsigned long now, uint32_t &pageMs)
+{
+    pageMs = 0;
+    if (!(g_config.screens & 128) || _mode != Mode::Auto || _showcaseActive || !_hasCurrent ||
+        _current.landed || _current.goAround || !isArrival(_current))
+        return 0;
+    const float eta = entryEta(_current, now);
+    if (isnan(eta)) return 0;
+    constexpr uint32_t kCard = 12000, kGlobe = 7000, kPlane = 6000, kCycle = 2 * kCard + kGlobe + kPlane;
+    constexpr float kCutoffSec = 40;
+    const uint32_t u = (now - _shownSinceMs) % kCycle;
+    uint8_t page = 0;
+    uint32_t start = 0, len = 0;
+    if (u >= kCard && u < kCard + kGlobe)               { page = 1; start = kCard; len = kGlobe; }
+    else if (u >= 2 * kCard + kGlobe)                   { page = 2; start = 2 * kCard + kGlobe; len = kPlane; }
+    if (!page) return 0;
+    if (page == 1 && (!_globe.valid || strcmp(_globe.ident, (_current.flight.ident_iata.length() ?
+                                              _current.flight.ident_iata : _current.flight.ident).c_str()) != 0))
+        return 0;
+    pageMs = u - start;
+    if (eta - (len - pageMs) / 1000.0f < kCutoffSec && pageMs < 400) return 0;   // too late to start one
+    if (eta < kCutoffSec) return 0;
+    return page;
+}
+
+void NeoMatrixDisplay::renderHeld(unsigned long now)
+{
+    renderCurrentCard(now);   // always: it keeps the altitude easing along
+    uint32_t pageMs = 0;
+    const uint8_t page = storyPage(now, pageMs);
+    if (page != _storyPage)
+    {
+        g_oldFrame.copyFrom(g_shownFrame);   // cross-fade between the pages
+        _storyFadeMs = now;
+        _storyPage = page;
+    }
+    if (page == 1)
+    {
+        refreshGlobe(now);
+        Globe::render(g_workFrame, _globe, pageMs + 1600, time(nullptr));   // already turned: no spin-in
+    }
+    else if (page == 2)
+    {
+        const float eta = entryEta(_current, now);
+        InfoScreens::renderAircraft(g_workFrame, _current.flight, _current.accent, isnan(eta) ? -1 : eta,
+                                    _current.runway, pageMs);
+    }
 }
 
 // ── Rotation helpers ─────────────────────────────────────────────────────────
