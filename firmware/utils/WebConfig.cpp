@@ -21,6 +21,7 @@ WebServer library to avoid framework include-path issues.
 #include <esp_task_wdt.h>
 #include "utils/HeapWatch.h"
 #include "utils/HttpRequest.h"
+#include "utils/TlsArena.h"
 #include <vector>
 
 WebConfig g_webConfig;
@@ -596,6 +597,7 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["heap_max_block"] = ESP.getMaxAllocHeap();
     doc["heap_min_free"]  = ESP.getMinFreeHeap();
     doc["stack_web_free"] = uxTaskGetStackHighWaterMark(nullptr);   // this task: the web server
+    doc["tls_arena"] = String(TlsArena::served()) + " served, " + TlsArena::overflowed() + " to the heap" + (TlsArena::slotsFree() ? "" : ", in use");
     doc["display_frames"] = displayFramesDrawn();
     doc["web_requests"]   = (uint32_t)_requests;
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);

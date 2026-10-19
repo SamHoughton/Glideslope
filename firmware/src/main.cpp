@@ -43,6 +43,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "config/Airports.h"
 #include "utils/Spotter.h"
 #include "utils/HomeAssistant.h"
+#include "utils/TlsArena.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
 #include "display/FlyAcross.h"
@@ -454,6 +455,7 @@ static void updateDepartures(const std::vector<StateVector> &states, const std::
 
 void setup()
 {
+    TlsArena::install();   // before any TLS: its big buffers get their own room
     Serial.begin(115200);
 #if ARDUINO_USB_MODE && ARDUINO_USB_CDC_ON_BOOT
     // Native USB serial: with nothing reading the port, the default 100 ms
@@ -755,8 +757,8 @@ void loop()
         // and restart, a few seconds instead of waiting for the watchdog.
         {
             static unsigned long fragSinceMs = 0;
-            const bool fragmented = !g_fetcher->lastFetchOk() && ESP.getFreeHeap() > 60000 &&
-                                    ESP.getMaxAllocHeap() < 36000;
+            const bool fragmented = !g_fetcher->lastFetchOk() && TlsArena::slotsFree() &&
+                                    ESP.getFreeHeap() > 48000 && ESP.getMaxAllocHeap() < 12000;
             if (!fragmented)        fragSinceMs = 0;
             else if (!fragSinceMs)  fragSinceMs = millis();
             else if (millis() - fragSinceMs > 90000)

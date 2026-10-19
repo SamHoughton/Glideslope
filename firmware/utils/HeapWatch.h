@@ -7,6 +7,7 @@ just finished is logged as the culprit.
 */
 #include <Arduino.h>
 #include "utils/TelnetLogger.h"
+#include "utils/TlsArena.h"
 
 // Whether there is room for a TLS connection now. The framework's mbedTLS is
 // built with fixed 16 KB in/out buffers, so a handshake briefly needs 60-65
@@ -34,8 +35,10 @@ inline void (*g_tlsReleaser)() = nullptr;
 
 inline bool tlsAffordable(const char *what)
 {
-    static constexpr uint32_t kMinFree = 75000;
-    auto room = [] { return ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= 20000; };
+    // The two record buffers come from utils/TlsArena; the heap only needs
+    // room for the handshake's own working memory.
+    static constexpr uint32_t kMinFree = 42000, kMinBlock = 12000;
+    auto room = [] { return TlsArena::slotsFree() && ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= kMinBlock; };
     if (room()) return true;
     if (g_tlsReleaser)
     {
