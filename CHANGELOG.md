@@ -20,8 +20,11 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   the weather screen drew gusts over the wind. Both found by the new
   screen tests.
 - Firmware uploads pause the feed so they can't stall.
-- Less heap fragmentation from the map's lists, which had left a TLS
-  handshake no room to reopen the feed.
+- The flight feed could stay down for up to 25 minutes: the stats save
+  closed the feed's connection for room, and on a fragmented heap it
+  could not reopen. The save no longer closes it, and if the feed can't
+  reopen with plenty free, the board saves its stats and restarts.
+- The route globe zooms in on short routes, and has no blue rim.
 - Crash reports say whether the dump came from the running build.
 - Web requests: Content-Length without a space after the colon, and query
   keys matched whole.
