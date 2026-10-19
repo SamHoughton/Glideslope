@@ -297,6 +297,16 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
         p.heading = s.heading;
         p.gsKt    = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
         p.colour  = squawkMeaning(s.squawk) ? Rgb{255, 40, 30} : airlineColour(s.callsign);
+        {
+            String cs = s.callsign;
+            cs.trim();
+            const String num = flightNumberFromCallsign(cs);
+            String label = num.length() ? num : cs.length() ? cs : s.registration;
+            label.replace(" ", "");   // "U2 73CA" -> "U273CA": the tiny font has no room for gaps
+            strlcpy(p.label, label.c_str(), sizeof(p.label));
+            strlcpy(p.type, s.aircraft_type.c_str(), sizeof(p.type));
+            p.altFt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
+        }
 
         FlightInfo f;   // just enough for the approach model
         f.lat = s.lat;  f.lon = s.lon;  f.heading = s.heading;

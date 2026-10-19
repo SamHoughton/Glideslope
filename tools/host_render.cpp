@@ -16,6 +16,11 @@
 #include "display/Globe.h"
 #include "utils/FrameBmp.h"
 #include "display/LandingScene.h"
+#include "display/MapRenderer.h"
+#include "display/Traffic.h"
+#include "adapters/ReadsbParser.h"
+#include "config/AirlineCodes.h"
+#include <fstream>
 #if __has_include("display/OverheadScene.h")
 #include "display/OverheadScene.h"
 #define HAVE_OVERHEAD 1
@@ -173,6 +178,49 @@ int main(int argc, char **argv)
         o.accent = Rgb{255, 185, 60}; o.rightward = true;
         OverheadScene::render(c, o, 3900, Sky::preview("day"));  save(c, "docs_overhead");
 #endif
+    }
+
+    // The map with recorded Heathrow traffic (test/fixtures/heathrow.jsonl):
+    // the last 200 s fed in every 10 s, so the trails have history.
+    {
+        std::vector<std::string> lines;
+        std::ifstream in("test/fixtures/heathrow.jsonl");
+        for (std::string l; std::getline(in, l);) lines.push_back(l);
+        static TrafficTracker traffic;
+        unsigned long ms = 1000;
+        const size_t last = 108 < lines.size() ? 108 : lines.size() - 1;
+        for (size_t i = last >= 20 ? last - 20 : 0; i <= last; ++i, ms += 10000)
+        {
+            StringStream ss(lines[i].c_str());
+            std::vector<StateVector> states;
+            ReadsbParser::parseStream(ss, "ac", 51.47, -0.4543, 30, states);
+            std::vector<TrafficPoint> pts;
+            for (const StateVector &sv : states)
+            {
+                TrafficPoint tp;
+                tp.id = (uint32_t)strtoul(sv.icao24.c_str(), nullptr, 16);
+                tp.lat = sv.lat; tp.lon = sv.lon; tp.heading = sv.heading;
+                tp.gsKt = sv.velocity * 1.94384;
+                tp.altFt = sv.baro_altitude * 3.28084;
+                String cs = sv.callsign; cs.trim();
+                char icao[4] = {0};
+                strncpy(icao, cs.c_str(), 3);
+                const char *iata = cs.length() > 3 ? airlineIata(icao) : nullptr;
+                const std::string label = iata ? std::string(iata) + (cs.c_str() + 3) : std::string(cs.c_str());
+                strncpy(tp.label, label.c_str(), sizeof(tp.label) - 1);
+                strncpy(tp.type, sv.aircraft_type.c_str(), sizeof(tp.type) - 1);
+                tp.colour = AircraftSprites::airlineColour(icao);
+                pts.push_back(tp);
+            }
+            traffic.update(pts, ms);
+        }
+        for (int k = 0; k < 3; ++k)
+        {
+            MapRenderer::render(c, traffic, ms + k * 2500, NAN, NAN, "09L", "09R", 1.0f);
+            char name[24];
+            snprintf(name, sizeof(name), "map_spot%d", k);
+            save(c, name);
+        }
     }
 
     // The landing scene through the year.
