@@ -42,6 +42,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "config/Airport.h"
 #include "config/Airports.h"
 #include "utils/Spotter.h"
+#include "utils/HomeAssistant.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
 #include "display/FlyAcross.h"
@@ -120,6 +121,9 @@ static void sampleStack()
     g_nextStack = (g_nextStack + 1) % g_airport.holdCount;
     heapCheckpoint("stack sample");
 }
+
+// What Home Assistant sees (utils/HomeAssistant), refreshed once per fetch.
+static HomeAssistant::State g_ha;
 
 // Registration history for the flights about to get cards: days each
 // airframe has been on the board. One small file read per new aircraft a
@@ -215,6 +219,7 @@ static void spotterCheck(const std::vector<StateVector> &states, const std::vect
                info.ident, info.type, isnan(info.altFt) ? 0.0f : info.altFt, isnan(ev.distKm) ? 0.0f : ev.distKm,
                ev.watch ? ", matched " : "", ev.watch ? ev.matched : "");
     g_display.showSpot(info);
+    snprintf(g_ha.spotted, sizeof(g_ha.spotted), "%s %s%s%s", info.ident, info.type, info.where[0] ? " " : "", info.where);
     if (ev.watch)
         Notify::post(Notify::Watch, 4, "eyes", "Watchlist", "%s %s%s%s (%s) at %.0f ft%s%s",
                      info.ident, info.type, s.registration.length() ? " " : "", s.registration.c_str(),
@@ -365,6 +370,8 @@ static void updateArrivals(const std::vector<StateVector> &states, const std::ve
         return x.etaSec < y.etaSec;
     });
     g_display.setArrivals(rows, n);
+    strlcpy(g_ha.next, n ? rows[0].ident : "", sizeof(g_ha.next));
+    g_ha.nextEtaSec = n ? (int)lroundf(rows[0].etaSec) : -1;
 }
 
 // Recent departures (newest first) for the board's second page: every
@@ -718,6 +725,18 @@ void loop()
         }
         updateArrivals(g_states, g_flights);
         updateDepartures(g_states, g_flights);
+        {
+            g_display.runwaysInUse(g_ha.arrRunways, sizeof(g_ha.arrRunways), g_ha.depRunways, sizeof(g_ha.depRunways));
+            g_display.todayCounts(g_ha.arrivals, g_ha.departures);
+            char hold[8];
+            g_ha.holding = g_display.holdingSummary(hold, sizeof(hold));
+            FlightInfo cur;
+            if (g_display.currentFlight(cur))
+                snprintf(g_ha.last, sizeof(g_ha.last), "%s %s>%s",
+                         (cur.ident_iata.length() ? cur.ident_iata : cur.ident).c_str(),
+                         (cur.origin.code_iata.length() ? cur.origin.code_iata : cur.origin.code_icao).c_str(),
+                         (cur.destination.code_iata.length() ? cur.destination.code_iata : cur.destination.code_icao).c_str());
+        }
 
         static String lastIdents;
         String idents;
@@ -792,6 +811,7 @@ void loop()
     {
         StageTrace::mark(StageTrace::Main, StageTrace::MainNotify);
         Notify::loop();
+        HomeAssistant::loop(g_ha);   // MQTT: keeps the connection, publishes every 30 s
     }
 
     // Heathrow weather for the arrivals board and the night clock.

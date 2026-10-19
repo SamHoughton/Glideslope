@@ -123,6 +123,8 @@ public:
     void noteStack(int stack, const std::vector<StateVector> &states);
     // Holding now: "BNN 4 (9 min), OCK 2 (3 min)" ("" if none); returns the total.
     int holdingSummary(char *out, size_t len, int *longestMin = nullptr);
+    // Today's arrivals and departures so far.
+    void todayCounts(int &arrivals, int &departures);
     // Today in a sentence or two, for the evening round-up.
     void dailySummary(char *out, size_t len);
     bool statsSnapshot(std::vector<uint8_t> &out);   // false if unchanged

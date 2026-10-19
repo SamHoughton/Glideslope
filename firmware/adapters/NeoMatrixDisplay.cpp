@@ -430,6 +430,13 @@ int NeoMatrixDisplay::holdingSummary(char *out, size_t len, int *longestMin)
     return total;
 }
 
+void NeoMatrixDisplay::todayCounts(int &arrivals, int &departures)
+{
+    Lock l(_lock);
+    arrivals = _stats.arrivals();
+    departures = _stats.departures();
+}
+
 void NeoMatrixDisplay::dailySummary(char *out, size_t len)
 {
     Lock l(_lock);
