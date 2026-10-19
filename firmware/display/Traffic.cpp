@@ -8,6 +8,10 @@ namespace
 
 void TrafficTracker::update(const std::vector<TrafficPoint> &points, unsigned long now)
 {
+    // Room for every aircraft once, at the first update: a list that grew
+    // as traffic came and went left holes in the heap that a TLS handshake
+    // (two 16 KB buffers) then couldn't use.
+    if (_tracked.capacity() < (size_t)kMax) _tracked.reserve(kMax);
     for (const TrafficPoint &p : points)
     {
         if (isnan(p.lat) || isnan(p.lon)) continue;

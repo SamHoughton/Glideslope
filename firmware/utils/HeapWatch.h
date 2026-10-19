@@ -39,6 +39,7 @@ inline bool tlsAffordable(const char *what)
     if (room()) return true;
     if (g_tlsReleaser)
     {
+        Log.printf("Heap: closing the feed connection for %s\n", what);
         g_tlsReleaser();
         if (room()) return true;
     }

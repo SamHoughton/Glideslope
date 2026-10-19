@@ -42,7 +42,8 @@ namespace
     }
 
     // Label boxes already on the map, to keep the next one clear of them.
-    struct Box { int x, y, w, h; };
+    // Small (6 bytes): up to 96 of them sit on the display task's stack.
+    struct Box { int16_t x, y; uint8_t w, h; };
     bool clear(const Box *boxes, int n, int x, int y, int w, int h)
     {
         if (x < 0 || y < 9 || x + w > FrameCanvas::W || y + h > kBarY) return false;
@@ -186,16 +187,16 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
 
     // The spotlight: one aircraft at a time (those on final first), ringed,
     // with its details in a bar along the bottom.
-    int order[TrafficTracker::kMax];
+    uint8_t order[TrafficTracker::kMax];   // (on the display task's stack: kept small)
     int n = 0;
     for (int i = 0; i < (int)all.size() && n < TrafficTracker::kMax; ++i)
     {
         float x, y;
         position(all[i], now, x, y);
-        if (x >= 0 && y >= 0 && x < FrameCanvas::W && y < kBarY) order[n++] = i;   // on the map only
+        if (x >= 0 && y >= 0 && x < FrameCanvas::W && y < kBarY) order[n++] = (uint8_t)i;   // on the map only
     }
     if (!n) return;
-    std::stable_sort(order, order + n, [&](int a, int b) {
+    std::stable_sort(order, order + n, [&](uint8_t a, uint8_t b) {
         if (all[a].p.onFinal != all[b].p.onFinal) return all[a].p.onFinal;
         return all[a].p.id < all[b].p.id;
     });
@@ -233,7 +234,7 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
     {
         float x, y;
         position(t, now, x, y);
-        boxes[nb++] = Box{(int)lroundf(x) - 3, (int)lroundf(y) - 3, 7, 7};
+        boxes[nb++] = Box{(int16_t)(lroundf(x) - 3), (int16_t)(lroundf(y) - 3), 7, 7};
     }
     for (int k = 0; k < n; ++k)
     {
@@ -248,7 +249,7 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
             if (clear(boxes, nb, p[0], p[1], w + 1, 6))
             {
                 Font3x5::text(c, p[0], p[1], t.p.label, lighten(t.p.colour, 0.45f));
-                if (nb < TrafficTracker::kMax * 2) boxes[nb++] = Box{p[0], p[1], w + 1, 6};
+                if (nb < TrafficTracker::kMax * 2) boxes[nb++] = Box{(int16_t)p[0], (int16_t)p[1], (uint8_t)(w + 1), 6};
                 break;
             }
     }
