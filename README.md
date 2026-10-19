@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/showcase.gif" alt="Glideslope on the panel: a flight flies in, counts down to runway 27L and lands at golden hour, then the map, arrivals board, weather, today's stats, holding stacks and a take-off" width="680">
+  <img src="docs/showcase.gif" alt="Glideslope on the panel: a flight flies in, counts down to runway 27L and lands at golden hour, then its route on the globe, the map, arrivals board, weather, today's stats, holding stacks and a take-off" width="680">
 </p>
 
 Recorded from the board's own frames with its built-in showcase (the
