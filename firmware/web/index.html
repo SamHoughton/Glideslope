@@ -41,6 +41,9 @@ header svg{width:34px;height:34px;flex:none}
 .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
 h2{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:8px}
 h2::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber)}
+#lgp{width:96px;height:96px;image-rendering:pixelated;background:#0b1017;border:1px solid var(--line2);border-radius:8px}
+.lgrow{display:flex;align-items:center;gap:12px;margin:6px 0 4px}
+.pills button.lg{font:inherit;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line2);background:#1a2230;color:var(--text);cursor:pointer;margin:0 6px 6px 0}
 h3{font-size:13px;color:var(--text);margin:16px 0 8px;font-weight:600}
 h3:first-child{margin-top:0}
 
@@ -202,6 +205,15 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <label class="sw"><input type="checkbox" id="route_cities"><span>City names on routes<small>London &gt; New York instead of LHR &gt; JFK</small></span></label>
       <label class="sw"><input type="checkbox" id="display_nearest_only"><span>Nearest aircraft only<small>One route lookup per fetch; easier on memory and APIs</small></span></label>
       <label class="sw"><input type="checkbox" id="display_flip"><span>Rotate 180&deg;</span></label>
+      <h3>Airline logos</h3>
+      <p class="hint" id="lgs">Logos on the board: &hellip;</p>
+      <div class="pills" id="lgm"></div>
+      <div class="row">
+        <div class="f"><label for="lgc">Airline <small>(ICAO code, e.g. CTN)</small></label><input id="lgc" maxlength="4" autocomplete="off" spellcheck="false" style="text-transform:uppercase"></div>
+        <div class="f"><label for="lgf">Image <small>&mdash; PNG with a transparent background works best</small></label><input type="file" id="lgf" accept="image/*"></div>
+      </div>
+      <div class="lgrow"><canvas id="lgp" width="32" height="32"></canvas><span class="hint">How it will look on the panel (32&times;32)</span></div>
+      <div class="btns"><button id="lgu">Upload logo</button><span class="msg" id="lgt"></span></div>
     </section>
 
     <section class="tab" id="t-airport">
@@ -385,6 +397,33 @@ function upload(f,u,retried,unsigned){var x=new XMLHttpRequest();x.open('POST','
     if(j.error==='unsigned'&&!unsigned){if(confirm('This firmware is not a signed Glideslope release (your own build?). Install it anyway?'))upload(f,u,true,true);else u.textContent='Not installed';return;}if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}else u.textContent='Failed: '+(j.error||x.status);};
   x.onerror=function(){u.textContent='Upload failed (connection lost)';};var h=hdrs('application/octet-stream');if(unsigned)h['X-Glideslope-Unsigned']='1';
   Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send(f);}
+
+// Airline logos: the board lists airlines it has seen without one; an image
+// is fitted into 32x32 here and sent as RGB565 (magenta = transparent).
+var LOGO=null;
+function logos(){fetch('/api/logos').then(function(r){return r.json();}).then(function(d){
+  $('lgs').textContent=d.count+' logos on the board.'+(d.missing.length?' Seen without one (tap to choose):':' Every airline seen so far has one.');
+  var m=$('lgm');m.innerHTML='';d.missing.forEach(function(x){var b=document.createElement('button');b.className='lg';
+    b.textContent=x.code+' \u00b7 '+x.seen;b.title='Seen '+x.seen+' times';b.addEventListener('click',function(){$('lgc').value=x.code;});m.appendChild(b);});
+}).catch(function(){});}
+function lgDraw(img){var c=$('lgp'),g=c.getContext('2d');g.clearRect(0,0,32,32);
+  var k=Math.min(32/img.width,32/img.height),w=Math.max(1,Math.round(img.width*k)),h=Math.max(1,Math.round(img.height*k));
+  g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.drawImage(img,Math.floor((32-w)/2),Math.floor((32-h)/2),w,h);
+  var px=g.getImageData(0,0,32,32).data,out=new Uint8Array(2048);
+  for(var i=0;i<1024;i++){var r=px[i*4],gg=px[i*4+1],b=px[i*4+2],a=px[i*4+3],v;
+    if(a<16)v=0xF81F;else{r=r*a/255|0;gg=gg*a/255|0;b=b*a/255|0;v=(r>>3)<<11|(gg>>2)<<5|b>>3;if(v===0xF81F)v=0xF820;}
+    out[i*2]=v&255;out[i*2+1]=v>>8;}
+  LOGO=out;}
+$('lgf').addEventListener('change',function(){var f=this.files[0];LOGO=null;if(!f)return;var img=new Image();
+  img.onload=function(){lgDraw(img);URL.revokeObjectURL(img.src);};img.onerror=function(){$('lgt').textContent='Not an image the browser can read';};
+  img.src=URL.createObjectURL(f);});
+$('lgu').addEventListener('click',function(){var code=$('lgc').value.trim().toUpperCase(),t=$('lgt');
+  if(!/^[A-Z0-9]{2,4}$/.test(code)){t.textContent='Enter the airline\'s ICAO code (e.g. CTN)';return;}
+  if(!LOGO){t.textContent='Choose an image first';return;}t.textContent='Uploading…';
+  send('/api/logo?code='+code,'application/octet-stream',LOGO).then(function(r){return r.json();})
+  .then(function(j){t.textContent=j.ok?'Added '+code+': it shows on the next card':'Failed: '+j.error;if(j.ok)logos();})
+  .catch(function(){t.textContent='Upload failed';});});
+logos();
 
 // Airport.
 fetch(PACKS+'index.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){

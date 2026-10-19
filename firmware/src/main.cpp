@@ -293,11 +293,14 @@ static Rgb airlineColour(const String &callsign)
         return kNeutral;
     String icao = callsign.substring(0, 3);
     icao.toUpperCase();
+    static uint32_t logosVersion = 0;
+    if (logosVersion != LogoBook::version()) { cache.clear(); logosVersion = LogoBook::version(); }   // a logo was added
     auto it = cache.find(icao);
     if (it != cache.end()) return it->second;
     FlightInfo tmp;
-    const Rgb c = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565)
-                      ? CardRenderer::accentFor(tmp) : kNeutral;
+    const bool have = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565);
+    if (!have) LogoBook::noteMissing(icao);   // for the web page's Logos section
+    const Rgb c = have ? CardRenderer::accentFor(tmp) : kNeutral;
     if (cache.size() < 64) cache[icao] = c;
     return c;
 }
