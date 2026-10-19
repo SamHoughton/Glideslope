@@ -4,7 +4,7 @@ Serve the board's web page on this computer with made-up data, for
 screenshots and for working on the page without a board.
 
   python tools/webui_preview.py                 # http://127.0.0.1:8765/
-  python tools/webui_preview.py --shots         # docs/webui-desktop.png, webui-alerts.png, webui-phone.png
+  python tools/webui_preview.py --shots         # docs/webui-desktop.png, -alerts, -spotter, -phone
 
 The page is firmware/web/index.html with the brand mark filled in, exactly as
 the board serves it. The API answers with
@@ -38,7 +38,7 @@ def page_html():
 
 
 CONFIG = {
-    'tar1090_host': '', 'center_lat': 51.47, 'center_lon': -0.4543, 'home_lat': 0, 'home_lon': 0,
+    'tar1090_host': '', 'center_lat': 51.47, 'center_lon': -0.4543, 'home_lat': 51.5007, 'home_lon': -0.1246,
     'radius_km': 20, 'min_altitude_ft': 100, 'display_brightness': 128,
     'text_color_r': 255, 'text_color_g': 255, 'text_color_b': 255,
     'display_nearest_only': False, 'display_border': True, 'show_flight_number_with_logo': True,
@@ -46,14 +46,16 @@ CONFIG = {
     'screen_facing': 'S', 'display_flip': False, 'night_mode_enabled': True,
     'night_start_minutes': 1320, 'night_end_minutes': 420, 'night_brightness': 38, 'utc_offset_minutes': 0,
     'fetch_interval_seconds': 30, 'local_fetch_interval_seconds': 5, 'display_cycle_seconds': 10,
-    'card_lead_seconds': 120, 'interlude_seconds': 15, 'screens': 31,
+    'card_lead_seconds': 120, 'interlude_seconds': 15, 'screens': 95, 'route_cities': True,
     'aeroapi_cache_ttl_seconds': 1800, 'aeroapi_fail_cache_ttl_seconds': 300,
     'opensky_client_id': '', 'opensky_client_secret': '', 'opensky_priority': False,
     'use_community_feeds': True, 'aeroapi_key': '', 'night_follow_sun': True,
-    'ntfy_topic': 'glideslope-k3x9q2m7wt', 'notify_mask': 63,
+    'ntfy_topic': 'glideslope-k3x9q2m7wt', 'ntfy_token': '', 'notify_mask': 127,
+    'overhead_km': 2.0, 'overhead_all': False, 'watchlist': 'G-CIVA, B74*, A388, RRR*',
+    'mqtt_host': '192.168.1.20', 'mqtt_port': 1883, 'mqtt_user': 'glideslope', 'mqtt_pass': '***',
 }
 STATUS = {
-    'version': 'v4.0.0', 'built': 'Oct  9 2026 10:00:00', 'uptime_s': 86400, 'last_reset': 'power on',
+    'version': 'v5.0.0', 'built': 'Oct 19 2026 10:00:00', 'uptime_s': 86400, 'last_reset': 'power on',
     'heap_free': 84000, 'heap_max_block': 55000, 'heap_min_free': 18000, 'display_frames': 1700000,
     'web_requests': 5200, 'metar': 'METAR EGLL 071650Z 36011KT 9999 FEW030 12/06 Q1012 NOSIG',
     'airport': 'EGLL', 'airport_name': 'HEATHROW', 'airport_lat': 51.47, 'airport_lon': -0.4543, 'airport_pack': False,
@@ -181,6 +183,7 @@ def main():
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     shoot(url, str(ROOT / 'docs' / 'webui-desktop.png'), 1280, 820, 1)
     shoot(url + '#alerts', str(ROOT / 'docs' / 'webui-alerts.png'), 1280, 820, 1)
+    shoot(url + '#spotter', str(ROOT / 'docs' / 'webui-spotter.png'), 1280, 820, 1)
     phone = ROOT / 'docs' / 'webui-phone.png'
     shoot(url + 'phone', str(phone), 600, 1100, 2)
     from PIL import Image

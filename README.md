@@ -53,22 +53,25 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Today's busiest airlines in their colours](docs/stats-airlines.png) | ![Today's commonest aircraft types](docs/stats-types.png) |
 
-The globe, overhead, stats pages and the fireworks below are drawn by the
-firmware's own code on a desktop (`tools/host_build.py render`), with a
-made-up day of traffic.
+The overhead pass, the top airlines and types pages and the fireworks
+below are drawn by the firmware's own code on a desktop
+(`tools/host_build.py render`), with a made-up day of traffic; the rest
+are the board's own frames.
 
 ### The web page
 
 Every board serves a page at `http://glideslope.local/`: a live mirror of the
 panel drawn as glowing LEDs, what's on it now, the animations on demand, every
 setting in tabs (display with a switch for each screen, airport, night, data,
-phone alerts, system, log), firmware updates and a log.
+spotter, phone alerts and Home Assistant, system, log), firmware updates and a log.
 
 | Desktop | Phone |
 | --- | --- |
 | <img src="docs/webui-desktop.png" alt="The Glideslope web page on a desktop" width="560"> | <img src="docs/webui-phone.png" alt="The Glideslope web page on a phone" width="220"> |
 
-<p align="center"><img src="docs/webui-alerts.png" alt="The Alerts tab: an ntfy topic and the events to be told about" width="560"></p>
+| Alerts | Spotter |
+| --- | --- |
+| <img src="docs/webui-alerts.png" alt="The Alerts tab: an ntfy topic, the events to be told about, Home Assistant" width="420"> | <img src="docs/webui-spotter.png" alt="The Spotter tab: overhead distance and the watchlist" width="420"> |
 
 ## What it shows
 

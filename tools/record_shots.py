@@ -30,8 +30,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs'
 
 # Showcase times (s), matching NeoMatrixDisplay::stepShowcase.
-CLIPS = {'flyacross.gif': (0.0, 2.4), 'landing.gif': (9.0, 12.6), 'takeoff.gif': (39.5, 42.9)}
-STILLS = {'arrivals.png': 24.5, 'weather.png': 29.5, 'stats.png': 34.3, 'holding.png': 38.5}
+CLIPS = {'flyacross.gif': (0.0, 2.4), 'landing.gif': (9.0, 12.6), 'takeoff.gif': (44.5, 47.9)}
+STILLS = {'globe.png': 19.5, 'arrivals.png': 29.0, 'weather.png': 34.0, 'stats.png': 39.3, 'holding.png': 43.5}
 
 
 def save_gif(frames, path, fps=20):
