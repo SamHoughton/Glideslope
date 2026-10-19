@@ -156,13 +156,6 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
             }
             c.set(px, py, FrameCanvas::scale(col, k));
         }
-    // A faint rim of atmosphere.
-    for (int deg = 0; deg < 360; deg += 2)
-    {
-        const int x = (int)lroundf(kCx + (kR + 0.5f) * cosf(deg * kDeg));
-        const int y = (int)lroundf(kCy + (kR + 0.5f) * sinf(deg * kDeg));
-        if (c.get(x, y) == 0) c.set(x, y, Rgb{18, 40, 80});
-    }
 
     // The route: drawn on after the globe has turned in. Solid (fading up to
     // the accent) where it has been, dashed ahead.
