@@ -75,6 +75,18 @@ int main(int argc, char **argv)
     AirportPack::load();   // Heathrow, built in
     FrameCanvas c;
 
+    // The stats as at about 20:00 local, so the clock agrees with a full day of bars.
+#ifdef _WIN32
+    {
+        const time_t now = time(nullptr);
+        struct tm u;
+        gmtime_r(&now, &u);
+        char tz[24];
+        snprintf(tz, sizeof(tz), "TZ=UTC%+d", -((20 - u.tm_hour + 24) % 24));
+        _putenv(tz);
+        tzset();
+    }
+#endif
     static DailyStats stats;
     busyDay(stats);
     InfoScreens::renderStats(c, stats, 1500, 5000);       save(c, "stats_today");
@@ -82,6 +94,10 @@ int main(int argc, char **argv)
     InfoScreens::renderTopTypes(c, stats, 5000);          save(c, "stats_types");
     InfoScreens::renderStats(c, stats, 1500, 300);        save(c, "stats_today_growing");
 
+#ifdef _WIN32
+    _putenv("TZ=UTC0");
+    tzset();
+#endif
     const time_t evening = 1792281600 + 19 * 3600 + 48 * 60;   // 18 Oct 2026, 19:48 UTC
     Globe::Route r;
     r.valid = true;
@@ -141,6 +157,24 @@ int main(int argc, char **argv)
         printf("%s (%u bytes, expected %u)\n", path.c_str(), (unsigned)total, (unsigned)bmp.size());
     }
 #endif
+    // For the README: the fictional GS101 in Glideslope's amber.
+    {
+        Globe::Route g;
+        g.valid = true;
+        strcpy(g.ident, "GS101"); g.accent = Rgb{255, 185, 60};
+        strcpy(g.from, "New York"); strcpy(g.to, "London");
+        g.oLat = 40.64f; g.oLon = -73.78f; g.dLat = 51.47f; g.dLon = -0.45f;
+        g.lat = 51.0f; g.lon = -5.5f; g.speedKts = 300;
+        Globe::render(c, g, 6000, evening);               save(c, "docs_globe");
+#ifdef HAVE_OVERHEAD
+        OverheadScene::Info o;
+        strcpy(o.ident, "GS202"); strcpy(o.type, "A380"); strcpy(o.where, "TO SINGAPORE");
+        o.altFt = 37000; o.kind = AircraftSprites::A380; o.livery = AircraftSprites::Livery(Rgb{255, 185, 60});
+        o.accent = Rgb{255, 185, 60}; o.rightward = true;
+        OverheadScene::render(c, o, 3900, Sky::preview("day"));  save(c, "docs_overhead");
+#endif
+    }
+
     // The landing scene through the year.
     {
         const AircraftSprites::Livery ba(Rgb{28, 48, 110});
