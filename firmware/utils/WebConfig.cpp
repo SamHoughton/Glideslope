@@ -301,11 +301,16 @@ void WebConfig::sendHtmlDirect(WiFiClient &c, const char *html, size_t len)
 
 // Writes in chunks and gives up as soon as the browser has gone: a client that
 // disappears mid-transfer would otherwise stall the web task for each chunk.
+// A browser that is still connected but has stopped reading (a phone whose
+// screen locked during the live preview) makes each write wait for seconds;
+// sixteen of those passed the 30 s watchdog (6.0.0), so a reply gets 8 s.
 void WebConfig::sendChunked(WiFiClient &c, const uint8_t *data, size_t len, size_t chunk)
 {
+    const uint32_t start = millis();
     for (size_t sent = 0; sent < len; )
     {
-        if (!c.connected()) return;
+        if (!c.connected() || millis() - start > 8000) { c.stop(); return; }
+        esp_task_wdt_reset();
         const size_t n = c.write(data + sent, min(chunk, len - sent));
         if (n == 0) return;
         sent += n;
