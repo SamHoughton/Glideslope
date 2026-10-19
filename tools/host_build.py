@@ -22,7 +22,7 @@ LOGIC = ["config/Airport.cpp", "config/Airports.cpp", "display/ApproachModel.cpp
          "display/HoldTracker.cpp", "display/DailyStats.cpp", "utils/Weather.cpp", "adapters/ReadsbParser.cpp",
          "utils/Spotter.cpp", "utils/SeenLog.cpp"]
 DRAW = ["display/FrameCanvas.cpp", "display/InfoScreens.cpp", "display/Globe.cpp", "display/Sky.cpp",
-        "display/AircraftSprites.cpp", "display/OverheadScene.cpp"]
+        "display/AircraftSprites.cpp", "display/OverheadScene.cpp", "display/LandingScene.cpp"]
 FLAGS = ["-std=gnu++17", "-O1", "-D", "NATIVE_TEST", "-D", "_POSIX_THREAD_SAFE_FUNCTIONS", "-D", "ARDUINOJSON_ENABLE_ARDUINO_STRING=1",
          "-D", "ARDUINOJSON_ENABLE_ARDUINO_STREAM=1", "-I", str(FW / "test" / "stubs"), "-I", str(FW),
          "-I", str(LIBS / "ArduinoJson" / "src"), "-w"]

@@ -15,6 +15,7 @@
 #include "display/InfoScreens.h"
 #include "display/Globe.h"
 #include "utils/FrameBmp.h"
+#include "display/LandingScene.h"
 #if __has_include("display/OverheadScene.h")
 #include "display/OverheadScene.h"
 #define HAVE_OVERHEAD 1
@@ -140,5 +141,20 @@ int main(int argc, char **argv)
         printf("%s (%u bytes, expected %u)\n", path.c_str(), (unsigned)total, (unsigned)bmp.size());
     }
 #endif
+    // The landing scene through the year.
+    {
+        const AircraftSprites::Livery ba(Rgb{28, 48, 110});
+        const struct { const char *look, *name; uint32_t t; } kLooks[] = {
+            {"night+fireworks", "landing_fireworks", 1500}, {"night+fireworks", "landing_fireworks2", 2300},
+            {"night+fireworks", "landing_fireworks3", 3100}, {"night+christmas", "landing_christmas", 1500},
+            {"day+frost", "landing_frost_day", 1500}, {"night+snow", "landing_snow_night", 1500},
+        };
+        for (const auto &k : kLooks)
+        {
+            LandingScene::render(c, k.t, AircraftSprites::getScene(AircraftSprites::A320), Rgb{70, 130, 255}, false,
+                                 false, "BA117", "27L", LandingScene::Landing, Sky::preview(k.look), &ba);
+            save(c, k.name);
+        }
+    }
     return 0;
 }

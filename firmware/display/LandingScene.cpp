@@ -222,6 +222,68 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
                                        (uint8_t)(p.b + (rimCol.b - p.b) * rimK)});
             }
 
+    // The time of year along the skyline: snow on the roofs, Christmas lights,
+    // and fireworks over London.
+    if (sky.frost)
+    {
+        const Rgb snow = Sky::shade(sky, Rgb{150, 165, 190});
+        const Rgb snowDay{225, 232, 242};
+        const Rgb col = sky.night < 0.5f ? snowDay : snow;
+        for (int x = 0; x < FrameCanvas::W; ++x)
+            if (s_top[x] != 255) c.set(x, s_top[x], col);
+    }
+    if (sky.season == Sky::Look::Christmas && (!sky.known || sky.lightsOn))
+    {
+        static const Rgb kBulbs[] = {{255, 60, 60}, {60, 220, 90}, {255, 200, 60}, {80, 150, 255}};
+        for (int x = 1; x < FrameCanvas::W; x += 3)
+            if (s_top[x] != 255 && s_top[x] + 1 < kSurfaceY)
+            {
+                const int k = (x / 3 + (int)(tMs / 450)) % 4;
+                const bool on = ((x * 7 + tMs / 300) % 5) != 0;   // a gentle twinkle
+                if (on) c.set(x, s_top[x] + 1, kBulbs[k]);
+            }
+    }
+    if (sky.season == Sky::Look::Fireworks && sky.night > 0.5f)
+    {
+        static const Rgb kShells[] = {{255, 90, 80}, {255, 210, 90}, {120, 200, 255}, {200, 120, 255}, {120, 255, 150}};
+        constexpr uint32_t kCycle = 1700;
+        for (int b = 0; b < 3; ++b)
+        {
+            const uint32_t t = tMs + b * 560;
+            const uint32_t n = t / kCycle;   // which shell
+            const float u = (t % kCycle) / (float)kCycle;
+            const uint32_t h = (n * 2654435761u) ^ (b * 40503u);
+            const int cx = 10 + (int)(h % 108), cy = 23 + (int)((h >> 8) % 7);   // below the caption
+            const Rgb col = kShells[(h >> 16) % 5];
+            const int ground = kSurfaceY - 2;
+            if (u < 0.25f)
+            {
+                // Rising: a spark climbing from the skyline.
+                const int y = ground - (int)((ground - cy) * (u / 0.25f));
+                c.set(cx, y, Rgb{255, 230, 180});
+                continue;
+            }
+            const float v = (u - 0.25f) / 0.75f;   // burst: grows, then fades and falls
+            const float r = 1 + 7 * (1 - (1 - v) * (1 - v));
+            const float fade = v < 0.6f ? 1.0f : 1 - (v - 0.6f) / 0.4f;
+            if (v < 0.12f) c.set(cx, cy, Rgb{255, 255, 255});   // the flash
+            for (int i = 0; i < 16; ++i)
+            {
+                const float a = i * 0.3927f + (h % 7);
+                // Each spark with a dimmer one just behind it, drooping as it falls.
+                for (int k = 0; k < 2; ++k)
+                {
+                    const float rr = r - k * 1.5f;
+                    if (rr < 1) continue;
+                    const int x = cx + (int)lroundf(cosf(a) * rr);
+                    const int y = cy + (int)lroundf(sinf(a) * rr * 0.85f + v * v * 5);
+                    if (y >= ground) continue;
+                    c.set(x, y, FrameCanvas::scale(col, fade * (k ? 0.45f : 1.0f)));
+                }
+            }
+        }
+    }
+
     // Runway: surface, dotted edge line, dashed centreline, piano keys.
     for (int y = kSurfaceY; y <= kSurfaceY + 3; ++y)
         for (int x = 0; x < kKeysX + 9; ++x)

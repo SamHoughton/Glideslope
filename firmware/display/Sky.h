@@ -33,6 +33,9 @@ namespace Sky
         uint8_t cloud = 0;         // 0 clear, 1 scattered, 2 broken, 3 overcast
         Precip  precip = NoPrecip;
         bool    fog = false;
+        bool    frost = false;     // at or below freezing (or snowing): snow on the roofs
+        enum Season : uint8_t { Ordinary, Christmas, Fireworks };
+        Season  season = Ordinary; // lights through December, fireworks on 5 Nov and New Year's Eve
         Rgb     top{0, 0, 0}, horizon{0, 0, 0};
     };
 
