@@ -364,6 +364,8 @@ transparent background works best), check the 32×32 preview and upload.
 The browser does the conversion; the logo goes onto the board, not into
 this repository.
 
+<p align="center"><img src="docs/webui-logos.png" alt="The Display tab's Airline logos: airlines seen without one, an image picker and a 32x32 preview" width="560"></p>
+
 ## Other airports
 
 Heathrow is built in. For another airport, install an **airport pack** from
