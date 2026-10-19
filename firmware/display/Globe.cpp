@@ -144,7 +144,7 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
             if (sunKnown)
             {
                 const float day = dot(p, sun);
-                k *= day > 0.08f ? 1.0f : (day < -0.08f ? 0.28f : 0.28f + 0.72f * (day + 0.08f) / 0.16f);
+                k *= day > 0.08f ? 1.0f : (day < -0.08f ? 0.16f : 0.16f + 0.84f * (day + 0.08f) / 0.16f);
             }
             c.set(px, py, FrameCanvas::scale(col, k));
         }

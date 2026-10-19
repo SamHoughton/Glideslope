@@ -84,7 +84,14 @@ static void applyDefaults(RuntimeConfig &c)
     c.opensky_priority               = false;
     c.use_community_feeds            = true;
     c.ntfy_topic[0]                  = '\0';
-    c.notify_mask                    = 0x1F;   // all events (once a topic is set)
+    c.notify_mask                    = 0x5F;   // all events but the round-up (once a topic is set)
+    c.overhead_km                    = 2.0f;
+    c.overhead_all                   = false;
+    c.watchlist[0]                   = '\0';
+    c.mqtt_host[0]                   = '\0';
+    c.mqtt_port                      = 1883;
+    c.mqtt_user[0]                   = '\0';
+    c.mqtt_pass[0]                   = '\0';
     c.min_altitude_ft                = 100;
 
     c.fetch_interval_seconds        = TimingConfiguration::FETCH_INTERVAL_SECONDS;
@@ -142,6 +149,20 @@ void loadConfig()
     g_config.opensky_priority              = p.getBool("osky_pri",  g_config.opensky_priority);
     g_config.use_community_feeds           = p.getBool("community", g_config.use_community_feeds);
     g_config.notify_mask                   = (uint8_t)p.getUInt("ntfy_m", g_config.notify_mask);
+    if (!p.isKey("ntf_v5")) g_config.notify_mask |= 64;   // watchlist alerts (5.0)
+    g_config.overhead_km                   = p.getFloat("ovh_km", g_config.overhead_km);
+    g_config.overhead_all                  = p.getBool("ovh_all", g_config.overhead_all);
+    g_config.mqtt_port                     = (uint16_t)p.getUInt("mqtt_port", g_config.mqtt_port);
+    {
+        String v = p.getString("watch", String(g_config.watchlist));
+        strlcpy(g_config.watchlist, v.c_str(), sizeof(g_config.watchlist));
+        v = p.getString("mqtt_host", String(g_config.mqtt_host));
+        strlcpy(g_config.mqtt_host, v.c_str(), sizeof(g_config.mqtt_host));
+        v = p.getString("mqtt_user", String(g_config.mqtt_user));
+        strlcpy(g_config.mqtt_user, v.c_str(), sizeof(g_config.mqtt_user));
+        v = p.getString("mqtt_pass", String(g_config.mqtt_pass));
+        strlcpy(g_config.mqtt_pass, v.c_str(), sizeof(g_config.mqtt_pass));
+    }
     {
         String v = p.getString("ntfy", String(g_config.ntfy_topic));
         strlcpy(g_config.ntfy_topic, v.c_str(), sizeof(g_config.ntfy_topic));
@@ -223,6 +244,14 @@ void saveConfig()
     p.putBool("osky_pri",  g_config.opensky_priority);
     p.putBool("community", g_config.use_community_feeds);
     p.putUInt("ntfy_m",    g_config.notify_mask);
+    p.putBool("ntf_v5",    true);
+    p.putFloat("ovh_km",   g_config.overhead_km);
+    p.putBool("ovh_all",   g_config.overhead_all);
+    p.putString("watch",   g_config.watchlist);
+    p.putString("mqtt_host", g_config.mqtt_host);
+    p.putUInt("mqtt_port", g_config.mqtt_port);
+    p.putString("mqtt_user", g_config.mqtt_user);
+    p.putString("mqtt_pass", g_config.mqtt_pass);
     p.putString("ntfy",    g_config.ntfy_topic);
     p.putString("ntfy_tok", g_config.ntfy_token);
     p.putInt("min_alt",    g_config.min_altitude_ft);

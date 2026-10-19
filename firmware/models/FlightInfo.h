@@ -35,6 +35,12 @@ struct FlightInfo
     std::vector<uint16_t> airline_logo_rgb565;
     String logo_code;
 
+    // Registration history (utils/SeenLog): days this airframe has been on
+    // the board, today included (0 = unknown), and the last day before today
+    // (days since 1 Jan 2020; 0 = none).
+    uint16_t seen_days = 0;
+    uint16_t seen_prev_day = 0;
+
     // Flight parameters (display-ready units: ft, kts, deg, fpm)
     double baro_altitude = NAN;
     double velocity = NAN;

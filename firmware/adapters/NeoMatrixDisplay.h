@@ -10,6 +10,7 @@
 #include "display/FrameCanvas.h"
 #include "display/FlyAcross.h"
 #include "display/Globe.h"
+#include "display/OverheadScene.h"
 #include "display/ApproachModel.h"
 #include "display/Traffic.h"
 #include "display/DailyStats.h"
@@ -57,6 +58,7 @@ void requestTakeoffDemo();
 
 // Show a sample emergency-squawk alert (demo).
 void requestAlertDemo();
+void requestOverheadDemo();
 void requestRunwayChangeDemo();
 // Previews a sky ("night+rain", see Sky::preview): replays the card's landing
 // in it (or the showcase when there is no card). Real flights keep the real sky.
@@ -138,6 +140,8 @@ public:
 
     // Emergency squawk: takes over the panel for a few seconds. Safe from any task.
     void raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail);
+    // An aircraft overhead or on the watchlist: its pass across the sky.
+    void showSpot(const OverheadScene::Info &info);
 
     // Where card logos come from (loaded only for the card on screen).
     void setLogoStore(class BaseLogoStore *store) { _logos = store; }
@@ -200,6 +204,10 @@ private:
     // Rotation screens; bit n of g_config.screens enables Screen n. Bit 5
     // is the departures page of the arrivals board, not a screen of its own.
     enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Departures, Globe, Count };
+    // Overhead / watchlist scene (display task; _spotPending set under the lock).
+    OverheadScene::Info  _spot;
+    bool                 _spotPending = false, _spotActive = false;
+    unsigned long        _spotStartMs = 0;
     // The route globe: the latest card's flight with both airports known.
     Globe::Route         _globe;
     void                 noteGlobe(const Entry &e);

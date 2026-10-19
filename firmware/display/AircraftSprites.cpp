@@ -165,7 +165,8 @@ Rgb AircraftSprites::airlineColour(const char *code)
             match = iata && strcmp(iata, code) == 0;
         }
         if (!match) continue;
-        // Most saturated of tail (3), stripe (2), trim (4), engines (5).
+        // The tail when it has a colour (BA navy, not its red stripe), else
+        // the most saturated of stripe, trim and engines.
         float best = -1;
         Rgb out{150, 160, 175};
         for (int i : {3, 2, 4, 5})
@@ -174,6 +175,7 @@ Rgb AircraftSprites::airlineColour(const char *code)
             const int mx = max(c[0], max(c[1], c[2])), mn = min(c[0], min(c[1], c[2]));
             if (mx < 30) continue;
             const float sat = (float)(mx - mn) / mx;
+            if (i == 3 && sat >= 0.35f) { out = Rgb{c[0], c[1], c[2]}; break; }
             if (sat > best) { best = sat; out = Rgb{c[0], c[1], c[2]}; }
         }
         // Full brightness reads better on LEDs (navy tails become blue).
@@ -273,6 +275,34 @@ void AircraftSprites::draw(FrameCanvas &c, const Sprite &s, int x, int y, const 
             const char ch = at(r, col);
             if (ch == 'a' || ch == 'b')
                 px = mixTo(FrameCanvas::unpack(c.get(x + col, y + r)), px, 0.55f);
+            c.set(x + col, y + r, px);
+        }
+}
+
+void AircraftSprites::drawHalf(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,
+                               bool flipX, bool grey)
+{
+    const Livery greys{};
+    for (int r = 0; r < (s.h + 1) / 2; ++r)
+        for (int col = 0; col < (s.w + 1) / 2; ++col)
+        {
+            int n = 0, sr = 0, sg = 0, sb = 0;
+            for (int dy = 0; dy < 2; ++dy)
+                for (int dx = 0; dx < 2; ++dx)
+                {
+                    const int rr = 2 * r + dy, cc = 2 * col + dx;
+                    if (rr >= s.h || cc >= s.w) continue;
+                    Rgb px;
+                    if (!shade(s.rows[rr][flipX ? s.w - 1 - cc : cc], grey ? greys : livery, px)) continue;
+                    ++n; sr += px.r; sg += px.g; sb += px.b;
+                }
+            if (n < 2) continue;
+            Rgb px{(uint8_t)(sr / n), (uint8_t)(sg / n), (uint8_t)(sb / n)};
+            if (grey)
+            {
+                const uint8_t v = (uint8_t)((px.r * 3 + px.g * 4 + px.b) / 8 * 0.75f);
+                px = Rgb{v, v, (uint8_t)min(255, v + 6)};
+            }
             c.set(x + col, y + r, px);
         }
 }

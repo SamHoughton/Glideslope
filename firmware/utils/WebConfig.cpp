@@ -238,6 +238,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/splash"   && r.method == "POST") { requestSplashPreview(10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/map"      && r.method == "POST") { requestMapPreview(30000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/stats"    && r.method == "POST") { requestScreenPreview(1, 24000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/overhead" && r.method == "POST") { requestOverheadDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/globe"    && r.method == "POST") { requestScreenPreview(6, 12000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/coredump"      && r.method == "GET")
     {
@@ -390,6 +391,13 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["use_community_feeds"]   = g_config.use_community_feeds;
     doc["ntfy_topic"]            = g_config.ntfy_topic;
     doc["ntfy_token"]            = g_config.ntfy_token[0] ? "***" : "";
+    doc["overhead_km"]           = g_config.overhead_km;
+    doc["overhead_all"]          = g_config.overhead_all;
+    doc["watchlist"]             = g_config.watchlist;
+    doc["mqtt_host"]             = g_config.mqtt_host;
+    doc["mqtt_port"]             = g_config.mqtt_port;
+    doc["mqtt_user"]             = g_config.mqtt_user;
+    doc["mqtt_pass"]             = g_config.mqtt_pass[0] ? "***" : "";
     doc["notify_mask"]           = g_config.notify_mask;
     doc["aeroapi_key"]           = (strlen(g_config.aeroapi_key)           > 0) ? "***" : "";
 
@@ -458,6 +466,24 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
     next.opensky_priority              = doc["opensky_priority"]              | next.opensky_priority;
     next.use_community_feeds           = doc["use_community_feeds"]           | next.use_community_feeds;
     next.notify_mask                   = doc["notify_mask"]                   | next.notify_mask;
+    next.overhead_km                   = doc["overhead_km"]                   | next.overhead_km;
+    if (next.overhead_km < 0) next.overhead_km = 0;
+    if (next.overhead_km > 20) next.overhead_km = 20;
+    next.overhead_all                  = doc["overhead_all"]                  | next.overhead_all;
+    next.mqtt_port                     = (uint16_t)(doc["mqtt_port"] | (int)next.mqtt_port);
+    if (doc["watchlist"].is<const char *>()) strlcpy(next.watchlist, doc["watchlist"].as<const char *>(), sizeof(next.watchlist));
+    if (doc["mqtt_host"].is<const char *>())
+    {
+        String h = doc["mqtt_host"].as<const char *>();
+        h.trim();
+        strlcpy(next.mqtt_host, h.c_str(), sizeof(next.mqtt_host));
+    }
+    if (doc["mqtt_user"].is<const char *>()) strlcpy(next.mqtt_user, doc["mqtt_user"].as<const char *>(), sizeof(next.mqtt_user));
+    {
+        const char *v = doc["mqtt_pass"] | "";
+        if (strcmp(v, "***") != 0 && doc["mqtt_pass"].is<const char *>())
+            strlcpy(next.mqtt_pass, v, sizeof(next.mqtt_pass));   // "" clears it
+    }
     if (doc["ntfy_topic"].is<const char *>())
     {
         // Trimmed: a topic pasted with a stray space would silently go nowhere.

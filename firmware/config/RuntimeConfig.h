@@ -64,6 +64,17 @@ struct RuntimeConfig
     // URL, and which events (Notify::Kind bits).
     char     ntfy_topic[64];
     char     ntfy_token[48];             // access token for a protected topic (sent over https only)
+
+    // Spotter (5.0): aircraft over the home marker, and the watchlist.
+    float    overhead_km;                // 0 = off
+    bool     overhead_all;               // arrivals and departures too, not just overflights
+    char     watchlist[160];             // registrations, call signs, types, hex; * = prefix
+
+    // Home Assistant over MQTT (5.0); blank host = off.
+    char     mqtt_host[48];
+    uint16_t mqtt_port;
+    char     mqtt_user[32];
+    char     mqtt_pass[48];
     uint8_t  notify_mask;
 
     // Route lookup source priority

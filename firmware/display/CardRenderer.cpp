@@ -36,6 +36,7 @@ namespace
 
     constexpr uint32_t kRouteShowMs = 5000;   // route, before switching to the airline name
     constexpr uint32_t kNameShowMs  = 3000;   // airline name
+    constexpr uint32_t kSeenShowMs  = 2500;   // registration history, each line
     constexpr uint32_t kFadeMs      = 350;    // cross-fade between the two
 
     constexpr uint32_t kGlintEveryMs = 7000;   // logo glint cadence
@@ -335,13 +336,34 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
     const bool hasAirline = shortAirlineName(f.airline_display_name_full.c_str(), kCols, airline, sizeof(airline));
     const uint32_t routeMs = routeShowMs(FrameCanvas::textWidth(route));
 
+    // Registration history after the airline: "SEEN 14 TIMES", "LAST ON 3 OCT"
+    // or "FIRST VISIT".
+    char seen[kCols + 1] = "", last[kCols + 1] = "";
+    if (f.seen_days == 1) snprintf(seen, sizeof(seen), "FIRST VISIT");
+    else if (f.seen_days > 1 && f.seen_days < 100) snprintf(seen, sizeof(seen), "SEEN %u TIMES", (unsigned)f.seen_days);
+    else if (f.seen_days >= 100) snprintf(seen, sizeof(seen), "SEEN %uX", (unsigned)f.seen_days);
+    if (f.seen_days > 1 && f.seen_prev_day)
+    {
+        static const char *const kMon[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+        const time_t t = (time_t)(18262L + f.seen_prev_day) * 86400L + 43200;   // midday that day
+        struct tm lt;
+        gmtime_r(&t, &lt);
+        snprintf(last, sizeof(last), "LAST ON %d %s", lt.tm_mday, kMon[lt.tm_mon]);
+    }
+
     if (hasRoute && hasAirline)
     {
-        const uint32_t t = opt.animMs % (routeMs + kNameShowMs);
+        const uint32_t seenMs = seen[0] ? kSeenShowMs : 0, lastMs = last[0] ? kSeenShowMs : 0;
+        const uint32_t t = opt.animMs % (routeMs + kNameShowMs + seenMs + lastMs);
+        const Rgb kSeen{150, 200, 235};
         if (t < routeMs)
             drawRoute(c, 18, route, FrameCanvas::scale(kWhite, phaseFade(t, routeMs, kFadeMs)), t);
-        else
+        else if (t < routeMs + kNameShowMs)
             c.text(kTextX, 18, airline, FrameCanvas::scale(accent, phaseFade(t - routeMs, kNameShowMs, kFadeMs)));
+        else if (t < routeMs + kNameShowMs + seenMs)
+            c.text(kTextX, 18, seen, FrameCanvas::scale(kSeen, phaseFade(t - routeMs - kNameShowMs, seenMs, kFadeMs)));
+        else
+            c.text(kTextX, 18, last, FrameCanvas::scale(kSeen, phaseFade(t - routeMs - kNameShowMs - seenMs, lastMs, kFadeMs)));
     }
     else if (hasRoute)
         drawRoute(c, 18, route, kWhite, opt.animMs % (routeMs + kScrollHoldMs));

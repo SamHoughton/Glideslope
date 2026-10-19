@@ -126,7 +126,7 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         snprintf(title, sizeof(title), "TODAY");
     titleBand(c, title, clock);
 
-    // Tiles: the count, its label, and this hour's movements.
+    // Tiles: the count, its label, and the last full hour's movements.
     const int nowH = haveTime ? lt.tm_hour : -1;
     for (int side = 0; side < 2; ++side)
     {
@@ -140,9 +140,10 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         c.text(x + 4, 15, v, col, 2, 11);
         const char *label = arr ? "ARR" : "DEP";
         c.text(x + 59 - FrameCanvas::textWidth(label), 14, label, FrameCanvas::scale(col, 0.75f));
-        if (nowH >= 0)
+        const int lastH = nowH > 0 ? (arr ? stats.arrivalsInHour(nowH - 1) : stats.departuresInHour(nowH - 1)) : 0;
+        if (lastH > 0)
         {
-            snprintf(v, sizeof(v), "%d/H", arr ? stats.arrivalsInHour(nowH) : stats.departuresInHour(nowH));
+            snprintf(v, sizeof(v), "%d/H", lastH);
             c.text(x + 59 - FrameCanvas::textWidth(v), 23, v, FrameCanvas::scale(col, 0.5f));
         }
     }

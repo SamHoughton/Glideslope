@@ -99,6 +99,8 @@ static volatile bool s_alertDemo = false;
 void requestTakeoffDemo() { s_takeoffDemo = true; }
 
 void requestAlertDemo() { s_alertDemo = true; }
+static volatile bool s_spotDemo = false;
+void requestOverheadDemo() { s_spotDemo = true; }
 
 static volatile bool s_runwayDemo = false;
 static char          s_skyPreview[24] = "";
@@ -489,6 +491,13 @@ void NeoMatrixDisplay::setWeather(const Metar &m)
     strlcpy(_weather, line, sizeof(_weather));
 }
 
+void NeoMatrixDisplay::showSpot(const OverheadScene::Info &info)
+{
+    Lock l(_lock);
+    _spot = info;
+    _spotPending = true;
+}
+
 void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail)
 {
     Lock l(_lock);
@@ -727,6 +736,42 @@ uint32_t NeoMatrixDisplay::renderFrame(unsigned long now)
             return kCardFrameMs;
         }
         _rwyChangeActive = false;
+    }
+
+    // Overhead or watchlist: the pass across the sky, never over a landing.
+    if (s_spotDemo)
+    {
+        s_spotDemo = false;
+        OverheadScene::Info d;
+        strlcpy(d.ident, "EK2", sizeof(d.ident));
+        strlcpy(d.type, "A380", sizeof(d.type));
+        strlcpy(d.where, g_config.route_cities ? "TO DUBAI" : "TO DXB", sizeof(d.where));
+        d.altFt = 36000;
+        d.kind = AircraftSprites::A380;
+        d.livery = AircraftSprites::Livery(Rgb{200, 30, 40});
+        d.accent = Rgb{230, 50, 60};
+        d.rightward = FlyAcross::pathFor(90, 0, g_config.screen_facing).rightward;
+        _spot = d;
+        _spotPending = true;
+    }
+    if (_spotPending && !_landingActive && !_alertActive)
+    {
+        _spotPending = false;
+        _spotActive = true;
+        _spotStartMs = now;
+    }
+    if (_spotActive)
+    {
+        const uint32_t t = now - _spotStartMs;
+        if (t < OverheadScene::DURATION_MS)
+        {
+            OverheadScene::render(g_workFrame, _spot, t, s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky);
+            present();
+            return kAnimFrameMs;
+        }
+        _spotActive = false;
+        g_oldFrame.copyFrom(g_shownFrame);   // fade back into whatever comes next
+        _ambientSinceMs = now;
     }
 
     // Web demo: the rare-spot flourish, then a fly-across onto the current card.

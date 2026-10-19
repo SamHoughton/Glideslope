@@ -66,4 +66,8 @@ namespace AircraftSprites
     // outline clears a 1px black halo first so it reads over busy backgrounds.
     void draw(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,
               bool flipX = false, bool grey = false, bool outline = false);
+    // At half size (each 2x2 block averaged; drawn where at least two of
+    // the four are aircraft), for aircraft high overhead.
+    void drawHalf(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,
+                  bool flipX = false, bool grey = false);
 }

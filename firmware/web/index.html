@@ -79,8 +79,8 @@ details[open]>summary{margin-bottom:10px}
 @media(max-width:480px){.row{grid-template-columns:1fr}}
 label{display:block;font-size:13px;color:var(--text);margin-bottom:5px;font-weight:500}
 small,.hint{color:var(--muted);font-size:12px;font-weight:400}
-input,select{width:100%;font:inherit;font-size:14px;color:var(--text);background:#0b1017;border:1px solid var(--line2);border-radius:9px;padding:9px 11px}
-input:focus,select:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(255,185,60,.18)}
+input,select,textarea{width:100%;font:inherit;font-size:14px;color:var(--text);background:#0b1017;border:1px solid var(--line2);border-radius:9px;padding:9px 11px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(255,185,60,.18)}
 input[type=range]{padding:0;accent-color:var(--amber);background:none;border:none;box-shadow:none}
 input[type=file]{padding:7px;color:var(--muted)}
 input[type=file]::file-selector-button{font:inherit;font-size:13px;margin-right:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--line2);background:#1a2230;color:var(--text);cursor:pointer}
@@ -142,6 +142,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="arrivals">Arrivals</button>
         <button data-demo="stats">Today's stats</button>
         <button data-demo="globe">Route globe</button>
+        <button data-demo="overhead">Overhead pass</button>
         <button data-demo="weather">Weather</button>
         <button data-demo="holding">Holding stacks</button>
         <button data-demo="clock">Night clock</button>
@@ -167,6 +168,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <button data-tab="airport">Airport</button>
       <button data-tab="night">Night</button>
       <button data-tab="data">Data</button>
+      <button data-tab="spotter">Spotter</button>
       <button data-tab="alerts">Alerts</button>
       <button data-tab="system">System</button>
       <button data-tab="log">Log</button>
@@ -251,13 +253,32 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       </div>
     </section>
 
+    <section class="tab" id="t-spotter">
+      <p class="hint">Uses the home marker (Airport tab). An aircraft passing within the distance below crosses the panel at a size set by its height, with where it is going. Each aircraft once every 45 minutes.</p>
+      <div class="f"><label for="overhead_km">Overhead within <small>(km; 0 = off)</small></label><input type="number" step="0.5" min="0" max="20" id="overhead_km"></div>
+      <label class="sw"><input type="checkbox" id="overhead_all"><span>Arrivals and departures too<small>Off: only aircraft flying over, not ones landing or taking off here (they have their own cards)</small></span></label>
+      <div class="f"><label for="watchlist">Watchlist <small>&mdash; registrations, call signs, aircraft types or hex codes, separated by commas; * matches the start (B74*, RRR*)</small></label><textarea id="watchlist" rows="3" maxlength="159" spellcheck="false" placeholder="e.g. G-CIVA, B74*, A388, RRR*"></textarea></div>
+      <p class="hint">A watchlist aircraft anywhere in range takes over the panel and, with alerts on, sends one to your phone (once every 6 hours each).</p>
+      <div class="btns"><button data-demo="overhead">Show an overhead pass</button></div>
+    </section>
+
     <section class="tab" id="t-alerts">
       <p class="hint">Alerts on your phone through <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>: free, no account. Install the ntfy app and subscribe to the topic below. Anyone who knows a topic can read it, so keep it long and random.</p>
       <div class="f"><label for="ntfy_topic">ntfy topic <small>(or a full URL for your own server; blank = off)</small></label><input id="ntfy_topic" autocomplete="off" spellcheck="false" placeholder="e.g. glideslope-k3x9q2m7w1"></div>
       <div class="f"><label for="ntfy_token">Access token <small>(optional, for a protected topic on your own server; sent over https only)</small></label><input type="password" id="ntfy_token" autocomplete="new-password"></div>
       <div class="btns"><button id="ntr">Random topic</button><button id="ntt">Save and send a test</button><span class="msg" id="ntst"></span></div>
       <div class="f"><label>Tell me about</label>
-        <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label><label><input type="checkbox" data-ntf="32">Evening round-up</label></div></div>
+        <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label><label><input type="checkbox" data-ntf="32">Evening round-up</label><label><input type="checkbox" data-ntf="64">Watchlist</label></div></div>
+      <h3>Home Assistant</h3>
+      <p class="hint">Sensors over MQTT with discovery: next arrival, runways in use, today's arrivals and departures, aircraft holding, the last flight. Blank host = off.</p>
+      <div class="row">
+        <div class="f"><label for="mqtt_host">MQTT broker</label><input id="mqtt_host" autocomplete="off" spellcheck="false" placeholder="e.g. homeassistant.local"></div>
+        <div class="f"><label for="mqtt_port">Port</label><input type="number" min="1" max="65535" id="mqtt_port"></div>
+      </div>
+      <div class="row">
+        <div class="f"><label for="mqtt_user">User</label><input id="mqtt_user" autocomplete="off" spellcheck="false"></div>
+        <div class="f"><label for="mqtt_pass">Password</label><input type="password" id="mqtt_pass" autocomplete="new-password"></div>
+      </div>
     </section>
 
     <section class="tab" id="t-system">
@@ -316,16 +337,17 @@ function load(){fetch('/api/config').then(function(r){return r.json();}).then(fu
   document.querySelectorAll('[data-ntf]').forEach(function(e){e.checked=!!(d.notify_mask&parseInt(e.dataset.ntf));});
   $('bv').textContent=d.display_brightness;});}
 function save(){var d={};
-  ['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
+  ['center_lat','center_lon','radius_km','home_lat','home_lon','overhead_km'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
+  d.watchlist=$('watchlist').value.trim();d.mqtt_host=$('mqtt_host').value.trim();d.mqtt_user=$('mqtt_user').value;d.mqtt_port=parseInt($('mqtt_port').value)||1883;
   ['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',
    'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});
-  ['display_nearest_only','display_border','display_flip','route_cities','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
+  ['display_nearest_only','display_border','display_flip','route_cities','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds','overhead_all'].forEach(function(k){d[k]=$(k).checked;});
   d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});
   d.screen_facing=$('screen_facing').value;d.tar1090_host=$('tar1090_host').value;
   d.ntfy_topic=$('ntfy_topic').value.trim();d.notify_mask=ntfMask();
   var ma=$('min_altitude_ft').value;d.min_altitude_ft=ma===''?-1:parseInt(ma);
   d.night_start_minutes=toMin($('night_start_time').value);d.night_end_minutes=toMin($('night_end_time').value);
-  ['opensky_client_id','opensky_client_secret','aeroapi_key','ntfy_token'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});
+  ['opensky_client_id','opensky_client_secret','aeroapi_key','ntfy_token','mqtt_pass'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});
   status('Saving…');post('/api/config',d).then(function(r){return r.json();})
     .then(function(j){status(j.ok?'Saved':'Error: '+(j.error||'?'),3000);load();}).catch(function(){status('Could not reach the board',4000);});}
 $('save').addEventListener('click',save);

@@ -14,6 +14,8 @@ unsigned long g_fakeMillis = 1000;
 
 #include "config/Airport.h"
 #include "config/Airports.h"
+#include "utils/Spotter.h"
+#include "utils/SeenLog.h"
 #include "display/ApproachModel.h"
 #include "display/RunwayTracker.h"
 #include "display/HoldTracker.h"
@@ -400,6 +402,105 @@ void test_airport_cities()
     }
 }
 
+// ── Spotter ────────────────────────────────────────────────────────────────
+void test_watchlist_matching()
+{
+    StateVector s;
+    s.icao24 = "43c6f1";
+    s.callsign = "RRR6754";
+    s.registration = "ZZ336";
+    s.aircraft_type = "A332";
+    char m[16];
+    TEST_ASSERT_TRUE(Spotter::watchMatch("g-civa, rrr*", s, m, sizeof(m)));
+    TEST_ASSERT_EQUAL_STRING("rrr*", m);
+    TEST_ASSERT_TRUE(Spotter::watchMatch("Z-Z336", s, m, sizeof(m)));      // dashes ignored
+    TEST_ASSERT_TRUE(Spotter::watchMatch("A33*", s, m, sizeof(m)));
+    TEST_ASSERT_TRUE(Spotter::watchMatch("43C6F1", s, m, sizeof(m)));
+    TEST_ASSERT_FALSE(Spotter::watchMatch("A333 B74*", s, m, sizeof(m)));
+    TEST_ASSERT_FALSE(Spotter::watchMatch("RRR", s, m, sizeof(m)));       // a call sign needs * to be a prefix
+    TEST_ASSERT_FALSE(Spotter::watchMatch("*", s, m, sizeof(m)));
+    TEST_ASSERT_FALSE(Spotter::watchMatch("", s, m, sizeof(m)));
+}
+
+void test_overhead_and_cooldown()
+{
+    Spotter::reset();
+    Spotter::Settings cfg;
+    cfg.home_lat = 51.50; cfg.home_lon = -0.10;   // central London, east of the airport
+    cfg.overhead_km = 2;
+    // An overflight 1 km north of home at 30,000 ft, and one 5 km away.
+    std::vector<StateVector> v{at("aaa001", 51.50, -0.10, 0, 5, 30000, 450, 90, 0),
+                               at("aaa002", 51.50, -0.10, 0, 1, 30000, 450, 90, 0)};
+    Spotter::Event e;
+    TEST_ASSERT_TRUE(Spotter::check(v, cfg, 1000, e));
+    TEST_ASSERT_EQUAL(1, e.index);
+    TEST_ASSERT_FALSE(e.watch);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 1.0f, e.distKm);
+    // Announced once: the next fetch is quiet, 46 minutes later it can come round again.
+    TEST_ASSERT_FALSE(Spotter::check(v, cfg, 6000, e));
+    TEST_ASSERT_TRUE(Spotter::check(v, cfg, 1000 + 46UL * 60 * 1000, e));
+    // A watchlist match wins over an overhead.
+    Spotter::reset();
+    v[0].aircraft_type = "B744";
+    cfg.watchlist = "B74*";
+    TEST_ASSERT_TRUE(Spotter::check(v, cfg, 1000, e));
+    TEST_ASSERT_TRUE(e.watch);
+    TEST_ASSERT_EQUAL(0, e.index);
+    TEST_ASSERT_EQUAL_STRING("B74*", e.matched);
+    // Off without a home marker or radius.
+    Spotter::reset();
+    cfg.watchlist = "";
+    cfg.overhead_km = 0;
+    TEST_ASSERT_FALSE(Spotter::check(v, cfg, 1000, e));
+}
+
+void test_overhead_skips_arrivals()
+{
+    Spotter::reset();
+    // Home under the 27L approach, 6 km out: an arrival passing over is not an overflight.
+    const StateVector arr = onFinal("bbb001", "27L", 6);
+    Spotter::Settings cfg;
+    cfg.home_lat = arr.lat; cfg.home_lon = arr.lon;
+    cfg.overhead_km = 2;
+    std::vector<StateVector> v{arr};
+    Spotter::Event e;
+    TEST_ASSERT_FALSE(Spotter::check(v, cfg, 1000, e));
+    cfg.overhead_all = true;
+    TEST_ASSERT_TRUE(Spotter::check(v, cfg, 1000, e));
+}
+
+// ── Registration history ───────────────────────────────────────────────────
+struct MemStore : SeenLog::Store
+{
+    SeenLog::Slot slots[SeenLog::kSlots];
+    int writes = 0;
+    bool read(uint32_t i, SeenLog::Slot &s) override { s = slots[i]; return true; }
+    bool write(uint32_t i, const SeenLog::Slot &s) override { slots[i] = s; ++writes; return true; }
+};
+
+void test_seen_log()
+{
+    static MemStore m;
+    SeenLog::Slot before;
+    TEST_ASSERT_TRUE(SeenLog::visit(m, 0x4CA9BA, 2480, before));
+    TEST_ASSERT_EQUAL(0, before.days);                     // first visit
+    TEST_ASSERT_TRUE(SeenLog::visit(m, 0x4CA9BA, 2480, before));
+    TEST_ASSERT_EQUAL(1, before.days);                     // same day: counted once
+    TEST_ASSERT_EQUAL(1, m.writes);
+    TEST_ASSERT_TRUE(SeenLog::visit(m, 0x4CA9BA, 2483, before));
+    TEST_ASSERT_EQUAL(1, before.days);
+    TEST_ASSERT_EQUAL(2480, before.lastDay);
+    TEST_ASSERT_TRUE(SeenLog::visit(m, 0x4CA9BA, 2484, before));
+    TEST_ASSERT_EQUAL(2, before.days);
+    // Thousands of aircraft: every visit still succeeds (oldest slots reused).
+    for (uint32_t a = 1; a <= 5000; ++a)
+        TEST_ASSERT_TRUE(SeenLog::visit(m, a * 7919, (uint16_t)(2500 + a / 100), before));
+    // 2 Jan 2020 is day 1.
+    struct tm t = {};
+    t.tm_year = 120; t.tm_mon = 0; t.tm_mday = 2; t.tm_hour = 12;
+    TEST_ASSERT_EQUAL(1, SeenLog::dayNumber(mktime(&t)));
+}
+
 int main(int, char **)
 {
     UNITY_BEGIN();
@@ -419,5 +520,9 @@ int main(int, char **)
     RUN_TEST(test_fuzz_parsers);
     RUN_TEST(test_replay_counts_arrivals);
     RUN_TEST(test_airport_cities);
+    RUN_TEST(test_watchlist_matching);
+    RUN_TEST(test_overhead_and_cooldown);
+    RUN_TEST(test_overhead_skips_arrivals);
+    RUN_TEST(test_seen_log);
     return UNITY_END();
 }

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <type_traits>
 
 #ifndef PROGMEM
 #define PROGMEM   // flash tables are ordinary arrays on the host
@@ -26,8 +27,10 @@ inline unsigned long millis() { return g_fakeMillis; }
 inline void delay(unsigned long ms) { g_fakeMillis += ms; }
 inline uint32_t esp_random() { return (uint32_t)rand() * 2654435761u; }
 
-template <class A, class B> inline auto min(A a, B b) -> decltype(a < b ? a : b) { return a < b ? a : b; }
-template <class A, class B> inline auto max(A a, B b) -> decltype(a < b ? b : a) { return a < b ? b : a; }
+// By value: decltype(a < b ? a : b) is a reference to a parameter, which
+// dangled (garbage under optimisation).
+template <class A, class B> inline typename std::common_type<A, B>::type min(A a, B b) { return a < b ? a : b; }
+template <class A, class B> inline typename std::common_type<A, B>::type max(A a, B b) { return a < b ? b : a; }
 
 #if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 38)
 inline size_t strlcpy(char *dst, const char *src, size_t n)
