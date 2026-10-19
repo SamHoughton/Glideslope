@@ -304,6 +304,33 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         for (int y = kSurfaceY; y <= kSurfaceY + 3; ++y)
             c.set(x, y, kKeys);
 
+    // A windsock by the threshold, blowing along the runway with the real
+    // wind: its length is the part of the wind along the runway (pointing
+    // the way it blows), limp in calm air.
+    const float course = (runway && isdigit((unsigned char)runway[0]) && isdigit((unsigned char)runway[1]))
+                             ? ((runway[0] - '0') * 10 + (runway[1] - '0')) * 10.0f : NAN;
+    if (!isnan(course) && sky.windDir >= 0 && kind != Takeoff)
+    {
+        const float rel = (sky.windDir - course) * (float)M_PI / 180;
+        const float along = sky.windKt * cosf(rel);   // > 0: a headwind, blowing towards +x (behind the aircraft)
+        const int poleX = 112, baseY = kSurfaceY - 1, topY = baseY - 7;
+        for (int y = topY; y <= baseY; ++y) c.set(poleX, y, Rgb{205, 210, 220});
+        const int len = sky.windKt < 3 ? 0 : max(1, min(6, (int)lroundf(fabsf(along) / 3.0f)));
+        const int dir = along >= 0 ? 1 : -1;
+        const bool gusting = sky.gustKt && (tMs / 300) % 2 == 0;
+        if (len == 0)
+            for (int i = 1; i <= 3; ++i) c.set(poleX + 1, topY + i, (i % 2) ? Rgb{255, 120, 40} : Rgb{235, 235, 240});   // hanging
+        else
+            for (int i = 1; i <= len; ++i)
+            {
+                const int droop = (sky.windKt < 10 && i > len / 2) ? 1 : 0;
+                const int flap = gusting && i == len ? 1 : 0;
+                const Rgb band = (i % 2) ? Rgb{255, 110, 30} : Rgb{245, 245, 250};
+                c.set(poleX + dir * i, topY + droop + flap, band);
+                if (i < len) c.set(poleX + dir * i, topY + 1 + droop + flap, band);   // the sock tapers
+            }
+    }
+
     // Approach lights chasing towards the threshold.
     const int nLights = (FrameCanvas::W - 4 - kLightsX0) / 4 + 1;
     const int head = (int)((tMs / 70) % (nLights + 2));
@@ -473,6 +500,24 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     Sky::drawWeather(c, sky, tMs);
 
     if (rightward) mirror(c);
+
+    // A crosswind of 10 kt or more (and its gusts), which a side-on scene
+    // can't otherwise show: XWIND 14G22 across the top during the approach
+    // (the captions take the top over at touchdown).
+    if (!isnan(course) && sky.windDir >= 0 && kind != Takeoff && tMs < kTouchdownMs)
+    {
+        const float s = fabsf(sinf((sky.windDir - course) * (float)M_PI / 180));
+        const int cross = (int)lroundf(sky.windKt * s), crossGust = (int)lroundf(sky.gustKt * s);
+        if (cross >= 10)
+        {
+            char tag[16];
+            if (crossGust > cross) snprintf(tag, sizeof(tag), "XWIND %dG%d", cross, crossGust);
+            else                   snprintf(tag, sizeof(tag), "XWIND %dKT", cross);
+            const int x = (FrameCanvas::W - FrameCanvas::textWidth(tag)) / 2, y = 6;
+            c.text(x + 1, y + 1, tag, Rgb{0, 0, 0});
+            c.text(x, y, tag, Rgb{255, 185, 60});
+        }
+    }
 
     // Go-around caption: flashing red once it starts to climb.
     if (goAround && tMs >= kGoAroundAtMs)

@@ -303,6 +303,7 @@ int main(int argc, char **argv)
             {"day+frost", "landing_frost_day", 1500}, {"night+snow", "landing_snow_night", 1500},
             {"night+rain", "wx_night_rain_approach", 900}, {"night+fog", "wx_night_fog_approach", 900},
             {"day+rain", "wx_day_rain_rollout", 2300},
+            {"day+windy", "wx_crosswind_approach", 800}, {"day+windy", "wx_crosswind_touchdown", 1500},
         };
         for (const auto &k : kLooks)
         {
