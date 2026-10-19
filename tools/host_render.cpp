@@ -267,7 +267,10 @@ int main(int argc, char **argv)
         InfoScreens::renderClock(c, 2000, "250/14 10KM RA 11C");                              save(c, "clock_night");
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");
         InfoScreens::renderRareBanner(c, "RARE SPOT", "A380", 900);                           save(c, "banner_rare");
-        InfoScreens::renderRunwayChange(c, "27R", "09L", 1500);                               save(c, "runway_change");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 600);                                save(c, "runway_change_a");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 1900);                               save(c, "runway_change_b");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 2600);                               save(c, "runway_change_c");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 4500);                               save(c, "runway_change");
     }
 
     // On final: the aircraft page between the card's turns.
