@@ -7,6 +7,34 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 6.0.0 (in progress)
+
+Polish: the animations, alerts and logos.
+
+**New**
+- **Airline logos from the web page**: the Display tab lists the airlines
+  seen without a logo and adds one (the browser fits and converts the
+  image, with a 32x32 preview); a bad one can be removed. No USB needed.
+- **The approach strip** along the bottom of the card is a glide path
+  with a small aircraft coming down it to the runway, instead of an arrow.
+- **Runway change**: the number flips on split-flap tiles, a windsock
+  swings round, and a runway from above shows the new landing end.
+- **Map to card**: a card arriving while the map is up zooms in on the
+  aircraft's icon.
+- **Weather on the scenes**: landing-light beams through rain, snow and
+  fog; spray and a reflection on a wet runway; the gear tucking up after
+  take-off.
+- **Crosswind**: a windsock by the threshold in the real wind, and
+  `XWIND 17G26` on the approach with 10 kt or more across the runway.
+- **Quiet hours** for phone alerts (23:00 to 07:00 by default): only
+  emergencies get through.
+
+**Fixes**
+- `FIRST VISIT` waits until the registration history is a week old (at
+  first nearly every aircraft is new to it).
+- The aircraft page shortens long airline names by whole words.
+- The route globe's night side is readable.
+
 ## 5.1.0 (19 Oct 2026)
 
 **New**
