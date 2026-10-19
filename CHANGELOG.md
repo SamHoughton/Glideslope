@@ -7,6 +7,31 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 5.1.0 (in progress)
+
+**New**
+- **Map**: flight numbers beside the aircraft, a spotlight cycling through
+  them with flight, type and height, and trails of the last few minutes.
+- **More on final**: an arrival's card takes turns with its route on the
+  globe and a page about the aircraft; back on the card for good 40 s out.
+
+**Fixes**
+- The departures board with city names ran a long city into the time;
+  the weather screen drew gusts over the wind. Both found by the new
+  screen tests.
+- Firmware uploads pause the feed so they can't stall.
+- Less heap fragmentation from the map's lists, which had left a TLS
+  handshake no room to reopen the feed.
+- Crash reports say whether the dump came from the running build.
+- Web requests: Content-Length without a space after the colon, and query
+  keys matched whole.
+
+**Under the hood**
+- Every screen is rendered on each push and compared with a reference
+  image (`tools/host_build.py golden`); the request parser is fuzzed.
+- The display code is split by job (rhythm, scenes, showcase).
+- CI actions on Node 24.
+
 ## 5.0.0 (19 Oct 2026)
 
 The spotter's release. It includes the hardening planned as 4.1, which was

@@ -84,6 +84,11 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   with approach lights running along it. The border takes the airline's
   colour. After touchdown: `LANDED 06:58` and the runway (or minutes
   early/late with an AeroAPI key).
+- **More on final**: while an arrival is on final its card takes turns
+  with the flight's route on the globe and a page about the aircraft (its
+  type, registration, which visit this is, the airline and where it has come
+  from), with the countdown kept on screen; the last 40 seconds are always
+  the card, and the landing always plays.
 - **Fly-across**: when a new aircraft arrives, its sprite crosses the panel in
   the direction it is really flying, climbing or descending with its real
   vertical rate. The old card stays ahead of it and the new one is revealed
@@ -118,8 +123,11 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
 - **Map**: the airport's surroundings at 128×64, generated from
   OpenStreetMap (around Heathrow: the Thames, the reservoirs, the M4 and
   M25), with every tracked aircraft as
-  a small plane icon pointing the way it is flying, in its airline colour; the
-  one on final blinks. A home marker can be set in the web page.
+  a small plane icon pointing the way it is flying, in its airline colour,
+  trailing the last few minutes of its track, with its flight number in
+  small type where there is room. A spotlight rings one aircraft at a time
+  (those on final first) with its flight, type and height along the bottom.
+  A home marker can be set in the web page.
 - **Arrivals board**: the next four arrivals with their type and
   minutes to touchdown (`~` while still a rough guess, before they join
   final), and Heathrow's weather along the bottom, e.g. `310/04 7KM RA 14C`
