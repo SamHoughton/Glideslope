@@ -78,7 +78,21 @@ private:
         String query;
         String body;
         int    contentLength = 0;
+        bool   allowUnsigned = false;   // X-Glideslope-Unsigned: 1 (the page asked first)
     };
+
+    // Requests are accepted only for this board's own names (DNS rebinding),
+    // POSTs only with the X-Glideslope header and a matching Origin (no
+    // cross-site form or no-cors fetch can add a custom header without a
+    // preflight, which the board never answers), and the POSTs that change
+    // the board also need its code (X-Glideslope-Token), made at first boot
+    // and shown on the panel on request.
+    char _token[10] = "";
+    unsigned long _tokenShownMs = 0;
+    void loadToken();
+    static String header(const String &raw, const char *name);
+    static bool hostAllowed(const String &host);
+    static bool needsToken(const String &path);
 
     // Helpers
     static void   sendHttp(WiFiClient &c, int code,
@@ -98,7 +112,7 @@ private:
     void handleGetDisplay(WiFiClient &c);
     void handleGetFrame(WiFiClient &c, const Req &r);
     void handleGetStatus(WiFiClient &c);
-    void handleUpdate(WiFiClient &c, int length);
+    void handleUpdate(WiFiClient &c, int length, bool allowUnsigned);
     void handleAirport(WiFiClient &c, int length);
     void handleAirportReset(WiFiClient &c);
 };

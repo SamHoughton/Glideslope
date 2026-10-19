@@ -17,6 +17,10 @@ just finished is logged as the culprit.
 // server takes no new requests then, so a TLS handshake never competes with
 // a web reply for heap. Set for a scope with NetBusy.
 inline volatile bool g_netBusy = false;
+// A firmware upload is streaming in (web task): the main loop skips its
+// fetches and closes the feed's TLS session, so the upload has the memory
+// and the network to itself (with a fetch alongside, it could stall).
+inline volatile bool g_updating = false;
 struct NetBusy
 {
     NetBusy()  { g_netBusy = true; }

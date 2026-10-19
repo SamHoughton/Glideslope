@@ -39,6 +39,7 @@ struct RuntimeConfig
     bool     swap_aircraft_type_reg;      // swap order: reg on line 3, type on line 3b
     char     screen_facing[8];           // e.g. "N", "NNW" — null-terminated
     bool     display_flip;               // true = rotate 180° (USB on opposite side)
+    bool     route_cities;               // routes as city names (London > New York) instead of codes
 
     // Night mode — optional time-based brightness reduction
     bool     night_mode_enabled;
@@ -62,6 +63,18 @@ struct RuntimeConfig
     // Phone notifications (utils/Notify.h): ntfy topic ("" = off) or a full
     // URL, and which events (Notify::Kind bits).
     char     ntfy_topic[64];
+    char     ntfy_token[48];             // access token for a protected topic (sent over https only)
+
+    // Spotter (5.0): aircraft over the home marker, and the watchlist.
+    float    overhead_km;                // 0 = off
+    bool     overhead_all;               // arrivals and departures too, not just overflights
+    char     watchlist[160];             // registrations, call signs, types, hex; * = prefix
+
+    // Home Assistant over MQTT (5.0); blank host = off.
+    char     mqtt_host[48];
+    uint16_t mqtt_port;
+    char     mqtt_user[32];
+    char     mqtt_pass[48];
     uint8_t  notify_mask;
 
     // Route lookup source priority
@@ -80,7 +93,8 @@ struct RuntimeConfig
     uint32_t display_cycle_seconds;
     // Screen rhythm: an approach card comes in this long before touchdown;
     // after each landing, one rotation screen for interlude_seconds; screens
-    // is a bit mask of the rotation (1 map, 2 arrivals, 4 stats, 8 weather, 16 holding).
+    // is a bit mask of the rotation (1 map, 2 arrivals, 4 stats, 8 weather,
+    // 16 holding, 32 departures page, 64 route globe).
     uint32_t card_lead_seconds;
     uint32_t interlude_seconds;
     uint8_t  screens;
@@ -91,6 +105,16 @@ struct RuntimeConfig
 // Global mutable config — use this everywhere instead of UserConfiguration /
 // TimingConfiguration constants.
 extern RuntimeConfig g_config;
+
+// Changing settings from another task (the web server) while the main loop
+// and display read them: build a whole new copy and publish it with
+// configCommit(); a reader that needs several fields to agree (centre and
+// radius, the alerts topic) takes configSnapshot(). Single fields can still
+// be read from g_config directly. (Equal-priority tasks on one core are
+// time-sliced, so a field-by-field update could be seen half done.)
+extern volatile uint32_t g_configSeq;
+void configCommit(const RuntimeConfig &next);
+RuntimeConfig configSnapshot();
 
 // Load saved values from NVS into g_config.
 // Falls back to compile-time defaults (UserConfiguration.h) for any key that

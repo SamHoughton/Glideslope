@@ -7,7 +7,9 @@
   Live ADS-B on a 128×64 LED panel: each arrival flies in, counts down to the
   runway and lands in the real sky, day or night, rain or shine; departures
   take off; between them, a map, an arrivals board, the weather, today's
-  stats and the holding stacks, with alerts on your phone.<br>
+  stats, the holding stacks and the last flight's route on a globe. Aircraft
+  over your house and the ones on your watchlist cross the sky, with alerts
+  on your phone and sensors in Home Assistant.<br>
   Heathrow out of the box, and around fifty more airports a click away.
 </p>
 
@@ -19,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/showcase.gif" alt="Glideslope on the panel: a flight flies in, counts down to runway 27L and lands at golden hour, then the map, arrivals board, weather, today's stats, holding stacks and a take-off" width="680">
+  <img src="docs/showcase.gif" alt="Glideslope on the panel: a flight flies in, counts down to runway 27L and lands at golden hour, then its route on the globe, the map, arrivals board, weather, today's stats, holding stacks and a take-off" width="680">
 </p>
 
 Recorded from the board's own frames with its built-in showcase (the
@@ -43,23 +45,40 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Holding stacks](docs/holding.png) | ![Squawk alert](docs/squawk.png) |
 
+| Route globe | Overhead |
+| --- | --- |
+| ![The route globe: New York to London, the night side shaded](docs/globe.png) | ![An A380 overhead at 37,000 ft with contrails](docs/overhead.png) |
+
+| Top airlines | Aircraft types |
+| --- | --- |
+| ![Today's busiest airlines in their colours](docs/stats-airlines.png) | ![Today's commonest aircraft types](docs/stats-types.png) |
+
+The overhead pass, the top airlines and types pages and the fireworks
+below are drawn by the firmware's own code on a desktop
+(`tools/host_build.py render`), with a made-up day of traffic; the rest
+are the board's own frames.
+
 ### The web page
 
 Every board serves a page at `http://glideslope.local/`: a live mirror of the
 panel drawn as glowing LEDs, what's on it now, the animations on demand, every
 setting in tabs (display with a switch for each screen, airport, night, data,
-phone alerts, system, log), firmware updates and a log.
+spotter, phone alerts and Home Assistant, system, log), firmware updates and a log.
 
 | Desktop | Phone |
 | --- | --- |
 | <img src="docs/webui-desktop.png" alt="The Glideslope web page on a desktop" width="560"> | <img src="docs/webui-phone.png" alt="The Glideslope web page on a phone" width="220"> |
 
-<p align="center"><img src="docs/webui-alerts.png" alt="The Alerts tab: an ntfy topic and the events to be told about" width="560"></p>
+| Alerts | Spotter |
+| --- | --- |
+| <img src="docs/webui-alerts.png" alt="The Alerts tab: an ntfy topic, the events to be told about, Home Assistant" width="420"> | <img src="docs/webui-spotter.png" alt="The Spotter tab: overhead distance and the watchlist" width="420"> |
 
 ## What it shows
 
 - **Approach card**: airline logo, flight number (BA757A, mapped from the call
-  sign), route cross-fading with the airline name, aircraft type with a
+  sign), route cross-fading with the airline name and how often this
+  airframe has been seen (`SEEN 14 TIMES`, `LAST ON 3 OCT`, `FIRST VISIT`),
+  aircraft type with a
   matching side-profile sprite, smoothly counting altitude and speed,
   `APPROACH 27L` and an ETA countdown, and a progress strip to the threshold
   with approach lights running along it. The border takes the airline's
@@ -84,8 +103,12 @@ phone alerts, system, log), firmware updates and a log.
   7600 (radio failure) or 7500 (hijack) takes over the panel for a few seconds
   with a flashing red alert, and shows red on the map. It must be seen in two
   fetches running, so a single garbled reply doesn't trigger it.
+- **City names** (a switch on the web page): `LONDON > NEW YORK` instead of
+  `LHR > JFK` on the cards, the departures board and the take-off caption,
+  from an offline table of about 8,000 airports. A route too long for the
+  line reads `FROM NEW YORK` when it is landing here, and scrolls otherwise.
 - **The rhythm**: between planes the board rotates through its screens (map,
-  arrivals, stats, weather, holding), each switchable on the web page. A plane's card is the event: an approach flies in
+  arrivals, stats, weather, holding, globe), each switchable on the web page. A plane's card is the event: an approach flies in
   about two minutes before touchdown and stays until it has landed; a
   departure or overflight gets a short card. After every landing comes a
   15-second break showing the next screen in the rotation, so they all come
@@ -106,14 +129,16 @@ phone alerts, system, log), firmware updates and a log.
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
-- **Today's stats**: big arrival and departure counters, an hourly bar chart
-  of the day's movements, and the busiest airline, rarest type and
-  go-arounds in turn. Every aircraft in range counts (an arrival once it is
+- **Today's stats**: arrival and departure tiles, an hourly bar chart
+  of the day's movements, and the busiest airline (in its colours), rarest
+  type, go-arounds and the day against yesterday in turn, then two more
+  pages: the top airlines as bars in their livery colours and the
+  commonest aircraft types, coloured by family. Every aircraft in range counts (an arrival once it is
   on final, a departure once it climbs out along a runway), not only the
   ones that get a card, and the tally is saved so a restart keeps the day.
   The counters count up and the bars rise as the screen appears; a faint
   line marks yesterday's hour by hour, and the footer says how today
-  compares so far (`VS YESTERDAY +12%`).
+  compares so far (`+12% VS YESTERDAY`).
   It only sees what is in range: centre the search near the airport (or
   make the radius large enough to cover both approaches) to count every
   movement.
@@ -140,10 +165,32 @@ phone alerts, system, log), firmware updates and a log.
   aircraft that keeps circling counts. A holding screen shows each stack
   as a racetrack with its aircraft going round, the count and the longest
   wait.
+- **Route globe**: after a card, the flight's route on a globe turned to face
+  it, from the offline airport table and a world map in 8 KB: solid where it
+  has been and dashed ahead, the aircraft on the line, the night side shaded
+  from the real sun, with the cities, a progress bar, distance flown and
+  the ETA (or when it landed).
+- **Overhead**: an aircraft passing within a set distance of the home marker
+  (2 km by default) crosses the panel under the real sky, big when low,
+  small with contrails at cruising height, with its flight, type, height
+  and where it is going. Only overflights by default: the arrivals and
+  departures here already have their cards.
+- **Watchlist**: registrations, call signs, aircraft types or hex codes
+  (`G-CIVA, B74*, A388, RRR*`; `*` matches the start). One anywhere in range
+  gets the same pass with a gold `WATCHLIST` label, and a phone alert.
 - **Phone alerts** through [ntfy](https://ntfy.sh) (free, no account): emergency
-  squawks, rare spots, go-arounds, runway changes, busy stacks and the
-  evening round-up, each
-  switchable on the web page's Alerts tab.
+  squawks, rare spots, the watchlist, go-arounds, runway changes, busy
+  stacks and the evening round-up, each switchable on the web page's Alerts
+  tab. Emergency, rare-spot and watchlist alerts carry a picture of the
+  panel.
+- **Home Assistant** over MQTT, found by discovery: next arrival and its ETA,
+  runways in use, today's arrivals and departures, aircraft holding, the
+  last flight and the last aircraft overhead.
+- **Through the year**: snow on the skyline's roofs when it is freezing,
+  Christmas lights along them through December, and fireworks over London
+  on Bonfire Night and New Year's Eve.
+
+  ![Fireworks over the London skyline](docs/fireworks.png)
 - **Quiet hours**: a dim clock (with the weather and tonight's moon in its
   real phase) overnight when there's no traffic. Night dimming can follow
   the sun instead of fixed times, easing down through dusk and up at dawn.
@@ -160,8 +207,10 @@ phone alerts, system, log), firmware updates and a log.
   `tools/record_shots.py` cuts the other README images from it.
 - **Web page** on the board: a live mirror of the panel, animation and sky
   previews, a switch for each screen, brightness, night dimming (by the clock
-  or following the sun), location and data source settings, phone alerts,
-  firmware updates over Wi-Fi, a log and a health endpoint.
+  or following the sun), location and data source settings, the spotter
+  (overhead distance, watchlist), phone alerts, Home Assistant, firmware
+  updates over Wi-Fi, a log and a health endpoint. Anything that changes the
+  board needs a code the panel shows you once.
 
 Twenty aircraft sprites are chosen by ICAO type code (A320, A321, 737, A220,
 E-Jet, CRJ, 757, 767, 787, A330, A350, 777, A340, 747, A380, ATR, Q400,
@@ -246,8 +295,18 @@ Open the board's web page, choose `firmware.bin` (from a
 [release](../../releases), or `firmware/.pio/build/hd_wf2/firmware.bin` from
 your own build) under **Firmware**, and press **Install update**. It takes
 about 10 seconds and the board restarts into the new version; if anything
-goes wrong the old one keeps running. The web page has no password, so this
-is only safe on a network you trust (as is the rest of the page).
+goes wrong the old one keeps running. A new version is on trial until it has
+fetched positions (or run for five minutes): if it crashes before then, the
+board goes back to the previous version by itself.
+
+Anything that changes the board (an update, an airport pack, settings, a
+restart) needs the board's **code**. The first time, the page asks for it
+and shows it on the panel for 30 seconds; your browser remembers it after
+that. The board also answers only to its own names (its address and
+`glideslope.local`) and only to its own page, so a web page elsewhere can't
+reach it through your browser. Scripts that call the API send
+`X-Glideslope: 1` and, for those changes, `X-Glideslope-Token: <code>` (the
+tools in `tools/` read the code from `GLIDESLOPE_TOKEN`).
 
 If the board ever restarts unexpectedly, `http://glideslope.local/api/status`
 says why (and what each task was doing), and `/api/coredump` gives the
@@ -357,13 +416,19 @@ Aircraft positions, first to answer wins:
   METAR, every 10 minutes.
 - FlightAware AeroAPI, optional and paid.
 - [ntfy.sh](https://ntfy.sh/) for phone alerts, if a topic is set.
+- Built into the firmware: the airport table for city names and the globe
+  from [OurAirports](https://ourairports.com/data/) (public domain,
+  `tools/gen_airports.py`), and the globe's land from
+  [Natural Earth](https://www.naturalearthdata.com/) 1:110m (public domain,
+  `tools/gen_landmask.py`).
 
 ## Credits and licence
 
 Glideslope builds on
 [TheFlightWall_OSS](https://github.com/AxisNimble/TheFlightWall_OSS) and the
 forks by biohead and [peterdaley](https://github.com/peterdaley/TheFlightWall_OSS),
-and uses [ESP32-HUB75-MatrixPanel-DMA](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA).
+and uses [ESP32-HUB75-MatrixPanel-DMA](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA)
+and [PubSubClient](https://github.com/knolleary/pubsubclient) (Home Assistant).
 See [NOTICE](NOTICE) for what changed.
 
 Not affiliated with or endorsed by TheFlightWall or any airline.

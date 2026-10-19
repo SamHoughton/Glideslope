@@ -6,7 +6,7 @@ name: Build
 #   firmware.bin               updates from the board's web page
 on:
   push:
-    branches: [main]
+    branches: [main, 'v*']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -39,11 +39,38 @@ jobs:
         run: |
           for f in *.h.example; do [ -f "${f%.example}" ] || cp "$f" "${f%.example}"; done
 
+      # The approach model, runway and holding trackers, METAR and readsb
+      # parsers and pack loader, and a recorded hour of Heathrow replayed.
+      - name: Unit tests
+        working-directory: firmware
+        run: pio test -e native -v
+
       - name: Build
         working-directory: firmware
         env:
           PLATFORMIO_BUILD_FLAGS: -DGLIDESLOPE_VERSION_RAW=${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'dev' }}
-        run: pio run -e hd_wf2
+        run: pio run -e hd_wf2 | tee build.log
+
+      # Static RAM is heap the board never gets back (no PSRAM): a change
+      # that grows it past the budget has to say why, by raising the budget.
+      - name: RAM budget
+        working-directory: firmware
+        run: |
+          used=$(grep -oP 'RAM:.*used \K[0-9]+' build.log | tail -1)
+          budget=$(cat ram-budget.txt)
+          echo "static RAM: $used bytes (budget $budget)"
+          [ -n "$used" ] && [ "$used" -le "$budget" ]
+
+      # Releases are signed (tools/sign_firmware.py; checked by the board,
+      # utils/FirmwareSig.h). Branch builds stay unsigned.
+      - name: Sign
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: firmware
+        env:
+          GLIDESLOPE_SIGNING_KEY: ${{ secrets.GLIDESLOPE_SIGNING_KEY }}
+        run: |
+          pip install cryptography
+          python ../tools/sign_firmware.py .pio/build/hd_wf2/firmware.bin
 
       - name: Merge a full flash image
         working-directory: firmware/.pio/build/hd_wf2

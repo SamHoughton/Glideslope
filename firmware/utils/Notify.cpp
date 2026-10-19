@@ -5,6 +5,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <stdarg.h>
+#include "utils/FrameBmp.h"
 
 namespace
 {
@@ -20,6 +21,7 @@ namespace
     int           s_head = 0, s_count = 0;
     portMUX_TYPE  s_mux = portMUX_INITIALIZER_UNLOCKED;
     unsigned long s_lastMs[8] = {};   // per kind bit
+    const FrameCanvas *s_frame = nullptr;
 
     int bitOf(uint8_t kind) { for (int i = 0; i < 8; ++i) if (kind == (1u << i)) return i; return 7; }
 }
@@ -52,6 +54,8 @@ void Notify::post(Kind kind, uint8_t priority, const char *tags, const char *tit
     portEXIT_CRITICAL(&s_mux);
 }
 
+void Notify::setFrame(const FrameCanvas *frame) { s_frame = frame; }
+
 void Notify::loop()
 {
     if (!s_count || ESP.getFreeHeap() < 26000) return;
@@ -62,7 +66,9 @@ void Notify::loop()
     --s_count;
     portEXIT_CRITICAL(&s_mux);
 
-    const char *topic = g_config.ntfy_topic;
+    const RuntimeConfig cfg = configSnapshot();
+    char topic[sizeof(cfg.ntfy_topic)];
+    strlcpy(topic, cfg.ntfy_topic, sizeof(topic));
     const bool full = strncmp(topic, "http://", 7) == 0 || strncmp(topic, "https://", 8) == 0;
     const bool tls  = strncmp(topic, "https://", 8) == 0;
     if (tls && !tlsAffordable("ntfy")) return;   // dropped: better than starving the fetches
@@ -79,7 +85,25 @@ void Notify::loop()
     http.addHeader("Title", m.title);
     if (m.tags[0]) http.addHeader("Tags", m.tags);
     http.addHeader("Priority", String(m.priority));
-    const int code = http.POST((uint8_t *)m.body, strlen(m.body));
+    // An access token goes only over HTTPS: over plain HTTP anyone on the
+    // way could read it, which is worse than an unguessable public topic.
+    if (cfg.ntfy_token[0] && tls) http.addHeader("Authorization", String("Bearer ") + cfg.ntfy_token);
+    else if (cfg.ntfy_token[0]) Log.println("Notify: access token not sent (topic is not https)");
+    // Emergency, rare spot and watchlist: the panel as the attachment and
+    // the text in a header (ntfy's way to send both).
+    const bool picture = s_frame && (m.kind == Emergency || m.kind == Rare || m.kind == Watch) &&
+                         ESP.getMaxAllocHeap() > 8000;
+    int code;
+    if (picture)
+    {
+        FrameBmp bmp(*s_frame);
+        http.addHeader("Filename", "glideslope.bmp");
+        http.addHeader("Message", m.body);
+        http.setTimeout(10000);
+        code = http.sendRequest("PUT", &bmp, bmp.size());
+    }
+    else
+        code = http.POST((uint8_t *)m.body, strlen(m.body));
     http.end();
     if (code == 200) Log.printf("Notify: sent \"%s\"\n", m.title);
     else             Log.printf("Notify: \"%s\" failed (HTTP %d)\n", m.title, code);

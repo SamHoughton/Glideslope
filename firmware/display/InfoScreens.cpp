@@ -2,6 +2,9 @@
 #include <math.h>
 #include <time.h>
 #include "config/Airport.h"
+#include "config/Airports.h"
+#include "config/RuntimeConfig.h"
+#include "display/AircraftSprites.h"
 
 namespace
 {
@@ -41,106 +44,192 @@ void InfoScreens::runwaySummary(const char *runway, char *out, size_t len, bool 
 
 namespace
 {
-    const Rgb kArr {255, 185,  60};   // amber: arrivals
-    const Rgb kDep { 70, 200, 220};   // cyan: departures
+    const Rgb kArr {255, 176,  50};   // amber: arrivals
+    const Rgb kDep { 60, 200, 225};   // cyan: departures
+    const Rgb kSub {120, 170, 210};   // title-bar extras
 
-    // 7x7 arrows beside the big counters.
-    void arrow(FrameCanvas &c, int x, int y, bool down, Rgb col)
+    float easeOut(float u) { u = u < 0 ? 0 : (u > 1 ? 1 : u); return 1 - (1 - u) * (1 - u) * (1 - u); }
+    Rgb mixRgb(Rgb a, Rgb b, float k)
     {
-        // Three rows of shaft, then the head narrowing to the tip.
-        for (int r = 0; r < 7; ++r)
+        k = k < 0 ? 0 : (k > 1 ? 1 : k);
+        return { (uint8_t)(a.r + (b.r - a.r) * k), (uint8_t)(a.g + (b.g - a.g) * k), (uint8_t)(a.b + (b.b - a.b) * k) };
+    }
+
+    // Title band shared by the stats pages: a dark navy gradient, the title
+    // on the left and a dim extra (clock, count) on the right.
+    void titleBand(FrameCanvas &c, const char *title, const char *extra)
+    {
+        for (int y = 0; y < 9; ++y)
         {
-            const int row = down ? r : 6 - r;
-            const int w = r < 3 ? 0 : 6 - r;
-            for (int dx = -w; dx <= w; ++dx)
-            {
-                c.set(x + 3 + dx, y + row, col);
-                if (r < 3) c.set(x + 4, y + row, col);   // a two-pixel shaft
-            }
+            const Rgb col = mixRgb(Rgb{14, 22, 48}, Rgb{4, 6, 14}, y / 9.0f);
+            for (int x = 0; x < FrameCanvas::W; ++x) c.set(x, y, col);
         }
+        c.text(3, 1, title, kTitle);
+        if (extra && extra[0]) c.text(FrameCanvas::W - 3 - FrameCanvas::textWidth(extra), 1, extra, kSub);
+    }
+
+    // Filled rectangle with the corners left out; edge (if any) along the top.
+    void tile(FrameCanvas &c, int x, int y, int w, int h, Rgb fill, const Rgb *edge = nullptr)
+    {
+        for (int yy = y; yy < y + h; ++yy)
+            for (int xx = x; xx < x + w; ++xx)
+                if (!((xx == x || xx == x + w - 1) && (yy == y || yy == y + h - 1))) c.set(xx, yy, fill);
+        if (edge)
+            for (int xx = x + 1; xx < x + w - 1; ++xx) c.set(xx, y, *edge);
+    }
+
+    // A horizontal bar brightening towards its end.
+    void hbar(FrameCanvas &c, int x, int y, int w, int h, Rgb col)
+    {
+        for (int i = 0; i < w; ++i)
+        {
+            const Rgb k = FrameCanvas::scale(col, 0.35f + 0.65f * (i + 1) / w);
+            for (int j = 0; j < h; ++j) c.set(x + i, y + j, k);
+        }
+    }
+
+    // Aircraft families by colour: Airbus narrowbodies blue, widebodies
+    // green, A380 gold, Boeing 737 orange, 747 violet, 777 pink, 787 amber,
+    // regional jets and props teal.
+    Rgb typeColour(const char *t)
+    {
+        if (!strncmp(t, "A38", 3)) return {255, 225, 90};
+        if (t[0] == 'A' && t[1] == '3' && t[2] >= '3' && t[2] <= '5') return {120, 220, 160};   // A330-A350
+        if (t[0] == 'A' && (t[1] == '3' || t[1] == '2' || t[1] == '1')) return {90, 170, 255};  // A318-A321, A20N/A21N
+        if (!strncmp(t, "B73", 3) || !strncmp(t, "B3", 2)) return {255, 150, 70};
+        if (!strncmp(t, "B74", 3)) return {190, 140, 255};
+        if (!strncmp(t, "B77", 3)) return {235, 120, 200};
+        if (!strncmp(t, "B78", 3)) return {255, 185, 60};
+        if (!strncmp(t, "B76", 3)) return {250, 120, 100};
+        if (t[0] == 'E' || t[0] == 'C' || !strncmp(t, "AT", 2) || !strncmp(t, "DH", 2)) return {100, 210, 200};
+        return {170, 180, 195};
     }
 }
 
-// Today: big arrival and departure counters, an hourly bar chart of the
-// day's movements, and a footer cycling through the busiest airline, the
-// rarest type and go-arounds.
+// Today: movements in two tiles, an hourly chart of the day (yesterday as a
+// faint line to beat, this hour capped white), and a footer cycling through
+// the busiest airline, the rarest type, go-arounds and against yesterday.
 void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t animMs, uint32_t shownMs)
 {
-    auto ease = [](float u) { u = u < 0 ? 0 : (u > 1 ? 1 : u); return 1 - (1 - u) * (1 - u) * (1 - u); };
-    const float count = ease(shownMs / 900.0f);
+    const float count = easeOut(shownMs / 900.0f);
     c.clear();
     struct tm lt;
     const bool haveTime = localNow(lt);
-    char title[20];
+    char title[20], clock[8] = "";
     static const char *const kDays[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-    if (haveTime) snprintf(title, sizeof(title), "TODAY %s %d", kDays[lt.tm_wday], lt.tm_mday);
-    else          snprintf(title, sizeof(title), "TODAY");
-    centred(c, 1, title, kTitle);
+    if (haveTime)
+    {
+        snprintf(title, sizeof(title), "TODAY %s %d", kDays[lt.tm_wday], lt.tm_mday);
+        snprintf(clock, sizeof(clock), "%02d:%02d", lt.tm_hour, lt.tm_min);
+    }
+    else
+        snprintf(title, sizeof(title), "TODAY");
+    titleBand(c, title, clock);
 
-    // Counters: arrow + number (double size), label underneath.
-    char v[12];
-    snprintf(v, sizeof(v), "%d", (int)lroundf(stats.arrivals() * count));
-    arrow(c, 2, 15, true, kArr);
-    c.text(12, 11, v, kArr, 2, 11);
-    c.text(2, 28, "ARRIVALS", FrameCanvas::scale(kArr, 0.55f));
-    snprintf(v, sizeof(v), "%d", (int)lroundf(stats.departures() * count));
-    arrow(c, 66, 15, false, kDep);
-    c.text(76, 11, v, kDep, 2, 11);
-    c.text(66, 28, "DEPARTURES", FrameCanvas::scale(kDep, 0.55f));
+    // Tiles: the count, its label, and the last full hour's movements.
+    const int nowH = haveTime ? lt.tm_hour : -1;
+    for (int side = 0; side < 2; ++side)
+    {
+        const bool arr = side == 0;
+        const int x = arr ? 2 : 65;
+        const Rgb col = arr ? kArr : kDep;
+        const Rgb edge = FrameCanvas::scale(col, 0.55f);
+        tile(c, x, 11, 61, 21, arr ? Rgb{44, 27, 6} : Rgb{6, 32, 40}, &edge);
+        char v[12];
+        const int total = arr ? stats.arrivals() : stats.departures();
+        snprintf(v, sizeof(v), "%d", (int)lroundf(total * count));
+        const int pitch = total >= 100 ? 10 : 11;   // three digits a little tighter
+        c.text(x + 4, 15, v, col, 2, pitch);
+        snprintf(v, sizeof(v), "%d", total);         // its final width, so nothing moves as it counts
+        const int numRight = x + 4 + FrameCanvas::textWidth(v, 2, pitch);
+        const char *label = arr ? "ARR" : "DEP";
+        c.text(x + 59 - FrameCanvas::textWidth(label), 14, label, FrameCanvas::scale(col, 0.75f));
+        const int lastH = nowH > 0 ? (arr ? stats.arrivalsInHour(nowH - 1) : stats.departuresInHour(nowH - 1)) : 0;
+        snprintf(v, sizeof(v), "%d/H", lastH);
+        const int rateX = x + 59 - FrameCanvas::textWidth(v);
+        if (lastH > 0 && rateX >= numRight + 2)   // only where it clears the number
+            c.text(rateX, 23, v, FrameCanvas::scale(col, 0.5f));
+    }
 
-    // Hourly chart: 24 bars of 4 px (plus a 1 px gap), departures stacked on
-    // arrivals, scaled to the busiest hour. The current hour pulses.
-    constexpr int kTop = 37, kBase = 51, kX0 = 4;
+    // Hourly chart: 24 bars of 4 px, departures stacked on arrivals, shaded
+    // brighter towards the top, scaled to the busiest hour (today or yesterday).
+    constexpr int kTop = 35, kBase = 53, kX0 = 4;
     int peak = 1;
     for (int h = 0; h < 24; ++h)
         peak = max(peak, max(stats.arrivalsInHour(h) + stats.departuresInHour(h), stats.yesterdayInHour(h)));
-    const int nowH = haveTime ? lt.tm_hour : -1;
-    const float pulse = 0.65f + 0.35f * sinf(animMs / 250.0f);
+    const float pulse = 0.7f + 0.3f * sinf(animMs / 250.0f);
     for (int h = 0; h < 24; ++h)
     {
         const int x = kX0 + h * 5;
         const int a = stats.arrivalsInHour(h), d = stats.departuresInHour(h);
-        const float grow = ease((shownMs - h * 18.0f) / 450.0f);   // bars rise left to right
+        const float grow = easeOut((shownMs - h * 18.0f) / 450.0f);   // bars rise left to right
         const int ha = (int)(((a * (kBase - kTop) + peak - 1) / peak) * grow);
         const int hd = (int)(((d * (kBase - kTop) + peak - 1) / peak) * grow);
-        const float k = h == nowH ? pulse : (h > nowH && nowH >= 0 ? 0.0f : 0.8f);
-        for (int y = 0; y < ha; ++y)
-            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, kBase - 1 - y, FrameCanvas::scale(kArr, k));
-        for (int y = 0; y < hd; ++y)
-            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, kBase - 1 - ha - y, FrameCanvas::scale(kDep, k));
-        // Yesterday's total for the hour: a faint line to beat.
+        for (int i = 0; i < ha; ++i)
+        {
+            const Rgb k = FrameCanvas::scale(kArr, 0.45f + 0.55f * (i + 1) / ha);
+            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, kBase - 1 - i, k);
+        }
+        for (int i = 0; i < hd; ++i)
+        {
+            const Rgb k = FrameCanvas::scale(kDep, 0.45f + 0.55f * (i + 1) / hd);
+            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, kBase - 1 - ha - i, k);
+        }
+        // Yesterday's total for the hour, where the bar hasn't covered it.
         const int yh = stats.yesterdayInHour(h);
         if (yh)
         {
             const int y = kBase - 1 - (yh * (kBase - kTop) + peak - 1) / peak;
             for (int dx = 0; dx < 4; ++dx)
-            {
-                const Rgb under = FrameCanvas::unpack(c.get(x + dx, y));
-                c.set(x + dx, y, under.r || under.g || under.b ? Rgb{235, 240, 245} : Rgb{80, 86, 100});
-            }
+                if (c.get(x + dx, y) == 0) c.set(x + dx, y, Rgb{55, 60, 85});
         }
-        // Baseline dot for every hour; brighter ticks at 06, 12, 18.
-        c.set(x + 1, kBase, (h % 6 == 0) ? kLabel : kDim);
-        c.set(x + 2, kBase, (h % 6 == 0) ? kLabel : kDim);
+        if (h == nowH && ha + hd)
+            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, kBase - 1 - ha - hd, FrameCanvas::scale(kTitle, pulse));
+        // Baseline ticks, brighter at 00, 06, 12, 18.
+        const Rgb tick = (h % 6 == 0) ? kLabel : Rgb{35, 40, 52};
+        c.set(x + 1, kBase, tick);
+        c.set(x + 2, kBase, tick);
     }
 
-    // Footer: one fact at a time, each for 3 s, fading between.
-    char facts[4][24];
+    // Footer: a chip (in the fact's colour) and the fact, one at a time,
+    // each for 3 s with a fade between.
+    struct Fact { char chip[5]; Rgb col; char text[17]; };
+    Fact facts[4];
     int nf = 0, n = 0;
     const String airline = stats.busiestAirline(n);
-    if (airline.length()) snprintf(facts[nf++], sizeof(facts[0]), "BUSIEST %s %d", airline.c_str(), n);
+    if (airline.length())
+    {
+        Fact &f = facts[nf++];
+        strlcpy(f.chip, airline.c_str(), sizeof(f.chip));
+        f.col = AircraftSprites::airlineColour(airline.c_str());
+        snprintf(f.text, sizeof(f.text), "BUSIEST  %d", n);
+    }
     const String rare = stats.rarestType();
-    if (rare.length()) snprintf(facts[nf++], sizeof(facts[0]), "RAREST %s", rare.c_str());
-    if (stats.goArounds() > 0) snprintf(facts[nf++], sizeof(facts[0]), "GO-AROUNDS %d", stats.goArounds());
-    // Busier or quieter than yesterday by this time.
-    if (haveTime && stats.hasYesterday() && nf < 4)
+    if (rare.length())
+    {
+        Fact &f = facts[nf++];
+        strlcpy(f.chip, "RARE", sizeof(f.chip));
+        f.col = kGold;
+        snprintf(f.text, sizeof(f.text), "%s", rare.c_str());
+    }
+    if (stats.goArounds() > 0)
+    {
+        Fact &f = facts[nf++];
+        strlcpy(f.chip, "GA", sizeof(f.chip));
+        f.col = Rgb{255, 95, 80};
+        snprintf(f.text, sizeof(f.text), "GO-AROUNDS %d", stats.goArounds());
+    }
+    if (haveTime && stats.hasYesterday())
     {
         const int then = stats.yesterdayUpTo(lt.tm_hour, lt.tm_min);
         const int nowN = stats.arrivals() + stats.departures();
         if (then >= 20)
         {
             const int pct = (int)lroundf((nowN - then) * 100.0f / then);
-            snprintf(facts[nf++], sizeof(facts[0]), "VS YESTERDAY %s%d%%", pct >= 0 ? "+" : "", pct);
+            Fact &f = facts[nf++];
+            snprintf(f.chip, sizeof(f.chip), "%s%d%%", pct >= 0 ? "+" : "", max(-99, min(99, pct)));
+            f.col = pct >= 0 ? Rgb{90, 200, 110} : Rgb{235, 100, 90};
+            snprintf(f.text, sizeof(f.text), "VS YESTERDAY");
         }
     }
     if (nf)
@@ -148,9 +237,60 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         const uint32_t per = 3000;
         const int i = (animMs / per) % nf;
         const uint32_t t = animMs % per;
-        const float fade = t < 300 ? t / 300.0f : (t > per - 300 ? (per - t) / 300.0f : 1.0f);
-        const Rgb col = strncmp(facts[i], "GO-", 3) == 0 ? Rgb{255, 95, 80} : kValue;
-        centred(c, 56, facts[i], FrameCanvas::scale(col, nf > 1 ? fade : 1.0f));
+        const float fade = nf > 1 ? (t < 300 ? t / 300.0f : (t > per - 300 ? (per - t) / 300.0f : 1.0f)) : 1.0f;
+        const Fact &f = facts[i];
+        tile(c, 2, 55, 124, 9, FrameCanvas::scale(Rgb{10, 22, 48}, 1));
+        tile(c, 2, 55, 26, 9, FrameCanvas::scale(mixRgb(Rgb{0, 0, 0}, f.col, 0.55f), fade));
+        c.text(2 + (26 - FrameCanvas::textWidth(f.chip)) / 2, 56, f.chip, FrameCanvas::scale(kTitle, fade));
+        c.text(32, 56, f.text, FrameCanvas::scale(mixRgb(f.col, kTitle, 0.45f), fade));
+    }
+}
+
+// The day's busiest airlines: code and a bar in the airline's colour, growing in.
+void InfoScreens::renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs)
+{
+    c.clear();
+    DailyStats::Top top[5];
+    const int n = stats.topAirlines(top, 5);
+    char extra[8];
+    snprintf(extra, sizeof(extra), "%d", stats.airlineCount());
+    titleBand(c, "TOP AIRLINES", extra);
+    const int most = n ? max(1, top[0].n) : 1;
+    for (int i = 0; i < n; ++i)
+    {
+        const int y = 12 + i * 10;
+        const Rgb col = AircraftSprites::airlineColour(top[i].code);
+        c.text(3, y, top[i].code, col);
+        const float grow = easeOut((shownMs - i * 120.0f) / 600.0f);
+        const int w = max(2, (int)lroundf(top[i].n * 82.0f / most * grow));
+        hbar(c, 24, y, w, 7, col);
+        char v[8];
+        snprintf(v, sizeof(v), "%d", (int)lroundf(top[i].n * grow));
+        c.text(24 + w + 3, y, v, kTitle);
+    }
+}
+
+// The day's commonest aircraft types, coloured by family.
+void InfoScreens::renderTopTypes(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs)
+{
+    c.clear();
+    DailyStats::Top top[5];
+    const int n = stats.topTypes(top, 5);
+    char extra[8];
+    snprintf(extra, sizeof(extra), "%d", stats.typeCount());
+    titleBand(c, "TYPES TODAY", extra);
+    const int most = n ? max(1, top[0].n) : 1;
+    for (int i = 0; i < n; ++i)
+    {
+        const int y = 12 + i * 10;
+        const Rgb col = typeColour(top[i].code);
+        c.text(3, y, top[i].code, col, 1, 0, 4);
+        const float grow = easeOut((shownMs - i * 120.0f) / 600.0f);
+        const int w = max(2, (int)lroundf(top[i].n * 70.0f / most * grow));
+        hbar(c, 30, y + 1, w, 5, col);
+        char v[8];
+        snprintf(v, sizeof(v), "%d", (int)lroundf(top[i].n * grow));
+        c.text(30 + w + 3, y, v, kTitle);
     }
 }
 
@@ -331,7 +471,9 @@ void InfoScreens::renderDepartures(FrameCanvas &c, const Departure *rows, int n,
         const int y = 14 + i * 10;
         c.fillRect(2, y, 2, 7, d.accent);
         flapText(c, 6, y, d.ident, Rgb{235, 240, 245}, shownMs, i * 110);
-        if (d.dest[0]) flapText(c, 54, y, d.dest, kValue, shownMs, i * 110 + 200);
+        char city[8];
+        const char *dest = g_config.route_cities && Airports::shortCity(d.dest, 7, city, sizeof(city)) ? city : d.dest;
+        if (d.dest[0]) flapText(c, 54, y, dest, kValue, shownMs, i * 110 + 200);
         else           flapText(c, 54, y, d.type, kLabel, shownMs, i * 110 + 200);
         char when[8] = "";
         if (d.at)

@@ -60,6 +60,9 @@ namespace InfoScreens
 
     // shownMs: how long the screen has been up (the counters count up and the bars grow).
     void renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t animMs, uint32_t shownMs = 100000);
+    // Second and third stats pages: the busiest airlines and aircraft types.
+    void renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);
+    void renderTopTypes(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);
     // weather: optional dim line under the date ("" for none).
     void renderClock(FrameCanvas &c, uint32_t animMs, const char *weather = "");
     void renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs);

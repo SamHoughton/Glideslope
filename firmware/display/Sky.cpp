@@ -125,6 +125,16 @@ Sky::Look Sky::at(const Metar &m, time_t t)
     l.known = true;
     l.sunElev = sunElevation(g_airport.lat, g_airport.lon, t);
     readWeather(m, l);
+    l.frost = (m.valid && m.tempC != -99 && m.tempC <= 0) || l.precip == Snow;
+    struct tm lt;
+    localtime_r(&t, &lt);
+    // Fireworks on Bonfire Night and New Year's Eve evenings (into the small hours of the 1st).
+    if ((lt.tm_mon == 10 && lt.tm_mday == 5 && lt.tm_hour >= 17) ||
+        (lt.tm_mon == 11 && lt.tm_mday == 31 && lt.tm_hour >= 17) ||
+        (lt.tm_mon == 0 && lt.tm_mday == 1 && lt.tm_hour < 2))
+        l.season = Look::Fireworks;
+    else if (lt.tm_mon == 11 && lt.tm_mday <= 26)
+        l.season = Look::Christmas;
     finish(l);
     return l;
 }
@@ -138,7 +148,10 @@ Sky::Look Sky::preview(const char *name)
     else if (strstr(name, "cloud")) l.cloud = 2;
     else l.cloud = 1;
     if (strstr(name, "rain"))  { l.precip = Rain;    l.cloud = max<uint8_t>(l.cloud, 2); }
-    if (strstr(name, "snow"))  { l.precip = Snow;    l.cloud = 3; }
+    if (strstr(name, "snow"))  { l.precip = Snow;    l.cloud = 3; l.frost = true; }
+    if (strstr(name, "frost"))     l.frost = true;
+    if (strstr(name, "christmas")) l.season = Look::Christmas;
+    if (strstr(name, "fireworks")) l.season = Look::Fireworks;
     if (strstr(name, "storm")) { l.precip = Thunder; l.cloud = 3; }
     if (strstr(name, "fog"))   l.fog = true;
     finish(l);

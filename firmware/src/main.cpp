@@ -11,6 +11,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include <map>
 #include <esp_task_wdt.h>
 #include "utils/StageTrace.h"
+#include "utils/ImageCheck.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
@@ -39,6 +40,12 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/HeapWatch.h"
 #include "config/RuntimeConfig.h"
 #include "config/Airport.h"
+#include "config/Airports.h"
+#include "utils/Spotter.h"
+#include "utils/HomeAssistant.h"
+#include "utils/SeenLog.h"
+#include "display/OverheadScene.h"
+#include "display/FlyAcross.h"
 
 static OpenSkyFetcher             g_openSky;
 static Tar1090Fetcher             g_tar1090;
@@ -113,6 +120,110 @@ static void sampleStack()
     if (ok) g_display.noteStack(g_nextStack, around);
     g_nextStack = (g_nextStack + 1) % g_airport.holdCount;
     heapCheckpoint("stack sample");
+}
+
+// What Home Assistant sees (utils/HomeAssistant), refreshed once per fetch.
+static HomeAssistant::State g_ha;
+
+// Registration history for the flights about to get cards: days each
+// airframe has been on the board. One small file read per new aircraft a
+// day; remembered here so later fetches don't touch the file.
+static void noteHistory(const std::vector<StateVector> &states, std::vector<FlightInfo> &flights)
+{
+    const time_t now = time(nullptr);
+    if (now < 1600000000 || flights.empty()) return;
+    const uint16_t today = SeenLog::dayNumber(now);
+    struct Known { uint32_t icao; uint16_t day, days, prev; };
+    static Known known[24] = {};
+    static uint8_t next = 0;
+    for (FlightInfo &f : flights)
+    {
+        uint32_t icao = 0;
+        for (const StateVector &s : states)
+            if (s.callsign == f.ident) { icao = (uint32_t)strtoul(s.icao24.c_str(), nullptr, 16); break; }
+        if (!icao) continue;
+        const Known *k = nullptr;
+        for (const Known &c : known)
+            if (c.icao == icao && c.day == today) { k = &c; break; }
+        if (!k)
+        {
+            SeenLog::Slot before;
+            if (!SeenLog::visit(SeenLog::fileStore(), icao, today, before)) continue;
+            Known &c = known[next];
+            next = (next + 1) % 24;
+            c.icao = icao;
+            c.day = today;
+            c.days = before.lastDay == today ? before.days : before.days + 1;
+            c.prev = before.lastDay == today ? 0 : before.lastDay;
+            k = &c;
+        }
+        f.seen_days = k->days;
+        f.seen_prev_day = k->prev;
+    }
+}
+
+// Overhead and watchlist: the pass on the panel, and a phone alert for the watchlist.
+static void spotterCheck(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
+{
+    const RuntimeConfig cfg = configSnapshot();
+    Spotter::Settings set;
+    set.home_lat = cfg.home_lat;
+    set.home_lon = cfg.home_lon;
+    set.overhead_km = cfg.overhead_km;
+    set.overhead_all = cfg.overhead_all;
+    set.watchlist = cfg.watchlist;
+    Spotter::Event ev;
+    if (!Spotter::check(states, set, millis(), ev)) return;
+    const StateVector &s = states[ev.index];
+
+    // Where it's going: from the cards' routes, else one adsb.im lookup (plain HTTP).
+    FlightInfo route;
+    bool haveRoute = false;
+    for (const FlightInfo &f : flights)
+        if (f.ident == s.callsign) { route = f; haveRoute = true; break; }
+    if (!haveRoute && s.callsign.length() >= 4 && ESP.getMaxAllocHeap() > 20000)
+    {
+        NetBusy busy;
+        haveRoute = g_adsbIm.fetchFlightInfo(s.callsign, s.icao24, route) && route.destination.code_icao.length();
+    }
+
+    OverheadScene::Info info;
+    if (ev.watch)
+    {
+        strlcpy(info.label, "WATCHLIST", sizeof(info.label));
+        info.labelColour = Rgb{255, 215, 80};
+    }
+    const String number = flightNumberFromCallsign(s.callsign);
+    const String ident = number.length() ? number : s.callsign.length() ? s.callsign
+                       : s.registration.length() ? s.registration : s.icao24;
+    strlcpy(info.ident, ident.c_str(), sizeof(info.ident));
+    strlcpy(info.type, s.aircraft_type.c_str(), sizeof(info.type));
+    if (haveRoute)
+    {
+        const bool home = AirportPack::isHome(route.destination);
+        const AirportInfo &end = home ? route.origin : route.destination;
+        const char *city = cfg.route_cities ? Airports::city(end) : nullptr;
+        const String code = end.code_iata.length() ? end.code_iata : end.code_icao;
+        snprintf(info.where, sizeof(info.where), "%s %s", home ? "FROM" : "TO", city ? city : code.c_str());
+    }
+    info.altFt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
+    info.kind = AircraftSprites::classify(s.aircraft_type, info.known);
+    FlightInfo who;
+    who.ident = s.callsign;
+    who.ident_icao = s.callsign;
+    const String prefix = s.callsign.length() >= 3 ? s.callsign.substring(0, 3) : String();
+    info.accent = prefix.length() ? AircraftSprites::airlineColour(prefix.c_str()) : Rgb{90, 170, 255};
+    info.livery = AircraftSprites::liveryFor(who, info.accent);
+    info.rightward = FlyAcross::pathFor(isnan(s.heading) ? 90 : s.heading, 0, cfg.screen_facing).rightward;
+    Log.printf("Spotter: %s %s %s, %.0f ft, %.1f km from home%s%s\n", ev.watch ? "watchlist" : "overhead",
+               info.ident, info.type, isnan(info.altFt) ? 0.0f : info.altFt, isnan(ev.distKm) ? 0.0f : ev.distKm,
+               ev.watch ? ", matched " : "", ev.watch ? ev.matched : "");
+    g_display.showSpot(info);
+    snprintf(g_ha.spotted, sizeof(g_ha.spotted), "%s %s%s%s", info.ident, info.type, info.where[0] ? " " : "", info.where);
+    if (ev.watch)
+        Notify::post(Notify::Watch, 4, "eyes", "Watchlist", "%s %s%s%s (%s) at %.0f ft%s%s",
+                     info.ident, info.type, s.registration.length() ? " " : "", s.registration.c_str(),
+                     ev.matched, isnan(info.altFt) ? 0.0f : info.altFt, info.where[0] ? ", " : "", info.where);
 }
 
 static void checkSquawks(const std::vector<StateVector> &states)
@@ -259,6 +370,8 @@ static void updateArrivals(const std::vector<StateVector> &states, const std::ve
         return x.etaSec < y.etaSec;
     });
     g_display.setArrivals(rows, n);
+    strlcpy(g_ha.next, n ? rows[0].ident : "", sizeof(g_ha.next));
+    g_ha.nextEtaSec = n ? (int)lroundf(rows[0].etaSec) : -1;
 }
 
 // Recent departures (newest first) for the board's second page: every
@@ -325,6 +438,7 @@ void setup()
     // StageTrace) is logged on the next boot.
     esp_task_wdt_init(30, true);
     StageTrace::reportAtBoot();
+    ImageCheck::begin();
 
     // Load config first so g_config is fully populated before any component reads it.
     // initialize() calls setBrightness8(g_config.display_brightness) — must be non-zero.
@@ -463,6 +577,7 @@ void setup()
     // From here the display task owns the panel (animation keeps running
     // while loop() blocks on network fetches).
     g_display.startTask();
+    Notify::setFrame(&shownFrame());   // the panel goes with emergency, rare-spot and watchlist alerts
 }
 
 // Reconnect WiFi if the connection has dropped.
@@ -550,6 +665,12 @@ void loop()
         {
             // Nothing to do — already logged the suppression above.
         }
+        else if (g_updating)
+        {
+            // A firmware upload has the board: no fetch, and the feed's TLS
+            // session closed for the memory (it reopens on the next fetch).
+            if (g_tlsReleaser) g_tlsReleaser();
+        }
         else if (!ensureWiFi())
         {
             Log.println("Skipping fetch — no WiFi");
@@ -596,10 +717,13 @@ void loop()
                 ESP.restart();
             }
         }
+        if (g_fetcher->lastFetchOk()) ImageCheck::keep("positions fetched");
+        noteHistory(g_states, g_flights);       // "SEEN 14 TIMES" on the cards
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
         heapCheckpoint("fetch cycle");
         checkSquawks(g_states);
+        spotterCheck(g_states, g_flights);
         g_display.noteTraffic(g_states);
         {
             char arr[12], dep[12];
@@ -608,6 +732,18 @@ void loop()
         }
         updateArrivals(g_states, g_flights);
         updateDepartures(g_states, g_flights);
+        {
+            g_display.runwaysInUse(g_ha.arrRunways, sizeof(g_ha.arrRunways), g_ha.depRunways, sizeof(g_ha.depRunways));
+            g_display.todayCounts(g_ha.arrivals, g_ha.departures);
+            char hold[8];
+            g_ha.holding = g_display.holdingSummary(hold, sizeof(hold));
+            FlightInfo cur;
+            if (g_display.currentFlight(cur))
+                snprintf(g_ha.last, sizeof(g_ha.last), "%s %s>%s",
+                         (cur.ident_iata.length() ? cur.ident_iata : cur.ident).c_str(),
+                         (cur.origin.code_iata.length() ? cur.origin.code_iata : cur.origin.code_icao).c_str(),
+                         (cur.destination.code_iata.length() ? cur.destination.code_iata : cur.destination.code_icao).c_str());
+        }
 
         static String lastIdents;
         String idents;
@@ -682,6 +818,7 @@ void loop()
     {
         StageTrace::mark(StageTrace::Main, StageTrace::MainNotify);
         Notify::loop();
+        HomeAssistant::loop(g_ha);   // MQTT: keeps the connection, publishes every 30 s
     }
 
     // Heathrow weather for the arrivals board and the night clock.
@@ -773,6 +910,7 @@ void loop()
             lastReqs   = reqs;
         }
     }
+    if (millis() > 5UL * 60 * 1000) ImageCheck::keep("5 minutes up");
     StageTrace::mark(StageTrace::Main, StageTrace::MainIdle);
     delay(10);
 }

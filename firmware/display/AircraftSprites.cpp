@@ -1,6 +1,7 @@
 #include "display/AircraftSprites.h"
 
 #include "display/SpriteData.h"
+#include "config/AirlineCodes.h"
 
 namespace
 {
@@ -152,6 +153,43 @@ namespace
 const AircraftSprites::Sprite &AircraftSprites::get(Kind k)      { return entry(SpriteData::kCard, k); }
 const AircraftSprites::Sprite &AircraftSprites::getScene(Kind k) { return entry(SpriteData::kScene, k); }
 
+Rgb AircraftSprites::airlineColour(const char *code)
+{
+    const size_t n = code ? strlen(code) : 0;
+    for (const SpriteData::LiveryRow &r : SpriteData::kLiveries)
+    {
+        bool match = n == 3 && strcmp(r.code, code) == 0;
+        if (!match && n == 2)
+        {
+            const char *iata = airlineIata(r.code);
+            match = iata && strcmp(iata, code) == 0;
+        }
+        if (!match) continue;
+        // The tail when it has a colour (BA navy, not its red stripe), else
+        // the most saturated of stripe, trim and engines.
+        float best = -1;
+        Rgb out{150, 160, 175};
+        for (int i : {3, 2, 4, 5})
+        {
+            const uint8_t *c = r.rgb[i];
+            const int mx = max(c[0], max(c[1], c[2])), mn = min(c[0], min(c[1], c[2]));
+            if (mx < 30) continue;
+            const float sat = (float)(mx - mn) / mx;
+            if (i == 3 && sat >= 0.35f) { out = Rgb{c[0], c[1], c[2]}; break; }
+            if (sat > best) { best = sat; out = Rgb{c[0], c[1], c[2]}; }
+        }
+        // Full brightness reads better on LEDs (navy tails become blue).
+        const int mx = max(out.r, max(out.g, out.b));
+        const float k = 235.0f / (mx ? mx : 1);
+        return Rgb{(uint8_t)min(255.0f, out.r * k), (uint8_t)min(255.0f, out.g * k), (uint8_t)min(255.0f, out.b * k)};
+    }
+    static const Rgb kPalette[] = {{90, 170, 255}, {120, 220, 160}, {255, 170, 60}, {230, 120, 200},
+                                   {255, 225, 90}, {100, 210, 230}, {250, 120, 100}, {180, 150, 255}};
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < n; ++i) h = (h ^ (uint8_t)code[i]) * 16777619u;
+    return kPalette[h % (sizeof(kPalette) / sizeof(kPalette[0]))];
+}
+
 AircraftSprites::Livery AircraftSprites::liveryFor(const FlightInfo &f, Rgb accent)
 {
     // The airline actually flying it: the call sign's ICAO prefix first.
@@ -237,6 +275,34 @@ void AircraftSprites::draw(FrameCanvas &c, const Sprite &s, int x, int y, const 
             const char ch = at(r, col);
             if (ch == 'a' || ch == 'b')
                 px = mixTo(FrameCanvas::unpack(c.get(x + col, y + r)), px, 0.55f);
+            c.set(x + col, y + r, px);
+        }
+}
+
+void AircraftSprites::drawHalf(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,
+                               bool flipX, bool grey)
+{
+    const Livery greys{};
+    for (int r = 0; r < (s.h + 1) / 2; ++r)
+        for (int col = 0; col < (s.w + 1) / 2; ++col)
+        {
+            int n = 0, sr = 0, sg = 0, sb = 0;
+            for (int dy = 0; dy < 2; ++dy)
+                for (int dx = 0; dx < 2; ++dx)
+                {
+                    const int rr = 2 * r + dy, cc = 2 * col + dx;
+                    if (rr >= s.h || cc >= s.w) continue;
+                    Rgb px;
+                    if (!shade(s.rows[rr][flipX ? s.w - 1 - cc : cc], grey ? greys : livery, px)) continue;
+                    ++n; sr += px.r; sg += px.g; sb += px.b;
+                }
+            if (n < 2) continue;
+            Rgb px{(uint8_t)(sr / n), (uint8_t)(sg / n), (uint8_t)(sb / n)};
+            if (grey)
+            {
+                const uint8_t v = (uint8_t)((px.r * 3 + px.g * 4 + px.b) / 8 * 0.75f);
+                px = Rgb{v, v, (uint8_t)min(255, v + 6)};
+            }
             c.set(x + col, y + r, px);
         }
 }

@@ -79,8 +79,8 @@ details[open]>summary{margin-bottom:10px}
 @media(max-width:480px){.row{grid-template-columns:1fr}}
 label{display:block;font-size:13px;color:var(--text);margin-bottom:5px;font-weight:500}
 small,.hint{color:var(--muted);font-size:12px;font-weight:400}
-input,select{width:100%;font:inherit;font-size:14px;color:var(--text);background:#0b1017;border:1px solid var(--line2);border-radius:9px;padding:9px 11px}
-input:focus,select:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(255,185,60,.18)}
+input,select,textarea{width:100%;font:inherit;font-size:14px;color:var(--text);background:#0b1017;border:1px solid var(--line2);border-radius:9px;padding:9px 11px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(255,185,60,.18)}
 input[type=range]{padding:0;accent-color:var(--amber);background:none;border:none;box-shadow:none}
 input[type=file]{padding:7px;color:var(--muted)}
 input[type=file]::file-selector-button{font:inherit;font-size:13px;margin-right:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--line2);background:#1a2230;color:var(--text);cursor:pointer}
@@ -141,6 +141,8 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="map">Map</button>
         <button data-demo="arrivals">Arrivals</button>
         <button data-demo="stats">Today's stats</button>
+        <button data-demo="globe">Route globe</button>
+        <button data-demo="overhead">Overhead pass</button>
         <button data-demo="weather">Weather</button>
         <button data-demo="holding">Holding stacks</button>
         <button data-demo="clock">Night clock</button>
@@ -152,6 +154,8 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="sky?look=night">Sky: night</button>
         <button data-demo="sky?look=night+storm">Sky: storm</button>
         <button data-demo="sky?look=day+snow">Sky: snow</button>
+        <button data-demo="sky?look=night+fireworks">Sky: fireworks</button>
+        <button data-demo="sky?look=night+christmas">Sky: Christmas</button>
         <button data-demo="sprites">Aircraft sprites</button>
       </div>
     </details>
@@ -166,6 +170,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <button data-tab="airport">Airport</button>
       <button data-tab="night">Night</button>
       <button data-tab="data">Data</button>
+      <button data-tab="spotter">Spotter</button>
       <button data-tab="alerts">Alerts</button>
       <button data-tab="system">System</button>
       <button data-tab="log">Log</button>
@@ -187,11 +192,13 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <label class="sw"><input type="checkbox" data-scr="1"><span>Map<small>Everything in range around the airport</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="2"><span>Arrivals board<small>The next four landings, with countdowns</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="32"><span>Departures on the board<small>Recent take-offs as a second page of the arrivals board</small></span></label>
-      <label class="sw"><input type="checkbox" data-scr="4"><span>Today's stats<small>Movements, hourly chart, against yesterday</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="4"><span>Today's stats<small>Movements and the hourly chart, then the top airlines and aircraft types</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="64"><span>Route globe<small>The last flight's route on a globe: where it has been and how far to go</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="8"><span>Weather<small>Live sky, windsock and the wind on the runway</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="16"><span>Holding stacks<small>Only when aircraft are holding</small></span></label>
       <h3>Look</h3>
       <label class="sw"><input type="checkbox" id="display_border"><span>Airline-coloured border</span></label>
+      <label class="sw"><input type="checkbox" id="route_cities"><span>City names on routes<small>London &gt; New York instead of LHR &gt; JFK</small></span></label>
       <label class="sw"><input type="checkbox" id="display_nearest_only"><span>Nearest aircraft only<small>One route lookup per fetch; easier on memory and APIs</small></span></label>
       <label class="sw"><input type="checkbox" id="display_flip"><span>Rotate 180&deg;</span></label>
     </section>
@@ -248,12 +255,32 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       </div>
     </section>
 
+    <section class="tab" id="t-spotter">
+      <p class="hint">Uses the home marker (Airport tab). An aircraft passing within the distance below crosses the panel at a size set by its height, with where it is going. Each aircraft once every 45 minutes.</p>
+      <div class="f"><label for="overhead_km">Overhead within <small>(km; 0 = off)</small></label><input type="number" step="0.5" min="0" max="20" id="overhead_km"></div>
+      <label class="sw"><input type="checkbox" id="overhead_all"><span>Arrivals and departures too<small>Off: only aircraft flying over, not ones landing or taking off here (they have their own cards)</small></span></label>
+      <div class="f"><label for="watchlist">Watchlist <small>&mdash; registrations, call signs, aircraft types or hex codes, separated by commas; * matches the start (B74*, RRR*)</small></label><textarea id="watchlist" rows="3" maxlength="159" spellcheck="false" placeholder="e.g. G-CIVA, B74*, A388, RRR*"></textarea></div>
+      <p class="hint">A watchlist aircraft anywhere in range takes over the panel and, with alerts on, sends one to your phone (once every 6 hours each).</p>
+      <div class="btns"><button data-demo="overhead">Show an overhead pass</button></div>
+    </section>
+
     <section class="tab" id="t-alerts">
       <p class="hint">Alerts on your phone through <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>: free, no account. Install the ntfy app and subscribe to the topic below. Anyone who knows a topic can read it, so keep it long and random.</p>
       <div class="f"><label for="ntfy_topic">ntfy topic <small>(or a full URL for your own server; blank = off)</small></label><input id="ntfy_topic" autocomplete="off" spellcheck="false" placeholder="e.g. glideslope-k3x9q2m7w1"></div>
+      <div class="f"><label for="ntfy_token">Access token <small>(optional, for a protected topic on your own server; sent over https only)</small></label><input type="password" id="ntfy_token" autocomplete="new-password"></div>
       <div class="btns"><button id="ntr">Random topic</button><button id="ntt">Save and send a test</button><span class="msg" id="ntst"></span></div>
       <div class="f"><label>Tell me about</label>
-        <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label><label><input type="checkbox" data-ntf="32">Evening round-up</label></div></div>
+        <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label><label><input type="checkbox" data-ntf="32">Evening round-up</label><label><input type="checkbox" data-ntf="64">Watchlist</label></div></div>
+      <h3>Home Assistant</h3>
+      <p class="hint">Sensors over MQTT with discovery: next arrival, runways in use, today's arrivals and departures, aircraft holding, the last flight. Blank host = off.</p>
+      <div class="row">
+        <div class="f"><label for="mqtt_host">MQTT broker</label><input id="mqtt_host" autocomplete="off" spellcheck="false" placeholder="IP address, e.g. 192.168.1.20"></div>
+        <div class="f"><label for="mqtt_port">Port</label><input type="number" min="1" max="65535" id="mqtt_port"></div>
+      </div>
+      <div class="row">
+        <div class="f"><label for="mqtt_user">User</label><input id="mqtt_user" autocomplete="off" spellcheck="false"></div>
+        <div class="f"><label for="mqtt_pass">Password</label><input type="password" id="mqtt_pass" autocomplete="new-password"></div>
+      </div>
     </section>
 
     <section class="tab" id="t-system">
@@ -280,7 +307,16 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
 var $=function(id){return document.getElementById(id);};
 var st={},cur=0,lines=0,lb=$('lb'),PACKS='https://raw.githubusercontent.com/SamHoughton/Glideslope/main/packs/';
 function status(t,ms){$('st').textContent=t;if(ms)setTimeout(function(){$('st').textContent='';},ms);}
-function post(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});}
+// Every POST carries X-Glideslope (a cross-site page can't add it) and, once
+// entered, the board's code; a 401 shows the code on the panel and asks for it.
+var TOK='';try{TOK=localStorage.getItem('gs-token')||'';}catch(e){}
+function hdrs(ct){var h={'X-Glideslope':'1'};if(TOK)h['X-Glideslope-Token']=TOK;if(ct)h['Content-Type']=ct;return h;}
+function askCode(){return fetch('/api/token/show',{method:'POST',headers:hdrs()}).catch(function(){}).then(function(){
+  var c=prompt('Enter the code now shown on the board (it stays up for 30 seconds).');if(!c)return false;
+  TOK=c.trim().toUpperCase();try{localStorage.setItem('gs-token',TOK);}catch(e){}return true;});}
+function send(u,ct,body){return fetch(u,{method:'POST',headers:hdrs(ct),body:body}).then(function(r){
+  if(r.status!==401)return r;return askCode().then(function(ok){return ok?fetch(u,{method:'POST',headers:hdrs(ct),body:body}):r;});});}
+function post(u,b){return send(u,'application/json',b?JSON.stringify(b):undefined);}
 function toTime(m){var h=Math.floor(m/60),n=m%60;return(h<10?'0':'')+h+':'+(n<10?'0':'')+n;}
 function toMin(t){var p=(t||'00:00').split(':');return parseInt(p[0])*60+(parseInt(p[1])||0);}
 function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
@@ -298,28 +334,31 @@ function load(){fetch('/api/config').then(function(r){return r.json();}).then(fu
   Object.keys(d).forEach(function(k){var e=$(k);if(!e)return;if(e.type==='checkbox')e.checked=!!d[k];else e.value=d[k];});
   if(d.min_altitude_ft===-1)$('min_altitude_ft').value='';
   $('night_start_time').value=toTime(d.night_start_minutes||0);$('night_end_time').value=toTime(d.night_end_minutes||0);
-  ['opensky_client_secret','aeroapi_key'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});
+  ['opensky_client_secret','aeroapi_key','ntfy_token'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});
   document.querySelectorAll('[data-scr]').forEach(function(e){e.checked=!!(d.screens&parseInt(e.dataset.scr));});
   document.querySelectorAll('[data-ntf]').forEach(function(e){e.checked=!!(d.notify_mask&parseInt(e.dataset.ntf));});
   $('bv').textContent=d.display_brightness;});}
 function save(){var d={};
-  ['center_lat','center_lon','radius_km','home_lat','home_lon'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
+  ['center_lat','center_lon','radius_km','home_lat','home_lon','overhead_km'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
+  d.watchlist=$('watchlist').value.trim();d.mqtt_host=$('mqtt_host').value.trim();d.mqtt_user=$('mqtt_user').value;d.mqtt_port=parseInt($('mqtt_port').value)||1883;
   ['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',
    'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});
-  ['display_nearest_only','display_border','display_flip','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds'].forEach(function(k){d[k]=$(k).checked;});
+  ['display_nearest_only','display_border','display_flip','route_cities','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds','overhead_all'].forEach(function(k){d[k]=$(k).checked;});
   d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});
   d.screen_facing=$('screen_facing').value;d.tar1090_host=$('tar1090_host').value;
   d.ntfy_topic=$('ntfy_topic').value.trim();d.notify_mask=ntfMask();
   var ma=$('min_altitude_ft').value;d.min_altitude_ft=ma===''?-1:parseInt(ma);
   d.night_start_minutes=toMin($('night_start_time').value);d.night_end_minutes=toMin($('night_end_time').value);
-  ['opensky_client_id','opensky_client_secret','aeroapi_key'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});
+  ['opensky_client_id','opensky_client_secret','aeroapi_key','ntfy_token','mqtt_pass'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});
   status('Saving…');post('/api/config',d).then(function(r){return r.json();})
     .then(function(j){status(j.ok?'Saved':'Error: '+(j.error||'?'),3000);load();}).catch(function(){status('Could not reach the board',4000);});}
 $('save').addEventListener('click',save);
 function ntfMask(){var m=0;document.querySelectorAll('[data-ntf]').forEach(function(e){if(e.checked)m|=parseInt(e.dataset.ntf);});return m;}
-$('ntr').addEventListener('click',function(){var a=new Uint8Array(8),s='';crypto.getRandomValues(a);
-  a.forEach(function(b){s+='abcdefghijkmnpqrstuvwxyz23456789'[b%32];});$('ntfy_topic').value='glideslope-'+s;});
-$('ntt').addEventListener('click',function(){var t=$('ntfy_topic').value.trim();if(!t){$('ntst').textContent='Set a topic first';return;}
+function randomTopic(){var a=new Uint8Array(10),s='';crypto.getRandomValues(a);
+  a.forEach(function(b){s+='abcdefghijkmnpqrstuvwxyz23456789'[b%32];});return 'glideslope-'+s;}
+$('ntr').addEventListener('click',function(){$('ntfy_topic').value=randomTopic();});
+// No topic yet: a long random one (public ntfy topics are readable by anyone who guesses the name).
+$('ntt').addEventListener('click',function(){var t=$('ntfy_topic').value.trim();if(!t){t=randomTopic();$('ntfy_topic').value=t;}
   $('ntst').textContent='Sending…';post('/api/config',{ntfy_topic:t,notify_mask:ntfMask()})
   .then(function(){return post('/api/notify/test');}).then(function(r){return r.json();})
   .then(function(j){$('ntst').textContent=j.ok?'Sent: check your phone (subscribed to '+t+')':'Failed: '+(j.error||'?');})
@@ -337,10 +376,14 @@ $('res').addEventListener('click',function(){$('resf').click();});
 $('resf').addEventListener('change',function(e){var f=e.target.files[0];if(!f)return;f.text().then(function(t){var d;try{d=JSON.parse(t);}catch(x){status('Not a settings file',4000);return;}
   if(!confirm('Restore settings from '+f.name+'?'))return;post('/api/config',d).then(function(r){return r.json();}).then(function(j){status(j.ok?'Restored':'Error',3000);load();});});e.target.value='';});
 $('upd').addEventListener('click',function(){var f=$('fw').files[0],u=$('ust');if(!f){u.textContent='Choose a .bin file first';return;}
-  if(!confirm('Install '+f.name+' and restart the board?'))return;var x=new XMLHttpRequest();x.open('POST','/api/update');
+  if(!confirm('Install '+f.name+' and restart the board?'))return;upload(f,u,false);});
+function upload(f,u,retried,unsigned){var x=new XMLHttpRequest();x.open('POST','/api/update');
   x.upload.onprogress=function(e){if(e.lengthComputable)u.textContent='Uploading '+Math.round(e.loaded*100/e.total)+'%';};
-  x.onload=function(){var j={};try{j=JSON.parse(x.responseText);}catch(e){}if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}else u.textContent='Failed: '+(j.error||x.status);};
-  x.onerror=function(){u.textContent='Upload failed (connection lost)';};x.setRequestHeader('Content-Type','application/octet-stream');x.send(f);});
+  x.onload=function(){if(x.status===401&&!retried){askCode().then(function(ok){if(ok)upload(f,u,true,unsigned);else u.textContent='The board\'s code is needed';});return;}
+    var j={};try{j=JSON.parse(x.responseText);}catch(e){}
+    if(j.error==='unsigned'&&!unsigned){if(confirm('This firmware is not a signed Glideslope release (your own build?). Install it anyway?'))upload(f,u,true,true);else u.textContent='Not installed';return;}if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}else u.textContent='Failed: '+(j.error||x.status);};
+  x.onerror=function(){u.textContent='Upload failed (connection lost)';};var h=hdrs('application/octet-stream');if(unsigned)h['X-Glideslope-Unsigned']='1';
+  Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send(f);}
 
 // Airport.
 fetch(PACKS+'index.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){
@@ -349,7 +392,7 @@ fetch(PACKS+'index.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;r
     o.textContent=p.name+' ('+p.icao+(p.iata?' / '+p.iata:'')+')'+(p.city?', '+p.city:'')+(p.country?', '+p.country:'');sel.appendChild(o);});
 }).catch(function(){$('aps').innerHTML='<option value="">Could not reach GitHub: use a pack file below</option>';});
 function sendPack(blob,label){var u=$('ast');if(!confirm('Install '+label+' and restart the board?'))return;u.textContent='Installing…';
-  fetch('/api/airport',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:blob}).then(function(r){return r.json();})
+  send('/api/airport','application/octet-stream',blob).then(function(r){return r.json();})
   .then(function(j){if(j.ok){u.textContent='Installed '+j.airport+', restarting…';setTimeout(function(){location.reload();},9000);}else u.textContent='Failed: '+j.error;})
   .catch(function(){u.textContent='Upload failed';});}
 $('apu').addEventListener('click',function(){var f=$('apf').files[0],v=$('aps').value,u=$('ast');if(f){sendPack(f,f.name);return;}

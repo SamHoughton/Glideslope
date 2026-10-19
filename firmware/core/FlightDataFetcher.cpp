@@ -103,11 +103,8 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
     // it (and adsb.lol's carry-forward reuses it rather than keeping a copy).
     outFlights.clear();
 
-    bool ok = _stateFetcher->fetchStateVectors(
-        g_config.center_lat,
-        g_config.center_lon,
-        g_config.radius_km,
-        outStates);
+    const RuntimeConfig cfg = configSnapshot();   // centre and radius from the same settings
+    bool ok = _stateFetcher->fetchStateVectors(cfg.center_lat, cfg.center_lon, cfg.radius_km, outStates);
     _lastFetchOk = ok;
     heapCheckpoint("position fetch");
     if (!ok)

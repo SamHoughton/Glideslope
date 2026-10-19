@@ -30,8 +30,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs'
 
 # Showcase times (s), matching NeoMatrixDisplay::stepShowcase.
-CLIPS = {'flyacross.gif': (0.0, 2.4), 'landing.gif': (9.0, 12.6), 'takeoff.gif': (39.5, 42.9)}
-STILLS = {'arrivals.png': 24.5, 'weather.png': 29.5, 'stats.png': 34.3, 'holding.png': 38.5}
+CLIPS = {'flyacross.gif': (0.0, 2.4), 'landing.gif': (9.0, 12.6), 'takeoff.gif': (44.5, 47.9)}
+STILLS = {'globe.png': 19.5, 'arrivals.png': 29.0, 'weather.png': 34.0, 'stats.png': 39.3, 'holding.png': 43.5}
 
 
 def save_gif(frames, path, fps=20):
@@ -55,7 +55,7 @@ def clip(samples, t0, t1, fps=20):
 def post(base, path):
     for _ in range(3):
         try:
-            urllib.request.urlopen(urllib.request.Request(base + path, data=b'', method='POST'), timeout=15).read()
+            urllib.request.urlopen(urllib.request.Request(base + path, data=b'', method='POST', headers=rd.POST_HEADERS), timeout=15).read()
             return
         except OSError:
             time.sleep(2)

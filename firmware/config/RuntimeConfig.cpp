@@ -15,6 +15,30 @@ static constexpr const char *kNS = "fw_cfg";
 
 // Global instance — default-initialised to zeros; loadConfig() fills it.
 RuntimeConfig g_config;
+volatile uint32_t g_configSeq = 0;
+
+void configCommit(const RuntimeConfig &next)
+{
+    ++g_configSeq;   // odd: a write is under way
+    __sync_synchronize();
+    g_config = next;
+    __sync_synchronize();
+    ++g_configSeq;   // even: settled
+}
+
+RuntimeConfig configSnapshot()
+{
+    RuntimeConfig copy;
+    for (;;)
+    {
+        const uint32_t before = g_configSeq;
+        __sync_synchronize();
+        copy = g_config;
+        __sync_synchronize();
+        if (!(before & 1) && before == g_configSeq) return copy;
+        delay(1);
+    }
+}
 
 // Write all compile-time defaults into c.
 static void applyDefaults(RuntimeConfig &c)
@@ -38,6 +62,7 @@ static void applyDefaults(RuntimeConfig &c)
             sizeof(c.screen_facing) - 1);
     c.screen_facing[sizeof(c.screen_facing) - 1] = '\0';
     c.display_flip               = false;
+    c.route_cities               = false;
     c.night_mode_enabled         = true;      // dim overnight by default
     c.night_follow_sun           = false;
     c.night_start_minutes        = 22 * 60;   // 22:00
@@ -59,7 +84,14 @@ static void applyDefaults(RuntimeConfig &c)
     c.opensky_priority               = false;
     c.use_community_feeds            = true;
     c.ntfy_topic[0]                  = '\0';
-    c.notify_mask                    = 0x1F;   // all events (once a topic is set)
+    c.notify_mask                    = 0x5F;   // all events but the round-up (once a topic is set)
+    c.overhead_km                    = 2.0f;
+    c.overhead_all                   = false;
+    c.watchlist[0]                   = '\0';
+    c.mqtt_host[0]                   = '\0';
+    c.mqtt_port                      = 1883;
+    c.mqtt_user[0]                   = '\0';
+    c.mqtt_pass[0]                   = '\0';
     c.min_altitude_ft                = 100;
 
     c.fetch_interval_seconds        = TimingConfiguration::FETCH_INTERVAL_SECONDS;
@@ -67,7 +99,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.display_cycle_seconds         = TimingConfiguration::DISPLAY_CYCLE_SECONDS;
     c.card_lead_seconds             = 120;
     c.interlude_seconds             = 15;
-    c.screens                       = 0x1F;   // map, arrivals, stats, weather, holding
+    c.screens                       = 0x5F;   // map, arrivals, stats, weather, holding, globe
     c.aeroapi_cache_ttl_seconds     = TimingConfiguration::AEROAPI_CACHE_TTL_SECONDS;
     c.aeroapi_fail_cache_ttl_seconds = TimingConfiguration::AEROAPI_FAIL_CACHE_TTL_SECONDS;
 }
@@ -108,6 +140,7 @@ void loadConfig()
     g_config.display_flip           = p.getBool("flip",     g_config.display_flip);
     g_config.night_mode_enabled     = p.getBool("night_en", g_config.night_mode_enabled);
     g_config.night_follow_sun       = p.getBool("night_sun", g_config.night_follow_sun);
+    g_config.route_cities           = p.getBool("rt_cities", g_config.route_cities);
     g_config.night_start_minutes    = (uint16_t)p.getUInt("night_s",  g_config.night_start_minutes);
     g_config.night_end_minutes      = (uint16_t)p.getUInt("night_e",  g_config.night_end_minutes);
     g_config.night_brightness       = (uint8_t)p.getUInt("night_br",  g_config.night_brightness);
@@ -116,9 +149,25 @@ void loadConfig()
     g_config.opensky_priority              = p.getBool("osky_pri",  g_config.opensky_priority);
     g_config.use_community_feeds           = p.getBool("community", g_config.use_community_feeds);
     g_config.notify_mask                   = (uint8_t)p.getUInt("ntfy_m", g_config.notify_mask);
+    if (!p.isKey("ntf_v5")) g_config.notify_mask |= 64;   // watchlist alerts (5.0)
+    g_config.overhead_km                   = p.getFloat("ovh_km", g_config.overhead_km);
+    g_config.overhead_all                  = p.getBool("ovh_all", g_config.overhead_all);
+    g_config.mqtt_port                     = (uint16_t)p.getUInt("mqtt_port", g_config.mqtt_port);
+    {
+        String v = p.getString("watch", String(g_config.watchlist));
+        strlcpy(g_config.watchlist, v.c_str(), sizeof(g_config.watchlist));
+        v = p.getString("mqtt_host", String(g_config.mqtt_host));
+        strlcpy(g_config.mqtt_host, v.c_str(), sizeof(g_config.mqtt_host));
+        v = p.getString("mqtt_user", String(g_config.mqtt_user));
+        strlcpy(g_config.mqtt_user, v.c_str(), sizeof(g_config.mqtt_user));
+        v = p.getString("mqtt_pass", String(g_config.mqtt_pass));
+        strlcpy(g_config.mqtt_pass, v.c_str(), sizeof(g_config.mqtt_pass));
+    }
     {
         String v = p.getString("ntfy", String(g_config.ntfy_topic));
         strlcpy(g_config.ntfy_topic, v.c_str(), sizeof(g_config.ntfy_topic));
+        v = p.getString("ntfy_tok", String(g_config.ntfy_token));
+        strlcpy(g_config.ntfy_token, v.c_str(), sizeof(g_config.ntfy_token));
     }
     g_config.min_altitude_ft               = p.getInt("min_alt",   g_config.min_altitude_ft);
 
@@ -129,6 +178,7 @@ void loadConfig()
     g_config.interlude_seconds             = p.getUInt("interlude",  g_config.interlude_seconds);
     g_config.screens                       = (uint8_t)p.getUInt("screens", g_config.screens);
     if (!p.isKey("scr_v3")) g_config.screens |= 0x10;   // holding screen (3.0): on for older settings too
+    if (!p.isKey("scr_v5")) g_config.screens |= 0x40;   // route globe (5.0)
     g_config.aeroapi_cache_ttl_seconds     = p.getUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     g_config.aeroapi_fail_cache_ttl_seconds = p.getUInt("api_fttl", g_config.aeroapi_fail_cache_ttl_seconds);
 
@@ -185,6 +235,7 @@ void saveConfig()
     p.putBool("flip",     g_config.display_flip);
     p.putBool("night_en", g_config.night_mode_enabled);
     p.putBool("night_sun", g_config.night_follow_sun);
+    p.putBool("rt_cities", g_config.route_cities);
     p.putUInt("night_s",  g_config.night_start_minutes);
     p.putUInt("night_e",  g_config.night_end_minutes);
     p.putUInt("night_br", g_config.night_brightness);
@@ -193,7 +244,16 @@ void saveConfig()
     p.putBool("osky_pri",  g_config.opensky_priority);
     p.putBool("community", g_config.use_community_feeds);
     p.putUInt("ntfy_m",    g_config.notify_mask);
+    p.putBool("ntf_v5",    true);
+    p.putFloat("ovh_km",   g_config.overhead_km);
+    p.putBool("ovh_all",   g_config.overhead_all);
+    p.putString("watch",   g_config.watchlist);
+    p.putString("mqtt_host", g_config.mqtt_host);
+    p.putUInt("mqtt_port", g_config.mqtt_port);
+    p.putString("mqtt_user", g_config.mqtt_user);
+    p.putString("mqtt_pass", g_config.mqtt_pass);
     p.putString("ntfy",    g_config.ntfy_topic);
+    p.putString("ntfy_tok", g_config.ntfy_token);
     p.putInt("min_alt",    g_config.min_altitude_ft);
 
     p.putUInt("fetch_iv",  g_config.fetch_interval_seconds);
@@ -203,6 +263,7 @@ void saveConfig()
     p.putUInt("interlude", g_config.interlude_seconds);
     p.putUInt("screens",   g_config.screens);
     p.putBool("scr_v3",    true);
+    p.putBool("scr_v5",    true);
     p.putUInt("api_ttl",   g_config.aeroapi_cache_ttl_seconds);
     p.putUInt("api_fttl",  g_config.aeroapi_fail_cache_ttl_seconds);
 
@@ -216,7 +277,9 @@ void saveConfig()
 
 void resetConfig()
 {
-    applyDefaults(g_config);
+    RuntimeConfig next;
+    applyDefaults(next);
+    configCommit(next);
     saveConfig();
 }
 
