@@ -284,6 +284,11 @@ int main(int argc, char **argv)
         f.ident_iata = "EK1"; f.ident = "UAE1"; f.registration = "A6-EVB"; f.airline_display_name_full = "Emirates";
         f.origin.code_icao = "OMDB"; f.origin.code_iata = "DXB";
         InfoScreens::renderAircraft(c, f, AircraftSprites::airlineColour("EK"), 61, "27L", 2000);  save(c, "final_aircraft2");
+        // For the README: the showcase's GS101.
+        f.ident_iata = "GS101"; f.ident = "GSL101"; f.aircraft_code = "A35K"; f.aircraft_display_name_short = "A350-1000";
+        f.registration = "G-GSLP"; f.airline_display_name_full = "Glideslope"; f.seen_days = 14;
+        f.origin.code_icao = "KJFK"; f.origin.code_iata = "JFK";
+        InfoScreens::renderAircraft(c, f, Rgb{255, 185, 60}, 95, "27L", 2000);                    save(c, "docs_final_aircraft");
     }
 
     // The landing scene through the year.

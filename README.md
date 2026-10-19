@@ -45,6 +45,10 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Holding stacks](docs/holding.png) | ![Squawk alert](docs/squawk.png) |
 
+| Map, with flight numbers and the spotlight | More on final: the aircraft |
+| --- | --- |
+| ![The map: flight numbers beside the aircraft, trails, and the spotlight's bar](docs/map.png) | ![On final: the aircraft page between the card's turns](docs/final-aircraft.png) |
+
 | Route globe | Overhead |
 | --- | --- |
 | ![The route globe: New York to London, the night side shaded](docs/globe.png) | ![An A380 overhead at 37,000 ft with contrails](docs/overhead.png) |
@@ -53,8 +57,8 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Today's busiest airlines in their colours](docs/stats-airlines.png) | ![Today's commonest aircraft types](docs/stats-types.png) |
 
-The overhead pass, the top airlines and types pages and the fireworks
-below are drawn by the firmware's own code on a desktop
+The overhead pass, the aircraft page, the top airlines and types pages and
+the fireworks below are drawn by the firmware's own code on a desktop
 (`tools/host_build.py render`), with a made-up day of traffic; the rest
 are the board's own frames.
 

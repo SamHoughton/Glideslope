@@ -7,7 +7,7 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
-## 5.1.0 (in progress)
+## 5.1.0 (19 Oct 2026)
 
 **New**
 - **Map**: flight numbers beside the aircraft, a spotlight cycling through
@@ -19,11 +19,17 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 - The departures board with city names ran a long city into the time;
   the weather screen drew gusts over the wind. Both found by the new
   screen tests.
-- Firmware uploads pause the feed so they can't stall.
-- The flight feed could stay down for up to 25 minutes: the stats save
-  closed the feed's connection for room, and on a fragmented heap it
-  could not reopen. The save no longer closes it, and if the feed can't
-  reopen with plenty free, the board saves its stats and restarts.
+- Firmware uploads wait for the feed to pause, so they don't stall.
+- **The flight feed no longer drops out.** Under busy traffic (5.0.0 too)
+  the board restarted every 10-15 minutes: whenever the feed's HTTPS
+  connection was closed (for the weather, every 10 minutes) the heap was
+  too broken up to open it again. A TLS arena now keeps room for the
+  connection's two 16 KB buffers from start-up; the two aircraft lists take
+  turns instead of a new one every 5 seconds; a fetch is no longer skipped
+  for room the list already has; the stats save never closes the feed;
+  and if the feed still can't reopen, the board saves its stats and
+  restarts in seconds. Soak: 47 minutes, no restarts, the feed back after
+  every weather update.
 - The route globe zooms in on short routes, and has no blue rim.
 - Crash reports say whether the dump came from the running build.
 - Web requests: Content-Length without a space after the colon, and query
