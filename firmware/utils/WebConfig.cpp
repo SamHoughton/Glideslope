@@ -685,6 +685,7 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
     if ((uint32_t)length > ESP.getFreeSketchSpace()) { fail("file too large for the app slot"); return; }
     if (!Update.begin(length, U_FLASH)) { fail(Update.errorString()); return; }
     Log.printf("Update: receiving %d bytes\n", length);
+    struct Updating { Updating() { g_updating = true; } ~Updating() { g_updating = false; } } updating;
     requestPanelMessage("UPDATING");
     // Signature check as the image streams in (utils/FirmwareSig.h).
     static FirmwareSig sig;   // ~200 bytes: not on the web task's stack
@@ -700,7 +701,7 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
         // The first read must hold the image header (checked below).
         if (avail <= 0 || (got == 0 && avail < 36 && length >= 36))
         {
-            if (!c.connected() || millis() - lastData > 10000) break;
+            if (!c.connected() || millis() - lastData > 20000) break;
             delay(2);
             continue;
         }

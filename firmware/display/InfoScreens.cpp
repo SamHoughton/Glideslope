@@ -136,16 +136,19 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         const Rgb edge = FrameCanvas::scale(col, 0.55f);
         tile(c, x, 11, 61, 21, arr ? Rgb{44, 27, 6} : Rgb{6, 32, 40}, &edge);
         char v[12];
-        snprintf(v, sizeof(v), "%d", (int)lroundf((arr ? stats.arrivals() : stats.departures()) * count));
-        c.text(x + 4, 15, v, col, 2, 11);
+        const int total = arr ? stats.arrivals() : stats.departures();
+        snprintf(v, sizeof(v), "%d", (int)lroundf(total * count));
+        const int pitch = total >= 100 ? 10 : 11;   // three digits a little tighter
+        c.text(x + 4, 15, v, col, 2, pitch);
+        snprintf(v, sizeof(v), "%d", total);         // its final width, so nothing moves as it counts
+        const int numRight = x + 4 + FrameCanvas::textWidth(v, 2, pitch);
         const char *label = arr ? "ARR" : "DEP";
         c.text(x + 59 - FrameCanvas::textWidth(label), 14, label, FrameCanvas::scale(col, 0.75f));
         const int lastH = nowH > 0 ? (arr ? stats.arrivalsInHour(nowH - 1) : stats.departuresInHour(nowH - 1)) : 0;
-        if (lastH > 0)
-        {
-            snprintf(v, sizeof(v), "%d/H", lastH);
-            c.text(x + 59 - FrameCanvas::textWidth(v), 23, v, FrameCanvas::scale(col, 0.5f));
-        }
+        snprintf(v, sizeof(v), "%d/H", lastH);
+        const int rateX = x + 59 - FrameCanvas::textWidth(v);
+        if (lastH > 0 && rateX >= numRight + 2)   // only where it clears the number
+            c.text(rateX, 23, v, FrameCanvas::scale(col, 0.5f));
     }
 
     // Hourly chart: 24 bars of 4 px, departures stacked on arrivals, shaded

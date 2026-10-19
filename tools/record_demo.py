@@ -34,7 +34,7 @@ if os.environ.get('GLIDESLOPE_TOKEN'):
     POST_HEADERS['X-Glideslope-Token'] = os.environ['GLIDESLOPE_TOKEN']
 
 # Showcase timeline (s), matching NeoMatrixDisplay::stepShowcase.
-END = 39.5 + 3.4         # the end of the take-off scene
+END = 44.5 + 3.4         # the end of the take-off scene
 
 
 def decode(raw):

@@ -665,6 +665,12 @@ void loop()
         {
             // Nothing to do — already logged the suppression above.
         }
+        else if (g_updating)
+        {
+            // A firmware upload has the board: no fetch, and the feed's TLS
+            // session closed for the memory (it reopens on the next fetch).
+            if (g_tlsReleaser) g_tlsReleaser();
+        }
         else if (!ensureWiFi())
         {
             Log.println("Skipping fetch — no WiFi");

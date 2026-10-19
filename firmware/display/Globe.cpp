@@ -53,6 +53,7 @@ void thousands(long v, char *buf, size_t len)
 struct View
 {
     V3 c, e, n;
+    float zoom = 1;   // > 1: closer in, for short routes (the disc shows less of the Earth)
     void at(float latDeg, float lonDeg)
     {
         const float la = latDeg * kDeg, lo = lonDeg * kDeg;
@@ -63,9 +64,10 @@ struct View
     // Panel position of a world point; false when it is round the back.
     bool project(const V3 &p, float &x, float &y) const
     {
-        x = kCx + dot(p, e) * kR - 0.5f;   // inverse of the pixel-centre mapping below
-        y = kCy - dot(p, n) * kR - 0.5f;
-        return dot(p, c) > 0;
+        x = kCx + dot(p, e) * kR * zoom - 0.5f;   // inverse of the pixel-centre mapping below
+        y = kCy - dot(p, n) * kR * zoom - 0.5f;
+        const float dx = x + 0.5f - kCx, dy = y + 0.5f - kCy;
+        return dot(p, c) > 0 && dx * dx + dy * dy <= (kR + 0.5f) * (kR + 0.5f);
     }
 };
 }
@@ -108,6 +110,11 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
     const V3 mid = slerp(a, b, d, 0.5f);
     const float midLat = asinf(mid.z) / kDeg, midLon = atan2f(mid.y, mid.x) / kDeg;
     View v;
+    // Short routes closer in (London to Billund is a smudge on the whole
+    // Earth): the route about 0.9 of the radius long, up to 4x (beyond that
+    // the 1-degree land cells get blocky).
+    const float chord = 2 * sinf(d / 2);
+    v.zoom = chord > 1e-3f ? fminf(4.0f, fmaxf(1.0f, 0.9f / chord)) : 4.0f;
     v.at(midLat, midLon - 60.0f * (1 - ease(shownMs / 1600.0f)));
 
     // Sun: full light without a clock.
@@ -125,9 +132,10 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
     for (int py = kCy - kR; py <= kCy + kR; ++py)
         for (int px = kCx - kR; px <= kCx + kR; ++px)
         {
-            const float x = (px - kCx + 0.5f) / kR, y = -(py - kCy + 0.5f) / kR;
+            const float sx = (px - kCx + 0.5f) / kR, sy = -(py - kCy + 0.5f) / kR;
+            if (sx * sx + sy * sy > 1) continue;              // outside the disc
+            const float x = sx / v.zoom, y = sy / v.zoom;     // on the unit sphere
             const float r2 = x * x + y * y;
-            if (r2 > 1) continue;
             const float z = sqrtf(1 - r2);
             const V3 p{ z * v.c.x + x * v.e.x + y * v.n.x, z * v.c.y + x * v.e.y + y * v.n.y,
                         z * v.c.z + x * v.e.z + y * v.n.z };
@@ -140,7 +148,7 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
             }
             else
                 col = mix(oceanOut, oceanIn, z);
-            float k = 0.55f + 0.45f * z;   // rounder: darker towards the edge
+            float k = 0.55f + 0.45f * sqrtf(fmaxf(0, 1 - (sx * sx + sy * sy)));   // rounder: darker towards the edge
             if (sunKnown)
             {
                 const float day = dot(p, sun);
