@@ -64,8 +64,9 @@ namespace AircraftSprites
     // Draw with the top-left at (x, y). flipX mirrors the sprite (nose right).
     // grey draws the whole sprite in greys (the unknown-type fallback).
     // outline clears a 1px black halo first so it reads over busy backgrounds.
+    // gearHidden: the landing gear's lowest rows left out (it tucks up after take-off).
     void draw(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,
-              bool flipX = false, bool grey = false, bool outline = false);
+              bool flipX = false, bool grey = false, bool outline = false, int gearHidden = 0);
     // At half size (each 2x2 block averaged; drawn where at least two of
     // the four are aircraft), for aircraft high overhead.
     void drawHalf(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,

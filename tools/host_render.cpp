@@ -301,6 +301,8 @@ int main(int argc, char **argv)
             {"night+fireworks", "landing_fireworks", 1500}, {"night+fireworks", "landing_fireworks2", 2300},
             {"night+fireworks", "landing_fireworks3", 3100}, {"night+christmas", "landing_christmas", 1500},
             {"day+frost", "landing_frost_day", 1500}, {"night+snow", "landing_snow_night", 1500},
+            {"night+rain", "wx_night_rain_approach", 900}, {"night+fog", "wx_night_fog_approach", 900},
+            {"day+rain", "wx_day_rain_rollout", 2300},
         };
         for (const auto &k : kLooks)
         {
@@ -308,6 +310,13 @@ int main(int argc, char **argv)
                                  false, "BA117", "27L", LandingScene::Landing, Sky::preview(k.look), &ba);
             save(c, k.name);
         }
+        // Take-off: the gear tucking up, and the roll on a wet runway.
+        LandingScene::render(c, 2900, AircraftSprites::getScene(AircraftSprites::A320), Rgb{70, 130, 255}, false,
+                             false, "BA117", "27R", LandingScene::Takeoff, Sky::preview("day"), &ba);
+        save(c, "wx_takeoff_gear_up");
+        LandingScene::render(c, 1100, AircraftSprites::getScene(AircraftSprites::A320), Rgb{70, 130, 255}, false,
+                             false, "BA117", "27R", LandingScene::Takeoff, Sky::preview("day+rain"), &ba);
+        save(c, "wx_takeoff_wet_roll");
     }
     return 0;
 }

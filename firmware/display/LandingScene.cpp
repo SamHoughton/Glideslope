@@ -78,23 +78,31 @@ namespace
 
     // Aircraft lights after dark: landing light and its beam ahead of the
     // nose, a red beacon on top, white strobes. Drawn for leftward travel.
+    // murky: rain, snow or fog, which the landing lights shine through as a
+    // longer, wider beam with the drops or flakes caught in it.
     void drawAircraftLights(FrameCanvas &c, int left, int top, int w, int h, uint32_t tMs,
-                            float slope, bool landingLight)
+                            float slope, bool landingLight, bool murky = false)
     {
         const int noseY = top + (h * 3) / 5;
         if (landingLight)
         {
             c.set(left, noseY, Rgb{255, 255, 235});
-            for (int i = 1; i <= 10; ++i)
+            const int len = murky ? 22 : 10;
+            for (int i = 1; i <= len; ++i)
             {
-                const float k = 0.55f * (1.0f - i / 11.0f);
+                const float k = (murky ? 0.42f : 0.55f) * (1.0f - (float)i / (len + 1));
                 const int y = noseY + (int)lroundf(i * slope);
-                for (int dy = -(i / 4); dy <= i / 4; ++dy)
+                const int spread = murky ? i / 3 : i / 4;
+                for (int dy = -spread; dy <= spread; ++dy)
                 {
+                    const float edge = spread ? 1.0f - 0.5f * abs(dy) / (float)spread : 1.0f;
                     const Rgb under = FrameCanvas::unpack(c.get(left - i, y + dy));
-                    c.set(left - i, y + dy, Rgb{(uint8_t)min(255, under.r + (int)(230 * k)),
-                                                (uint8_t)min(255, under.g + (int)(225 * k)),
-                                                (uint8_t)min(255, under.b + (int)(190 * k))});
+                    c.set(left - i, y + dy, Rgb{(uint8_t)min(255, under.r + (int)(230 * k * edge)),
+                                                (uint8_t)min(255, under.g + (int)(225 * k * edge)),
+                                                (uint8_t)min(255, under.b + (int)(195 * k * edge))});
+                    // A drop or flake catching the light, here and there.
+                    if (murky && ((i * 7 + dy * 13 + tMs / 70) % 11) == 0)
+                        c.set(left - i, y + dy, Rgb{255, 255, 245});
                 }
             }
         }
@@ -406,8 +414,49 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         }
     }
 
-    AircraftSprites::draw(c, sp, (int)lroundf(cx - sp.w / 2.0f), (int)lroundf(top),
-                          livery ? *livery : AircraftSprites::Livery(accent), false, greySprite, false);   // no halo over the sky
+    // The gear tucks up a row at a time once climbing (take-off, go-around).
+    int gearHidden = 0;
+    if (takeoff && tMs > kLiftOffMs + 450)   gearHidden = min(6, (int)((tMs - kLiftOffMs - 450) / 120));
+    if (goAround && tMs > kGoAroundAtMs + 600) gearHidden = min(6, (int)((tMs - kGoAroundAtMs - 600) / 120));
+    const bool wet = sky.precip == Sky::Rain || sky.precip == Sky::Thunder;
+    const int sx = (int)lroundf(cx - sp.w / 2.0f), sy = (int)lroundf(top);
+    AircraftSprites::draw(c, sp, sx, sy, livery ? *livery : AircraftSprites::Livery(accent), false, greySprite,
+                          false, gearHidden);   // no halo over the sky
+
+    if (wet)
+    {
+        // A wet runway: the aircraft's dim reflection in the surface below it ...
+        const int ground = kSurfaceY;
+        if (sy + sp.h >= ground - 6)
+            for (int r = 0; r < 4; ++r)
+            {
+                const int srcY = ground - 2 - r, dstY = ground + r;
+                for (int x = max(0, sx); x < min((int)FrameCanvas::W, sx + sp.w); ++x)
+                {
+                    const Rgb a = FrameCanvas::unpack(c.get(x, srcY)), u = FrameCanvas::unpack(c.get(x, dstY));
+                    const float k = 0.28f - r * 0.06f;
+                    c.set(x, dstY, Rgb{(uint8_t)(u.r + (a.r - u.r) * k), (uint8_t)(u.g + (a.g - u.g) * k),
+                                       (uint8_t)(u.b + (a.b - u.b) * k)});
+                }
+            }
+        // ... and spray thrown up behind the wheels while they're on it.
+        const bool rolling = (kind == Landing && tMs >= kTouchdownMs && tMs < kStoppedMs - 200) ||
+                             (takeoff && tMs > 300 && tMs < kLiftOffMs + 150);
+        if (rolling)
+        {
+            const float k = takeoff ? min(1.0f, tMs / 900.0f) : 1.0f - (float)(tMs - kTouchdownMs) / (kStoppedMs - kTouchdownMs);
+            const int tail = sx + sp.w * 2 / 3;
+            for (int i = 0; i < 14; ++i)
+            {
+                const int px = tail + i * 2 + (int)((tMs / 30 + i * 3) % 3);
+                const int py = kSurfaceY - 1 - (int)((i * 5 + tMs / 45) % 4) - i / 5;
+                const Rgb u = FrameCanvas::unpack(c.get(px, py));
+                const float a = k * (1.0f - i / 14.0f) * 0.75f;
+                c.set(px, py, Rgb{(uint8_t)(u.r + (200 - u.r) * a), (uint8_t)(u.g + (210 - u.g) * a),
+                                  (uint8_t)(u.b + (225 - u.b) * a)});
+            }
+        }
+    }
 
     if (sky.known && sky.lightsOn)
     {
@@ -419,7 +468,7 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         else if (tMs < kTouchdownMs) slope = 0.45f;
         else landingLight = tMs < kStoppedMs - 300;   // off as it slows to taxi
         drawAircraftLights(c, (int)lroundf(cx - sp.w / 2.0f), (int)lroundf(top), sp.w, sp.h, tMs,
-                           slope, landingLight);
+                           slope, landingLight, sky.fog || sky.precip != Sky::NoPrecip);
     }
     Sky::drawWeather(c, sky, tMs);
 
