@@ -101,6 +101,7 @@ void requestTakeoffDemo() { s_takeoffDemo = true; }
 void requestAlertDemo() { s_alertDemo = true; }
 static volatile bool s_spotDemo = false;
 void requestOverheadDemo() { s_spotDemo = true; }
+const FrameCanvas &shownFrame() { return g_shownFrame; }
 
 static volatile bool s_runwayDemo = false;
 static char          s_skyPreview[24] = "";

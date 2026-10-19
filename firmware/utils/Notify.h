@@ -18,6 +18,8 @@ excepted.
 */
 #include <Arduino.h>
 
+class FrameCanvas;
+
 namespace Notify
 {
     enum Kind : uint8_t
@@ -38,4 +40,8 @@ namespace Notify
 
     // Main loop: send one queued notification, if any (blocks up to ~5 s).
     void loop();
+
+    // The panel, for the picture attached to emergency, rare-spot and
+    // watchlist alerts (what is on screen when the alert goes out).
+    void setFrame(const FrameCanvas *frame);
 }

@@ -14,6 +14,7 @@
 #include "display/FrameCanvas.h"
 #include "display/InfoScreens.h"
 #include "display/Globe.h"
+#include "utils/FrameBmp.h"
 #if __has_include("display/OverheadScene.h")
 #include "display/OverheadScene.h"
 #define HAVE_OVERHEAD 1
@@ -127,6 +128,17 @@ int main(int argc, char **argv)
     o.altFt = 2200; o.kind = AircraftSprites::B747; o.livery = AircraftSprites::Livery(Rgb{40, 60, 140});
     o.accent = Rgb{90, 140, 255}; o.rightward = false;
     OverheadScene::render(c, o, 3500, Sky::preview("night"));      save(c, "overhead_watch_night");
+    {
+        // The picture a watchlist alert carries.
+        FrameBmp bmp(c);
+        const std::string path = g_out + "/alert_picture.bmp";
+        FILE *f = fopen(path.c_str(), "wb");
+        char buf[700];
+        size_t n, total = 0;
+        while ((n = bmp.readBytes(buf, sizeof(buf))) > 0) { fwrite(buf, 1, n, f); total += n; }
+        fclose(f);
+        printf("%s (%u bytes, expected %u)\n", path.c_str(), (unsigned)total, (unsigned)bmp.size());
+    }
 #endif
     return 0;
 }

@@ -59,6 +59,8 @@ void requestTakeoffDemo();
 // Show a sample emergency-squawk alert (demo).
 void requestAlertDemo();
 void requestOverheadDemo();
+// The frame on the panel now (for the alert pictures).
+const FrameCanvas &shownFrame();
 void requestRunwayChangeDemo();
 // Previews a sky ("night+rain", see Sky::preview): replays the card's landing
 // in it (or the showcase when there is no card). Real flights keep the real sky.

@@ -577,6 +577,7 @@ void setup()
     // From here the display task owns the panel (animation keeps running
     // while loop() blocks on network fetches).
     g_display.startTask();
+    Notify::setFrame(&shownFrame());   // the panel goes with emergency, rare-spot and watchlist alerts
 }
 
 // Reconnect WiFi if the connection has dropped.

@@ -5,6 +5,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <stdarg.h>
+#include "utils/FrameBmp.h"
 
 namespace
 {
@@ -20,6 +21,7 @@ namespace
     int           s_head = 0, s_count = 0;
     portMUX_TYPE  s_mux = portMUX_INITIALIZER_UNLOCKED;
     unsigned long s_lastMs[8] = {};   // per kind bit
+    const FrameCanvas *s_frame = nullptr;
 
     int bitOf(uint8_t kind) { for (int i = 0; i < 8; ++i) if (kind == (1u << i)) return i; return 7; }
 }
@@ -51,6 +53,8 @@ void Notify::post(Kind kind, uint8_t priority, const char *tags, const char *tit
     }
     portEXIT_CRITICAL(&s_mux);
 }
+
+void Notify::setFrame(const FrameCanvas *frame) { s_frame = frame; }
 
 void Notify::loop()
 {
@@ -85,7 +89,21 @@ void Notify::loop()
     // way could read it, which is worse than an unguessable public topic.
     if (cfg.ntfy_token[0] && tls) http.addHeader("Authorization", String("Bearer ") + cfg.ntfy_token);
     else if (cfg.ntfy_token[0]) Log.println("Notify: access token not sent (topic is not https)");
-    const int code = http.POST((uint8_t *)m.body, strlen(m.body));
+    // Emergency, rare spot and watchlist: the panel as the attachment and
+    // the text in a header (ntfy's way to send both).
+    const bool picture = s_frame && (m.kind == Emergency || m.kind == Rare || m.kind == Watch) &&
+                         ESP.getMaxAllocHeap() > 8000;
+    int code;
+    if (picture)
+    {
+        FrameBmp bmp(*s_frame);
+        http.addHeader("Filename", "glideslope.bmp");
+        http.addHeader("Message", m.body);
+        http.setTimeout(10000);
+        code = http.sendRequest("PUT", &bmp, bmp.size());
+    }
+    else
+        code = http.POST((uint8_t *)m.body, strlen(m.body));
     http.end();
     if (code == 200) Log.printf("Notify: sent \"%s\"\n", m.title);
     else             Log.printf("Notify: \"%s\" failed (HTTP %d)\n", m.title, code);
