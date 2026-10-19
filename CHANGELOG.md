@@ -7,7 +7,7 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
-## 5.0.0 (in progress)
+## 5.0.0 (19 Oct 2026)
 
 The spotter's release. It includes the hardening planned as 4.1, which was
 never released on its own.
