@@ -226,6 +226,25 @@ static void spotterCheck(const std::vector<StateVector> &states, const std::vect
                      ev.matched, isnan(info.altFt) ? 0.0f : info.altFt, info.where[0] ? ", " : "", info.where);
 }
 
+// Save today's stats if they have changed: ~7 KB in one block, only when
+// there is one. The feed's connection is never closed for it: once closed,
+// a fragmented heap can leave no room to reopen it (5.1's soak sat without
+// positions for 25 minutes that way); a skipped save tries again in 5 minutes.
+static void saveStats()
+{
+    StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
+    const size_t need = g_display.statsSize();
+    if (!need) return;
+    if (ESP.getMaxAllocHeap() < need + 4096)
+    {
+        Log.println("Stats: no room to save now, trying again in 5 minutes");
+        return;
+    }
+    std::vector<uint8_t> data;
+    if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
+        Log.println("Stats: could not save");
+}
+
 static void checkSquawks(const std::vector<StateVector> &states)
 {
     static std::map<String, int>           streak;    // icao24+code -> fetches in a row
@@ -731,6 +750,26 @@ void loop()
                 ESP.restart();
             }
         }
+        // Fragmented: no positions although plenty of memory is free (no
+        // feed session holds it), just not in blocks a TLS handshake can use
+        // (two 16 KB buffers). It doesn't mend itself: save the day's stats
+        // and restart, a few seconds instead of waiting for the watchdog.
+        {
+            static unsigned long fragSinceMs = 0;
+            const bool fragmented = !g_fetcher->lastFetchOk() && ESP.getFreeHeap() > 60000 &&
+                                    ESP.getMaxAllocHeap() < 36000;
+            if (!fragmented)        fragSinceMs = 0;
+            else if (!fragSinceMs)  fragSinceMs = millis();
+            else if (millis() - fragSinceMs > 90000)
+            {
+                Log.printf("Heap: %u free but the largest block is %u: restarting to recover the feed\n",
+                           (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+                saveStats();
+                ImageCheck::keep("restart to recover from fragmentation");
+                delay(300);
+                ESP.restart();
+            }
+        }
         if (g_fetcher->lastFetchOk()) ImageCheck::keep("positions fetched");
         noteHistory(g_states, g_flights);       // "SEEN 14 TIMES" on the cards
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
@@ -883,21 +922,7 @@ void loop()
         if (millis() - lastSaveMs >= 5UL * 60 * 1000 && ESP.getFreeHeap() > 26000)
         {
             lastSaveMs = millis();
-            StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
-            // ~7 KB in one block: with the feed's TLS connection open the
-            // largest free block can be smaller, so close it first if need
-            // be (it reopens on the next fetch), and skip a round rather
-            // than fail an allocation.
-            const size_t need = g_display.statsSize();
-            if (need && ESP.getMaxAllocHeap() < need + 4096 && g_tlsReleaser) g_tlsReleaser();
-            if (need && ESP.getMaxAllocHeap() >= need + 4096)
-            {
-                std::vector<uint8_t> data;
-                if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
-                    Log.println("Stats: could not save");
-            }
-            else if (need)
-                Log.println("Stats: no room to save now, trying again in 5 minutes");
+            saveStats();
         }
     }
 
