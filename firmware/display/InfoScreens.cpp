@@ -288,7 +288,18 @@ void InfoScreens::renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent
     // Below: the airline, then where it has come from.
     for (int x = 4; x < FrameCanvas::W - 4; x += 2) c.set(x, 38, kDim);
     if (f.airline_display_name_full.length())
-        c.text(3, 42, f.airline_display_name_full.c_str(), FrameCanvas::scale(accent, 0.85f), 1, 0, 20);
+    {
+        // Whole words only: "British Airways Shuttle" -> "British Airways".
+        char name[24];
+        strlcpy(name, f.airline_display_name_full.c_str(), sizeof(name));
+        while (strlen(name) > 20)
+        {
+            char *sp = strrchr(name, ' ');
+            if (!sp) { name[20] = '\0'; break; }
+            *sp = '\0';
+        }
+        c.text(3, 42, name, FrameCanvas::scale(accent, 0.85f));
+    }
     char from[32] = "";
     const char *city = Airports::city(f.origin);
     const String &code = f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao;

@@ -219,6 +219,50 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
 // The fly-across onto a new card.
 bool NeoMatrixDisplay::renderTransition(unsigned long now, uint32_t &wait)
 {
+    // From the map: the map closes in on the aircraft's icon (0-700 ms), then
+    // the card fades in out of it (to 1,100 ms). One pass per pixel, sampling
+    // the map (g_oldFrame) at the zoomed scale, blended with the card.
+    if (_inTransition && _zoomFromMap && !_flourishActive)
+    {
+        constexpr uint32_t kZoomMs = 700, kFadeMs = 400;
+        const uint32_t t = now - _transStartMs;
+        if (t < kZoomMs + kFadeMs)
+        {
+            renderCurrentCard(now);
+            const float u = min(1.0f, (float)t / kZoomMs);
+            const float zoom = 1 + 5 * u * u * (3 - 2 * u);   // smoothstep to 6x
+            const float k = t < kZoomMs ? 0 : (float)(t - kZoomMs) / kFadeMs;   // card's share
+            // The icon stays put at first and drifts to the middle as it closes
+            // in (sx = icon + (x - anchor) / zoom; the anchor moves from the
+            // icon to the centre), so nothing jumps at the start.
+            const float ax = _zoomX + (FrameCanvas::W / 2.0f - _zoomX) * u;
+            const float ay = _zoomY + (FrameCanvas::H / 2.0f - _zoomY) * u;
+            uint16_t *px = g_workFrame.pixels();
+            for (int y = 0; y < FrameCanvas::H; ++y)
+                for (int x = 0; x < FrameCanvas::W; ++x)
+                {
+                    const int sx = (int)lroundf(_zoomX + (x - ax) / zoom);
+                    const int sy = (int)lroundf(_zoomY + (y - ay) / zoom);
+                    const bool in = sx >= 0 && sy >= 0 && sx < FrameCanvas::W && sy < FrameCanvas::H;
+                    Rgb m = in ? FrameCanvas::unpack(g_oldFrame.get(sy * FrameCanvas::W + sx)) : Rgb{0, 0, 0};
+                    m = FrameCanvas::scale(m, 1.0f - 0.35f * u);   // the map dims as it closes in
+                    const int i = y * FrameCanvas::W + x;
+                    if (k <= 0) { px[i] = FrameCanvas::pack(m); continue; }
+                    const Rgb cd = FrameCanvas::unpack(px[i]);
+                    px[i] = FrameCanvas::pack(Rgb{(uint8_t)(m.r + (cd.r - m.r) * k), (uint8_t)(m.g + (cd.g - m.g) * k),
+                                                  (uint8_t)(m.b + (cd.b - m.b) * k)});
+                }
+            present();
+            wait = kAnimFrameMs;
+            return true;
+        }
+        _zoomFromMap = false;
+        _inTransition = false;
+        _shownSinceMs = now;
+        present();
+        wait = kCardFrameMs;
+        return true;
+    }
     if (_inTransition)
     {
         const uint32_t t = now - _transStartMs;
