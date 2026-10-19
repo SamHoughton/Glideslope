@@ -85,6 +85,9 @@ static void applyDefaults(RuntimeConfig &c)
     c.use_community_feeds            = true;
     c.ntfy_topic[0]                  = '\0';
     c.notify_mask                    = 0x5F;   // all events but the round-up (once a topic is set)
+    c.quiet_alerts                   = true;
+    c.quiet_start_minutes            = 23 * 60;   // after the 22:30 round-up
+    c.quiet_end_minutes              = 7 * 60;
     c.overhead_km                    = 2.0f;
     c.overhead_all                   = false;
     c.watchlist[0]                   = '\0';
@@ -151,6 +154,9 @@ void loadConfig()
     g_config.notify_mask                   = (uint8_t)p.getUInt("ntfy_m", g_config.notify_mask);
     if (!p.isKey("ntf_v5")) g_config.notify_mask |= 64;   // watchlist alerts (5.0)
     g_config.overhead_km                   = p.getFloat("ovh_km", g_config.overhead_km);
+    g_config.quiet_alerts                  = p.getBool("q_on", g_config.quiet_alerts);
+    g_config.quiet_start_minutes           = (uint16_t)p.getUInt("q_from", g_config.quiet_start_minutes);
+    g_config.quiet_end_minutes             = (uint16_t)p.getUInt("q_to", g_config.quiet_end_minutes);
     g_config.overhead_all                  = p.getBool("ovh_all", g_config.overhead_all);
     g_config.mqtt_port                     = (uint16_t)p.getUInt("mqtt_port", g_config.mqtt_port);
     {
@@ -247,6 +253,9 @@ void saveConfig()
     p.putUInt("ntfy_m",    g_config.notify_mask);
     p.putBool("ntf_v5",    true);
     p.putFloat("ovh_km",   g_config.overhead_km);
+    p.putBool("q_on",      g_config.quiet_alerts);
+    p.putUInt("q_from",    g_config.quiet_start_minutes);
+    p.putUInt("q_to",      g_config.quiet_end_minutes);
     p.putBool("ovh_all",   g_config.overhead_all);
     p.putString("watch",   g_config.watchlist);
     p.putString("mqtt_host", g_config.mqtt_host);

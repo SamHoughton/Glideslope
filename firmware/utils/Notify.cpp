@@ -26,10 +26,27 @@ namespace
     int bitOf(uint8_t kind) { for (int i = 0; i < 8; ++i) if (kind == (1u << i)) return i; return 7; }
 }
 
+namespace
+{
+    // Within the quiet hours (local time; the window may cross midnight)?
+    bool quietNow()
+    {
+        if (!g_config.quiet_alerts) return false;
+        const time_t now = time(nullptr);
+        if (now < 1600000000) return false;   // no clock yet
+        struct tm lt;
+        localtime_r(&now, &lt);
+        const int m = lt.tm_hour * 60 + lt.tm_min, a = g_config.quiet_start_minutes, b = g_config.quiet_end_minutes;
+        return a <= b ? (m >= a && m < b) : (m >= a || m < b);
+    }
+}
+
 void Notify::post(Kind kind, uint8_t priority, const char *tags, const char *title, const char *fmt, ...)
 {
     if (!g_config.ntfy_topic[0]) return;
     if (kind != Test && !(g_config.notify_mask & kind)) return;
+    // Quiet hours: only emergencies (and the test) get through; the rest are dropped.
+    if (kind != Emergency && kind != Test && quietNow()) return;
     const unsigned long now = millis();
     const int b = bitOf(kind);
     if (kind != Emergency && kind != Test && s_lastMs[b] && now - s_lastMs[b] < 120000UL) return;

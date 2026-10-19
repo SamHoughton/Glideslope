@@ -65,6 +65,10 @@ struct RuntimeConfig
     char     ntfy_topic[64];
     char     ntfy_token[48];             // access token for a protected topic (sent over https only)
 
+    // Quiet hours for phone alerts (6.0): only emergencies between these times.
+    bool     quiet_alerts;
+    uint16_t quiet_start_minutes, quiet_end_minutes;   // local time, minutes since midnight
+
     // Spotter (5.0): aircraft over the home marker, and the watchlist.
     float    overhead_km;                // 0 = off
     bool     overhead_all;               // arrivals and departures too, not just overflights

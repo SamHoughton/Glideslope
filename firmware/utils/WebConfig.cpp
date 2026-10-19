@@ -377,6 +377,9 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["ntfy_topic"]            = g_config.ntfy_topic;
     doc["ntfy_token"]            = g_config.ntfy_token[0] ? "***" : "";
     doc["overhead_km"]           = g_config.overhead_km;
+    doc["quiet_alerts"]          = g_config.quiet_alerts;
+    doc["quiet_start_minutes"]   = g_config.quiet_start_minutes;
+    doc["quiet_end_minutes"]     = g_config.quiet_end_minutes;
     doc["overhead_all"]          = g_config.overhead_all;
     doc["watchlist"]             = g_config.watchlist;
     doc["mqtt_host"]             = g_config.mqtt_host;
@@ -455,6 +458,9 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
     if (next.overhead_km < 0) next.overhead_km = 0;
     if (next.overhead_km > 20) next.overhead_km = 20;
     next.overhead_all                  = doc["overhead_all"]                  | next.overhead_all;
+    next.quiet_alerts                  = doc["quiet_alerts"]                  | next.quiet_alerts;
+    next.quiet_start_minutes           = (uint16_t)min(1439, (int)(doc["quiet_start_minutes"] | (int)next.quiet_start_minutes));
+    next.quiet_end_minutes             = (uint16_t)min(1439, (int)(doc["quiet_end_minutes"] | (int)next.quiet_end_minutes));
     next.mqtt_port                     = (uint16_t)(doc["mqtt_port"] | (int)next.mqtt_port);
     if (doc["watchlist"].is<const char *>()) strlcpy(next.watchlist, doc["watchlist"].as<const char *>(), sizeof(next.watchlist));
     if (doc["mqtt_host"].is<const char *>())
