@@ -16,6 +16,10 @@
 #include "display/Globe.h"
 #include "utils/FrameBmp.h"
 #include "display/LandingScene.h"
+#include "display/CardRenderer.h"
+#include "display/DemoLogo.h"
+#include "display/HoldTracker.h"
+#include "utils/Weather.h"
 #include "display/MapRenderer.h"
 #include "display/Traffic.h"
 #include "adapters/ReadsbParser.h"
@@ -72,7 +76,7 @@ int main(int argc, char **argv)
 {
     g_out = argc > 1 ? argv[1] : ".";
 #ifdef _WIN32
-    _putenv("TZ=UTC0");   // the Windows C library has no DST rules: times show in UTC
+    _putenv("TZ=BST-1");   // London in October: the Windows C library has no DST rules
 #else
     setenv("TZ", "GMT0BST,M3.5.0/1,M10.5.0", 1);
 #endif
@@ -80,18 +84,6 @@ int main(int argc, char **argv)
     AirportPack::load();   // Heathrow, built in
     FrameCanvas c;
 
-    // The stats as at about 20:00 local, so the clock agrees with a full day of bars.
-#ifdef _WIN32
-    {
-        const time_t now = time(nullptr);
-        struct tm u;
-        gmtime_r(&now, &u);
-        char tz[24];
-        snprintf(tz, sizeof(tz), "TZ=UTC%+d", -((20 - u.tm_hour + 24) % 24));
-        _putenv(tz);
-        tzset();
-    }
-#endif
     static DailyStats stats;
     busyDay(stats);
     InfoScreens::renderStats(c, stats, 1500, 5000);       save(c, "stats_today");
@@ -99,10 +91,6 @@ int main(int argc, char **argv)
     InfoScreens::renderTopTypes(c, stats, 5000);          save(c, "stats_types");
     InfoScreens::renderStats(c, stats, 1500, 300);        save(c, "stats_today_growing");
 
-#ifdef _WIN32
-    _putenv("TZ=UTC0");
-    tzset();
-#endif
     const time_t evening = 1792281600 + 19 * 3600 + 48 * 60;   // 18 Oct 2026, 19:48 UTC
     Globe::Route r;
     r.valid = true;
@@ -221,6 +209,65 @@ int main(int argc, char **argv)
             snprintf(name, sizeof(name), "map_spot%d", k);
             save(c, name);
         }
+    }
+
+    // The approach card: GS101, the showcase's flight (3.2 km out on 27L).
+    {
+        FlightInfo f;
+        f.ident = "GSL101"; f.ident_icao = "GSL101"; f.ident_iata = "GS101";
+        f.operator_icao = "GSL"; f.airline_display_name_full = "Glideslope";
+        f.origin.code_iata = "JFK"; f.origin.code_icao = "KJFK";
+        f.destination.code_iata = "LHR"; f.destination.code_icao = "EGLL";
+        f.aircraft_code = "A35K"; f.aircraft_display_name_short = "A350-1000"; f.registration = "G-GSLP";
+        f.airline_logo_rgb565.assign(kDemoLogo, kDemoLogo + 32 * 32);
+        f.lat = 51.4649; f.lon = -0.4340 + 3.2 / (111.32 * cos(51.4649 * M_PI / 180.0));
+        f.heading = 269.7; f.velocity = 148; f.baro_altitude = 1050; f.vertical_rate = -760; f.distance_km = 6;
+        f.seen_days = 14; f.seen_prev_day = 2478;
+        CardRenderer::Options o;
+        o.animMs = 1200;
+        CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_approach");
+        g_config.route_cities = true;
+        o.animMs = 1200;
+        CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_cities");
+        o.animMs = 9500;   // the registration history phase of the route line
+        CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_history");
+        g_config.route_cities = false;
+        o.landed = true; o.landedAt = 1792350600; o.animMs = 1200;
+        CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_landed");
+    }
+
+    // Boards, weather, holding, the clock and the alerts.
+    {
+        Metar m;
+        Weather::parse("METAR EGLL 181850Z 25014G26KT 9999 -RA BKN012 OVC030 11/09 Q1004", m);
+        InfoScreens::Arrival arr[4];
+        const char *ids[] = {"BA117", "VS4", "EI158", "QR7"}, *types[] = {"A35K", "A339", "A20N", "A388"};
+        for (int i = 0; i < 4; ++i)
+        {
+            strcpy(arr[i].ident, ids[i]); strcpy(arr[i].type, types[i]);
+            arr[i].etaSec = 40 + i * 95; arr[i].estimate = i == 3; arr[i].dataMs = 0;
+            arr[i].accent = AircraftSprites::airlineColour(ids[i][0] == 'Q' ? "QR" : ids[i][0] == 'V' ? "VS" : ids[i][0] == 'E' ? "EI" : "BA");
+        }
+        g_fakeMillis = 0;
+        InfoScreens::renderArrivals(c, arr, 4, "27L", "250/14G26 10KM RA 11C", 0, 5000);   save(c, "board_arrivals");
+        InfoScreens::Departure dep[3];
+        const char *dids[] = {"BA283", "AA81", "U2 8061"}, *dd[] = {"LAX", "DFW", "NCE"};
+        for (int i = 0; i < 3; ++i)
+        {
+            strcpy(dep[i].ident, dids[i]); strcpy(dep[i].dest, dd[i]); strcpy(dep[i].type, "A320");
+            dep[i].at = 1792350900 - i * 120;
+        }
+        InfoScreens::renderDepartures(c, dep, 3, "27R", 5000);                                save(c, "board_departures");
+        g_config.route_cities = true;
+        InfoScreens::renderDepartures(c, dep, 3, "27R", 5000);                                save(c, "board_departures_cities");
+        g_config.route_cities = false;
+        InfoScreens::renderWeather(c, m, "27L", 2000, Sky::at(m, 1792350900));               save(c, "weather_evening_rain");
+        HoldTracker::Row rows[] = {{"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7}};
+        InfoScreens::renderHolding(c, rows, 4, 2000);                                         save(c, "holding");
+        InfoScreens::renderClock(c, 2000, "250/14 10KM RA 11C");                              save(c, "clock_night");
+        InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");
+        InfoScreens::renderRareBanner(c, "RARE SPOT", "A380", 900);                           save(c, "banner_rare");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 1500);                               save(c, "runway_change");
     }
 
     // On final: the aircraft page between the card's turns.

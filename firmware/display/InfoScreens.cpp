@@ -522,7 +522,10 @@ void InfoScreens::renderDepartures(FrameCanvas &c, const Departure *rows, int n,
         c.fillRect(2, y, 2, 7, d.accent);
         flapText(c, 6, y, d.ident, Rgb{235, 240, 245}, shownMs, i * 110);
         char city[8];
-        const char *dest = g_config.route_cities && Airports::shortCity(d.dest, 7, city, sizeof(city)) ? city : d.dest;
+        // The city when it fits in six letters (seven ran into the time),
+        // else the code: LAX reads better than LOS AN.
+        const char *full = g_config.route_cities ? Airports::city(d.dest) : nullptr;
+        const char *dest = full && strlen(full) <= 6 && Airports::shortCity(d.dest, 6, city, sizeof(city)) ? city : d.dest;
         if (d.dest[0]) flapText(c, 54, y, dest, kValue, shownMs, i * 110 + 200);
         else           flapText(c, 54, y, d.type, kLabel, shownMs, i * 110 + 200);
         char when[8] = "";
@@ -576,16 +579,20 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     rightCentred(1, FrameCanvas::textWidth(g_airport.name) <= kRW ? g_airport.name : g_airport.icao, kTitle);
     for (int x = kX + 2; x < FrameCanvas::W - 2; x += 2) c.set(x, 10, kDim);
 
+    // Wind, and gusts in red after it. With gusts there is no room for
+    // "KT" (250/14KT G26 ran together): 250/14 G26.
     char wind[16];
+    const bool gust = m.gustKt > 0;
     if (m.windKt == 0)      snprintf(wind, sizeof(wind), "CALM");
-    else if (m.windDir < 0) snprintf(wind, sizeof(wind), "VRB %dKT", m.windKt);
-    else                    snprintf(wind, sizeof(wind), "%03d/%dKT", m.windDir, m.windKt);
+    else if (m.windDir < 0) snprintf(wind, sizeof(wind), gust ? "VRB %d" : "VRB %dKT", m.windKt);
+    else                    snprintf(wind, sizeof(wind), gust ? "%03d/%d" : "%03d/%dKT", m.windDir, m.windKt);
     c.text(kX + 1, 13, wind, kValue);
-    if (m.gustKt)
+    if (gust)
     {
         char g[8];
         snprintf(g, sizeof(g), "G%d", m.gustKt);
-        c.text(FrameCanvas::W - 2 - FrameCanvas::textWidth(g), 13, g, Rgb{255, 95, 80});
+        const int gx = max(kX + 1 + FrameCanvas::textWidth(wind) + 4, FrameCanvas::W - 2 - FrameCanvas::textWidth(g));
+        c.text(gx, 13, g, Rgb{255, 95, 80});
     }
 
     drawRunwayWind(c, kX + 11, 32, 9, m, runway, nowMs);
