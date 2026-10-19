@@ -246,6 +246,56 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
     }
 }
 
+void InfoScreens::renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent, float etaSec, const char *runway,
+                                 uint32_t shownMs)
+{
+    c.clear();
+    // Top: the flight, and the countdown so the landing is never out of mind.
+    const char *ident = f.ident_iata.length() ? f.ident_iata.c_str() : f.ident.c_str();
+    titleBand(c, ident, "");
+    c.text(3, 1, ident, accent);
+    if (etaSec >= 0)
+    {
+        char eta[16];
+        const int s = (int)lroundf(etaSec);
+        snprintf(eta, sizeof(eta), "%s %d:%02d", runway && runway[0] ? runway : "ETA", s / 60, s % 60);
+        c.text(FrameCanvas::W - 3 - FrameCanvas::textWidth(eta), 1, eta, kValue);
+    }
+
+    // The aircraft in its livery, sliding in from the left.
+    bool known = false;
+    const AircraftSprites::Kind kind = AircraftSprites::classify(f.aircraft_code, known);
+    const AircraftSprites::Sprite &sp = AircraftSprites::get(kind);   // card size: clear of the text
+    const float in = easeOut(shownMs / 600.0f);
+    const int sx = (int)lroundf(-sp.w + (2 + sp.w) * in);
+    AircraftSprites::draw(c, sp, sx, 13 + (19 - sp.h) / 2, AircraftSprites::liveryFor(f, accent), false, !known);
+
+    // Beside it: type, registration, which visit this is.
+    constexpr int kX = 50;
+    const char *type = f.aircraft_display_name_short.length() ? f.aircraft_display_name_short.c_str() : f.aircraft_code.c_str();
+    c.text(kX, 12, type, kTitle, 1, 0, 13);
+    if (f.registration.length()) c.text(kX, 21, f.registration.c_str(), Rgb{150, 200, 235}, 1, 0, 13);
+    char visit[16] = "";
+    if (f.seen_days == 1) snprintf(visit, sizeof(visit), "FIRST VISIT");
+    else if (f.seen_days > 1)
+    {
+        const unsigned n = f.seen_days, t = n % 100;
+        const char *suf = (t >= 11 && t <= 13) ? "TH" : n % 10 == 1 ? "ST" : n % 10 == 2 ? "ND" : n % 10 == 3 ? "RD" : "TH";
+        snprintf(visit, sizeof(visit), "%u%s VISIT", n, suf);
+    }
+    if (visit[0]) c.text(kX, 30, visit, kGold, 1, 0, 13);
+
+    // Below: the airline, then where it has come from.
+    for (int x = 4; x < FrameCanvas::W - 4; x += 2) c.set(x, 38, kDim);
+    if (f.airline_display_name_full.length())
+        c.text(3, 42, f.airline_display_name_full.c_str(), FrameCanvas::scale(accent, 0.85f), 1, 0, 20);
+    char from[32] = "";
+    const char *city = Airports::city(f.origin);
+    const String &code = f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao;
+    if (city || code.length()) snprintf(from, sizeof(from), "FROM %s", city ? city : code.c_str());
+    if (from[0]) c.text(3, 51, from, kTitle, 1, 0, 20);
+}
+
 // The day's busiest airlines: code and a bar in the airline's colour, growing in.
 void InfoScreens::renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs)
 {
@@ -472,7 +522,10 @@ void InfoScreens::renderDepartures(FrameCanvas &c, const Departure *rows, int n,
         c.fillRect(2, y, 2, 7, d.accent);
         flapText(c, 6, y, d.ident, Rgb{235, 240, 245}, shownMs, i * 110);
         char city[8];
-        const char *dest = g_config.route_cities && Airports::shortCity(d.dest, 7, city, sizeof(city)) ? city : d.dest;
+        // The city when it fits in six letters (seven ran into the time),
+        // else the code: LAX reads better than LOS AN.
+        const char *full = g_config.route_cities ? Airports::city(d.dest) : nullptr;
+        const char *dest = full && strlen(full) <= 6 && Airports::shortCity(d.dest, 6, city, sizeof(city)) ? city : d.dest;
         if (d.dest[0]) flapText(c, 54, y, dest, kValue, shownMs, i * 110 + 200);
         else           flapText(c, 54, y, d.type, kLabel, shownMs, i * 110 + 200);
         char when[8] = "";
@@ -526,16 +579,20 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     rightCentred(1, FrameCanvas::textWidth(g_airport.name) <= kRW ? g_airport.name : g_airport.icao, kTitle);
     for (int x = kX + 2; x < FrameCanvas::W - 2; x += 2) c.set(x, 10, kDim);
 
+    // Wind, and gusts in red after it. With gusts there is no room for
+    // "KT" (250/14KT G26 ran together): 250/14 G26.
     char wind[16];
+    const bool gust = m.gustKt > 0;
     if (m.windKt == 0)      snprintf(wind, sizeof(wind), "CALM");
-    else if (m.windDir < 0) snprintf(wind, sizeof(wind), "VRB %dKT", m.windKt);
-    else                    snprintf(wind, sizeof(wind), "%03d/%dKT", m.windDir, m.windKt);
+    else if (m.windDir < 0) snprintf(wind, sizeof(wind), gust ? "VRB %d" : "VRB %dKT", m.windKt);
+    else                    snprintf(wind, sizeof(wind), gust ? "%03d/%d" : "%03d/%dKT", m.windDir, m.windKt);
     c.text(kX + 1, 13, wind, kValue);
-    if (m.gustKt)
+    if (gust)
     {
         char g[8];
         snprintf(g, sizeof(g), "G%d", m.gustKt);
-        c.text(FrameCanvas::W - 2 - FrameCanvas::textWidth(g), 13, g, Rgb{255, 95, 80});
+        const int gx = max(kX + 1 + FrameCanvas::textWidth(wind) + 4, FrameCanvas::W - 2 - FrameCanvas::textWidth(g));
+        c.text(gx, 13, g, Rgb{255, 95, 80});
     }
 
     drawRunwayWind(c, kX + 11, 32, 9, m, runway, nowMs);

@@ -43,6 +43,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "config/Airports.h"
 #include "utils/Spotter.h"
 #include "utils/HomeAssistant.h"
+#include "utils/TlsArena.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
 #include "display/FlyAcross.h"
@@ -226,6 +227,25 @@ static void spotterCheck(const std::vector<StateVector> &states, const std::vect
                      ev.matched, isnan(info.altFt) ? 0.0f : info.altFt, info.where[0] ? ", " : "", info.where);
 }
 
+// Save today's stats if they have changed: ~7 KB in one block, only when
+// there is one. The feed's connection is never closed for it: once closed,
+// a fragmented heap can leave no room to reopen it (5.1's soak sat without
+// positions for 25 minutes that way); a skipped save tries again in 5 minutes.
+static void saveStats()
+{
+    StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
+    const size_t need = g_display.statsSize();
+    if (!need) return;
+    if (ESP.getMaxAllocHeap() < need + 4096)
+    {
+        Log.println("Stats: no room to save now, trying again in 5 minutes");
+        return;
+    }
+    std::vector<uint8_t> data;
+    if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
+        Log.println("Stats: could not save");
+}
+
 static void checkSquawks(const std::vector<StateVector> &states)
 {
     static std::map<String, int>           streak;    // icao24+code -> fetches in a row
@@ -286,8 +306,10 @@ static Rgb airlineColour(const String &callsign)
 // colour, and whether it is lined up on final for a Heathrow runway.
 static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector> &states)
 {
+    // Sized exactly, and gone after the fetch: reserving room for 48 for
+    // good (5.1 candidate) cost 6 KB of heap that the feed's fetches need.
     std::vector<TrafficPoint> pts;
-    pts.reserve(states.size());
+    pts.reserve(min(states.size(), (size_t)TrafficTracker::kMax));
     for (const StateVector &s : states)
     {
         TrafficPoint p;
@@ -297,6 +319,16 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
         p.heading = s.heading;
         p.gsKt    = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
         p.colour  = squawkMeaning(s.squawk) ? Rgb{255, 40, 30} : airlineColour(s.callsign);
+        {
+            String cs = s.callsign;
+            cs.trim();
+            const String num = flightNumberFromCallsign(cs);
+            String label = num.length() ? num : cs.length() ? cs : s.registration;
+            label.replace(" ", "");   // "U2 73CA" -> "U273CA": the tiny font has no room for gaps
+            strlcpy(p.label, label.c_str(), sizeof(p.label));
+            strlcpy(p.type, s.aircraft_type.c_str(), sizeof(p.type));
+            p.altFt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
+        }
 
         FlightInfo f;   // just enough for the approach model
         f.lat = s.lat;  f.lon = s.lon;  f.heading = s.heading;
@@ -304,6 +336,7 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
         f.velocity      = p.gsKt;
         f.vertical_rate = isnan(s.vertical_rate) ? NAN : s.vertical_rate * 196.85;
         p.onFinal = ApproachModel::evaluate(f).phase == ApproachStatus::Approach;
+        if (pts.size() >= (size_t)TrafficTracker::kMax) break;   // never past the reservation
         pts.push_back(p);
     }
     return pts;
@@ -422,6 +455,7 @@ static void updateDepartures(const std::vector<StateVector> &states, const std::
 
 void setup()
 {
+    TlsArena::install();   // before any TLS: its big buffers get their own room
     Serial.begin(115200);
 #if ARDUINO_USB_MODE && ARDUINO_USB_CDC_ON_BOOT
     // Native USB serial: with nothing reading the port, the default 100 ms
@@ -670,6 +704,7 @@ void loop()
             // A firmware upload has the board: no fetch, and the feed's TLS
             // session closed for the memory (it reopens on the next fetch).
             if (g_tlsReleaser) g_tlsReleaser();
+            g_feedPaused = true;
         }
         else if (!ensureWiFi())
         {
@@ -714,6 +749,26 @@ void loop()
             {
                 Log.println("WiFi: still no data after reconnecting, restarting");
                 delay(200);
+                ESP.restart();
+            }
+        }
+        // Fragmented: no positions although plenty of memory is free (no
+        // feed session holds it), just not in blocks a TLS handshake can use
+        // (two 16 KB buffers). It doesn't mend itself: save the day's stats
+        // and restart, a few seconds instead of waiting for the watchdog.
+        {
+            static unsigned long fragSinceMs = 0;
+            const bool fragmented = !g_fetcher->lastFetchOk() && TlsArena::slotsFree() &&
+                                    ESP.getFreeHeap() > 34000 && ESP.getMaxAllocHeap() < 10000;
+            if (!fragmented)        fragSinceMs = 0;
+            else if (!fragSinceMs)  fragSinceMs = millis();
+            else if (millis() - fragSinceMs > 90000)
+            {
+                Log.printf("Heap: %u free but the largest block is %u: restarting to recover the feed\n",
+                           (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+                saveStats();
+                ImageCheck::keep("restart to recover from fragmentation");
+                delay(300);
                 ESP.restart();
             }
         }
@@ -869,21 +924,7 @@ void loop()
         if (millis() - lastSaveMs >= 5UL * 60 * 1000 && ESP.getFreeHeap() > 26000)
         {
             lastSaveMs = millis();
-            StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
-            // ~7 KB in one block: with the feed's TLS connection open the
-            // largest free block can be smaller, so close it first if need
-            // be (it reopens on the next fetch), and skip a round rather
-            // than fail an allocation.
-            const size_t need = g_display.statsSize();
-            if (need && ESP.getMaxAllocHeap() < need + 4096 && g_tlsReleaser) g_tlsReleaser();
-            if (need && ESP.getMaxAllocHeap() >= need + 4096)
-            {
-                std::vector<uint8_t> data;
-                if (g_display.statsSnapshot(data) && !DailyStats::writeFile(data))
-                    Log.println("Stats: could not save");
-            }
-            else if (need)
-                Log.println("Stats: no room to save now, trying again in 5 minutes");
+            saveStats();
         }
     }
 

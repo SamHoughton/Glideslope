@@ -10,6 +10,7 @@ the map and the scanning screen.
 #include "display/DailyStats.h"
 #include "display/HoldTracker.h"
 #include "display/Sky.h"
+#include "models/FlightInfo.h"
 #include "utils/Weather.h"
 
 namespace InfoScreens
@@ -60,6 +61,11 @@ namespace InfoScreens
 
     // shownMs: how long the screen has been up (the counters count up and the bars grow).
     void renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t animMs, uint32_t shownMs = 100000);
+    // On final, between the card's appearances: the aircraft itself (sprite
+    // in its livery, type, registration, how often it has been here), with
+    // the countdown kept top right. etaSec < 0: no countdown.
+    void renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent, float etaSec, const char *runway,
+                        uint32_t shownMs);
     // Second and third stats pages: the busiest airlines and aircraft types.
     void renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);
     void renderTopTypes(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);

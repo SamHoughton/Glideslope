@@ -16,6 +16,7 @@ unsigned long g_fakeMillis = 1000;
 #include "config/Airports.h"
 #include "utils/Spotter.h"
 #include "utils/SeenLog.h"
+#include "utils/HttpRequest.h"
 #include "display/ApproachModel.h"
 #include "display/RunwayTracker.h"
 #include "display/HoldTracker.h"
@@ -501,6 +502,57 @@ void test_seen_log()
     TEST_ASSERT_EQUAL(1, SeenLog::dayNumber(mktime(&t)));
 }
 
+// ── The web server's request parsing ───────────────────────────────────────
+void test_http_request()
+{
+    const char *CRLF = "\r\n";
+    String raw = String("POST /api/config?x=1&z=2 HTTP/1.1") + CRLF + "Host: glideslope.local" + CRLF +
+                 "content-length:12" + CRLF + "X-Glideslope:  1 " + CRLF + CRLF;
+    HttpRequest::Line l;
+    TEST_ASSERT_TRUE(HttpRequest::parseLine(raw, l));
+    TEST_ASSERT_EQUAL_STRING("POST", l.method.c_str());
+    TEST_ASSERT_EQUAL_STRING("/api/config", l.path.c_str());
+    TEST_ASSERT_EQUAL_STRING("x=1&z=2", l.query.c_str());
+    TEST_ASSERT_EQUAL_STRING("glideslope.local", HttpRequest::header(raw, "host").c_str());
+    TEST_ASSERT_EQUAL_STRING("1", HttpRequest::header(raw, "X-Glideslope").c_str());
+    TEST_ASSERT_EQUAL_STRING("", HttpRequest::header(raw, "X-Glide").c_str());   // a prefix is not the header
+    TEST_ASSERT_EQUAL(12, HttpRequest::contentLength(raw));                       // no space after the colon
+    TEST_ASSERT_EQUAL_STRING("2", HttpRequest::qparam(l.query, "z").c_str());
+    TEST_ASSERT_EQUAL_STRING("", HttpRequest::qparam("fz=1", "z").c_str());     // whole keys only
+    TEST_ASSERT_EQUAL_STRING("night+storm", HttpRequest::qparam("look=night+storm", "look").c_str());
+
+    // Malformed request lines.
+    for (const char *bad : {"", "GET", "GET /", "GET  HTTP/1.1", "GET x HTTP/1.1", " / HTTP/1.1", "GET / "})
+        TEST_ASSERT_FALSE(HttpRequest::parseLine(String(bad) + CRLF + CRLF, l));
+    // Content-Length that isn't a plain, sane number.
+    for (const char *v : {"-5", "abc", "12abc", "", "9999999999", "200000000"})
+        TEST_ASSERT_EQUAL(-1, HttpRequest::contentLength(String("GET / HTTP/1.1") + CRLF + "Content-Length: " + v + CRLF + CRLF));
+    TEST_ASSERT_EQUAL(-1, HttpRequest::contentLength(String("GET / HTTP/1.1") + CRLF + CRLF));
+
+    // Random bytes and random fragments of requests: nothing may crash, and
+    // the results stay inside the input.
+    uint32_t seed = 12345;
+    auto rnd = [&]() { seed = seed * 1103515245u + 12345u; return (seed >> 16) & 0x7fff; };
+    const char *bits[] = {"GET", "POST", " ", "/", "?", "&", "=", ":", "\r\n", "Host", "Content-Length", "X-Glideslope", "HTTP/1.1", "9", "-"};
+    for (int iter = 0; iter < 3000; ++iter)
+    {
+        String r;
+        const int parts = rnd() % 40;
+        for (int k = 0; k < parts; ++k)
+        {
+            if (rnd() % 3 == 0) { char ch = (char)(rnd() % 256); if (!ch) ch = 'x'; r += ch; }
+            else r += bits[rnd() % (sizeof(bits) / sizeof(bits[0]))];
+        }
+        HttpRequest::Line out;
+        if (HttpRequest::parseLine(r, out))
+            TEST_ASSERT_TRUE(out.path.length() <= r.length() && out.path[0] == '/');
+        TEST_ASSERT_TRUE(HttpRequest::header(r, "Host").length() <= r.length());
+        const long cl = HttpRequest::contentLength(r);
+        TEST_ASSERT_TRUE(cl >= -1 && cl <= 100L * 1024 * 1024);
+        TEST_ASSERT_TRUE(HttpRequest::qparam(r, "z").length() <= r.length());
+    }
+}
+
 int main(int, char **)
 {
     UNITY_BEGIN();
@@ -524,5 +576,6 @@ int main(int, char **)
     RUN_TEST(test_overhead_and_cooldown);
     RUN_TEST(test_overhead_skips_arrivals);
     RUN_TEST(test_seen_log);
+    RUN_TEST(test_http_request);
     return UNITY_END();
 }

@@ -3,6 +3,7 @@
 #include <esp_attr.h>
 #include <esp_system.h>
 #include <esp_core_dump.h>
+#include <esp_ota_ops.h>
 
 namespace
 {
@@ -102,6 +103,25 @@ bool StageTrace::coreDump(char *out, size_t len)
     }
     free(s);
     return ok;
+}
+
+bool StageTrace::coreDumpFromThisBuild(char *elf, size_t len)
+{
+    if (len) elf[0] = '\0';
+    if (esp_core_dump_image_check() != ESP_OK) return false;
+    esp_core_dump_summary_t *s = (esp_core_dump_summary_t *)malloc(sizeof(esp_core_dump_summary_t));
+    if (!s) return false;
+    bool same = false;
+    if (esp_core_dump_get_summary(s) == ESP_OK)
+    {
+        char running[sizeof(s->app_elf_sha256)] = "";
+        esp_ota_get_app_elf_sha256(running, sizeof(running));
+        const char *dumped = (const char *)s->app_elf_sha256;
+        strlcpy(elf, dumped, len);
+        same = running[0] && strncmp(running, dumped, sizeof(running) - 1) == 0;
+    }
+    free(s);
+    return same;
 }
 
 void StageTrace::eraseCoreDump()

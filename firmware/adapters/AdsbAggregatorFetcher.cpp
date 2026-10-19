@@ -84,8 +84,9 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
     http.setTimeout(kTimeoutMs);
     http.setUserAgent("Glideslope/1.0 (+https://github.com/SamHoughton/Glideslope)");
 
-    // Room for the list first, before anything is sent (see below).
-    if (ESP.getMaxAllocHeap() < kMaxAircraft * sizeof(StateVector) + 2048)
+    // Room for the list first, before anything is sent (see below); only
+    // when it has to grow (it keeps its room from one fetch to the next).
+    if (out.capacity() < kMaxAircraft && ESP.getMaxAllocHeap() < kMaxAircraft * sizeof(StateVector) + 2048)
     {
         Log.println("AdsbAggregatorFetcher: not enough memory for the list, skipping this fetch");
         if (i != 0) http.end();
@@ -204,10 +205,13 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
     };
     static const char *const kNames[2] = { "adsb.fi", "adsb.lol" };
 
-    // The caller's list holds the previous fetch's aircraft. Set it aside
-    // (a swap: nothing copied; with 40 aircraft a copy was ~9 KB of heap).
-    std::vector<StateVector> previous;
-    previous.swap(outStateVectors);
+    // Two lists take turns: the caller's (the previous fetch's aircraft, kept
+    // for carrying forward) goes to _spare, and the one set aside last time
+    // comes back emptied but with its room. Nothing large is allocated per
+    // fetch: a new list every 5 s fragmented the heap until a TLS handshake
+    // found no room (5.1's soak).
+    _spare.swap(outStateVectors);
+    outStateVectors.clear();
 
     // The primary first (adsb.fi, kept-open connection).
     if (fetchFrom(0, urls[0], kNames[0], centerLat, centerLon, radiusKm, outStateVectors))
@@ -220,11 +224,11 @@ bool AdsbAggregatorFetcher::fetchStateVectors(double centerLat, double centerLon
     // answer forward (each aircraft moved along its track and climb rate to
     // now) rather than pay for the backup's TLS handshake (~65 KB of heap).
     const unsigned long now = millis();
-    if (_primaryOkMs && now - _primaryOkMs <= 90000UL && !previous.empty() && _carriedMs)
+    if (_primaryOkMs && now - _primaryOkMs <= 90000UL && !_spare.empty() && _carriedMs)
     {
         const double dt = (now - _carriedMs) / 1000.0;
         _carriedMs = now;
-        outStateVectors.swap(previous);
+        outStateVectors.swap(_spare);
         for (StateVector &s : outStateVectors)
         {
             if (!isnan(s.velocity) && !isnan(s.heading))

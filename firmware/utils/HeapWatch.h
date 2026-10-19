@@ -7,6 +7,7 @@ just finished is logged as the culprit.
 */
 #include <Arduino.h>
 #include "utils/TelnetLogger.h"
+#include "utils/TlsArena.h"
 
 // Whether there is room for a TLS connection now. The framework's mbedTLS is
 // built with fixed 16 KB in/out buffers, so a handshake briefly needs 60-65
@@ -21,6 +22,7 @@ inline volatile bool g_netBusy = false;
 // fetches and closes the feed's TLS session, so the upload has the memory
 // and the network to itself (with a fetch alongside, it could stall).
 inline volatile bool g_updating = false;
+inline volatile bool g_feedPaused = false;   // set by the main loop once it has stopped for the upload
 struct NetBusy
 {
     NetBusy()  { g_netBusy = true; }
@@ -34,11 +36,14 @@ inline void (*g_tlsReleaser)() = nullptr;
 
 inline bool tlsAffordable(const char *what)
 {
-    static constexpr uint32_t kMinFree = 75000;
-    auto room = [] { return ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= 20000; };
+    // The two record buffers come from utils/TlsArena; the heap only needs
+    // room for the handshake's own working memory.
+    static constexpr uint32_t kMinFree = 30000, kMinBlock = 10000;   // 42 KB left 40 KB free short (5.1 soak)
+    auto room = [] { return TlsArena::slotsFree() && ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= kMinBlock; };
     if (room()) return true;
     if (g_tlsReleaser)
     {
+        Log.printf("Heap: closing the feed connection for %s\n", what);
         g_tlsReleaser();
         if (room()) return true;
     }

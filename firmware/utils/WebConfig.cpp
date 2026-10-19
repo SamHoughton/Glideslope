@@ -20,6 +20,8 @@ WebServer library to avoid framework include-path issues.
 #include <Preferences.h>
 #include <esp_task_wdt.h>
 #include "utils/HeapWatch.h"
+#include "utils/HttpRequest.h"
+#include "utils/TlsArena.h"
 #include <vector>
 
 WebConfig g_webConfig;
@@ -50,20 +52,9 @@ void WebConfig::loadToken()
 
 String WebConfig::header(const String &raw, const char *name)
 {
-    // Case-insensitive "\r\n<name>:" in the raw headers; the value trimmed.
-    const int n = strlen(name);
-    for (int i = raw.indexOf("\r\n"); i >= 0; i = raw.indexOf("\r\n", i + 2))
-    {
-        if (strncasecmp(raw.c_str() + i + 2, name, n) == 0 && raw[i + 2 + n] == ':')
-        {
-            const int end = raw.indexOf("\r\n", i + 2);
-            String v = raw.substring(i + 3 + n, end < 0 ? raw.length() : end);
-            v.trim();
-            return v;
-        }
-    }
-    return String();
+    return HttpRequest::header(raw, name);
 }
+
 
 bool WebConfig::hostAllowed(const String &hostPort)
 {
@@ -126,23 +117,12 @@ void WebConfig::loop()
     if (!headersRead) { client.stop(); return; }
 
     // ── Parse request line ─────────────────────────────────────────────────
-    int sp1 = raw.indexOf(' ');
-    int sp2 = raw.indexOf(' ', sp1 + 1);
-    if (sp1 < 0 || sp2 < 0) { client.stop(); return; }
-
+    HttpRequest::Line line;
+    if (!HttpRequest::parseLine(raw, line)) { client.stop(); return; }
     Req r;
-    r.method = raw.substring(0, sp1);
-    String fullPath = raw.substring(sp1 + 1, sp2);
-    int qpos = fullPath.indexOf('?');
-    if (qpos >= 0)
-    {
-        r.path  = fullPath.substring(0, qpos);
-        r.query = fullPath.substring(qpos + 1);
-    }
-    else
-    {
-        r.path = fullPath;
-    }
+    r.method = line.method;
+    r.path   = line.path;
+    r.query  = line.query;
 
     // ── Who is asking ──────────────────────────────────────────────────────
     if (!hostAllowed(header(raw, "Host")))
@@ -187,13 +167,10 @@ void WebConfig::loop()
     // ── Read POST body (Content-Length driven) ─────────────────────────────
     if (r.method == "POST")
     {
-        String lower = raw;
-        lower.toLowerCase();
-        int clIdx = lower.indexOf("content-length: ");
-        if (clIdx >= 0)
+        const long cl = HttpRequest::contentLength(raw);
+        if (cl >= 0)
         {
-            int clEnd = raw.indexOf("\r\n", clIdx + 16);
-            int bodyLen = raw.substring(clIdx + 16, clEnd).toInt();
+            int bodyLen = (int)cl;
             r.contentLength = bodyLen;
             // A firmware image is streamed straight to flash by its handler.
             if (r.path == "/api/update" || r.path == "/api/airport") bodyLen = 0;
@@ -249,7 +226,13 @@ void WebConfig::loop()
             JsonDocument d;
             d["present"] = true;
             d["summary"] = text;
-            d["built"]   = __DATE__ " " __TIME__;
+            // The build that crashed: this one, or one since replaced (the
+            // backtrace then needs that build's firmware.elf to decode).
+            char elf[24];
+            const bool same = StageTrace::coreDumpFromThisBuild(elf, sizeof(elf));
+            d["built"]   = same ? __DATE__ " " __TIME__ : "an earlier build";
+            d["elf"]     = elf;
+            d["this_build"] = same;
             body = "";
             serializeJson(d, body);
         }
@@ -324,12 +307,7 @@ void WebConfig::sendChunked(WiFiClient &c, const uint8_t *data, size_t len, size
 
 String WebConfig::qparam(const String &query, const char *key)
 {
-    String k = String(key) + "=";
-    int pos = query.indexOf(k);
-    if (pos < 0) return "";
-    int start = pos + k.length();
-    int end = query.indexOf('&', start);
-    return end < 0 ? query.substring(start) : query.substring(start, end);
+    return HttpRequest::qparam(query, key);
 }
 
 // ---------------------------------------------------------------------------
@@ -619,6 +597,7 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["heap_max_block"] = ESP.getMaxAllocHeap();
     doc["heap_min_free"]  = ESP.getMinFreeHeap();
     doc["stack_web_free"] = uxTaskGetStackHighWaterMark(nullptr);   // this task: the web server
+    doc["tls_arena"] = String(TlsArena::served()) + " served, " + TlsArena::overflowed() + " to the heap" + (TlsArena::slotsFree() ? "" : ", in use");
     doc["display_frames"] = displayFramesDrawn();
     doc["web_requests"]   = (uint32_t)_requests;
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
@@ -685,7 +664,15 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
     if ((uint32_t)length > ESP.getFreeSketchSpace()) { fail("file too large for the app slot"); return; }
     if (!Update.begin(length, U_FLASH)) { fail(Update.errorString()); return; }
     Log.printf("Update: receiving %d bytes\n", length);
-    struct Updating { Updating() { g_updating = true; } ~Updating() { g_updating = false; } } updating;
+    struct Updating { Updating() { g_updating = true; } ~Updating() { g_updating = false; g_feedPaused = false; } } updating;
+    // Wait (up to 8 s) for the main loop to finish any fetch and close the
+    // feed's connection, so the upload has the network and memory to
+    // itself; the sender waits in the meantime.
+    for (const unsigned long t0 = millis(); !g_feedPaused && millis() - t0 < 8000;)
+    {
+        esp_task_wdt_reset();
+        delay(20);
+    }
     requestPanelMessage("UPDATING");
     // Signature check as the image streams in (utils/FirmwareSig.h).
     static FirmwareSig sig;   // ~200 bytes: not on the web task's stack

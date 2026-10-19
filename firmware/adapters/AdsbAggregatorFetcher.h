@@ -55,6 +55,7 @@ private:
     uint8_t       _streak = 0;           // primary answers since the last change
     unsigned long _primaryOkMs = 0;             // when the primary last answered
     unsigned long _carriedMs = 0;           // time the positions in the caller's list are for
+    std::vector<StateVector> _spare;   // the other of the two lists that take turns (see fetchStateVectors)
     class WiFiClientSecure *_keepTls = nullptr;   // the primary's connection, kept open (HTTP keep-alive)
     class HTTPClient       *_keepHttp = nullptr;
     bool fetchFrom(int i, const String &url, const char *name, double centerLat, double centerLon,

@@ -16,6 +16,9 @@ struct TrafficPoint
     float    gsKt    = NAN;
     Rgb      colour  {200, 205, 215};
     bool     onFinal = false;
+    char     label[8] = "";    // flight number (BA213) or call sign, for the map
+    char     type[5]  = "";    // ICAO type code
+    float    altFt    = NAN;
 };
 
 class TrafficTracker
@@ -23,10 +26,24 @@ class TrafficTracker
 public:
     static constexpr int kMax   = 48;
 
+    // Trail: where it was, one map pixel every kTrailMs, oldest overwritten.
+    static constexpr int           kTrail   = 8;
+    static constexpr unsigned long kTrailMs = 20000;   // 8 x 20 s: the last 2.7 minutes
+
     struct Tracked
     {
         TrafficPoint  p;
         unsigned long posMs = 0;           // when p's position was reported
+        uint8_t       trail[kTrail][2];    // map x, y
+        uint8_t       trailN = 0, trailHead = 0;   // points kept; next slot
+        unsigned long trailMs = 0;         // when the last point was added
+        // Trail point i, oldest first (i < trailN).
+        void trailAt(int i, int &x, int &y) const
+        {
+            const int k = (trailHead - trailN + i + kTrail) % kTrail;
+            x = trail[k][0];
+            y = trail[k][1];
+        }
     };
 
     void update(const std::vector<TrafficPoint> &points, unsigned long now);
