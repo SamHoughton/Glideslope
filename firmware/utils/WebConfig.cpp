@@ -664,7 +664,15 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
     if ((uint32_t)length > ESP.getFreeSketchSpace()) { fail("file too large for the app slot"); return; }
     if (!Update.begin(length, U_FLASH)) { fail(Update.errorString()); return; }
     Log.printf("Update: receiving %d bytes\n", length);
-    struct Updating { Updating() { g_updating = true; } ~Updating() { g_updating = false; } } updating;
+    struct Updating { Updating() { g_updating = true; } ~Updating() { g_updating = false; g_feedPaused = false; } } updating;
+    // Wait (up to 8 s) for the main loop to finish any fetch and close the
+    // feed's connection, so the upload has the network and memory to
+    // itself; the sender waits in the meantime.
+    for (const unsigned long t0 = millis(); !g_feedPaused && millis() - t0 < 8000;)
+    {
+        esp_task_wdt_reset();
+        delay(20);
+    }
     requestPanelMessage("UPDATING");
     // Signature check as the image streams in (utils/FirmwareSig.h).
     static FirmwareSig sig;   // ~200 bytes: not on the web task's stack

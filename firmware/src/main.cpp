@@ -704,6 +704,7 @@ void loop()
             // A firmware upload has the board: no fetch, and the feed's TLS
             // session closed for the memory (it reopens on the next fetch).
             if (g_tlsReleaser) g_tlsReleaser();
+            g_feedPaused = true;
         }
         else if (!ensureWiFi())
         {
@@ -758,7 +759,7 @@ void loop()
         {
             static unsigned long fragSinceMs = 0;
             const bool fragmented = !g_fetcher->lastFetchOk() && TlsArena::slotsFree() &&
-                                    ESP.getFreeHeap() > 48000 && ESP.getMaxAllocHeap() < 12000;
+                                    ESP.getFreeHeap() > 34000 && ESP.getMaxAllocHeap() < 10000;
             if (!fragmented)        fragSinceMs = 0;
             else if (!fragSinceMs)  fragSinceMs = millis();
             else if (millis() - fragSinceMs > 90000)
