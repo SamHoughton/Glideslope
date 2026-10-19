@@ -223,6 +223,10 @@ private:
     uint8_t              _storyPage = 0;     // 0 card, 1 globe, 2 aircraft
     unsigned long        _storyFadeMs = 0;
     uint8_t              storyPage(unsigned long now, uint32_t &pageMs);
+    // renderFrame's stages (adapters/DisplayRhythm.cpp).
+    bool                 renderOverlays(unsigned long now, uint32_t &wait);
+    bool                 renderTransition(unsigned long now, uint32_t &wait);
+    uint32_t             renderRhythm(unsigned long now);
     void                 renderHeld(unsigned long now);
     Screen               _screen = Screen::Weather;   // so the first rotation starts with the map
     Screen               _shownScreen = Screen::Count;
