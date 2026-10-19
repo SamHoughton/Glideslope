@@ -303,13 +303,12 @@ static Rgb airlineColour(const String &callsign)
 
 // Every aircraft in range as a map point: position, track, speed, airline
 // colour, and whether it is lined up on final for a Heathrow runway.
-// One list, kept and refilled each fetch (a new one every 5 s churned the
-// heap); room for the tracker's maximum, reserved once.
-static const std::vector<TrafficPoint> &trafficFromStates(const std::vector<StateVector> &states)
+static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector> &states)
 {
-    static std::vector<TrafficPoint> pts;
-    if (pts.capacity() < (size_t)TrafficTracker::kMax) pts.reserve(TrafficTracker::kMax);
-    pts.clear();
+    // Sized exactly, and gone after the fetch: reserving room for 48 for
+    // good (5.1 candidate) cost 6 KB of heap that the feed's fetches need.
+    std::vector<TrafficPoint> pts;
+    pts.reserve(min(states.size(), (size_t)TrafficTracker::kMax));
     for (const StateVector &s : states)
     {
         TrafficPoint p;
