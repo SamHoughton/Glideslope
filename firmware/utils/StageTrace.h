@@ -27,6 +27,9 @@ namespace StageTrace
     // A saved core dump's summary (crashing task, PC, cause, backtrace), for
     // decoding with addr2line against that build's firmware.elf; false if none.
     bool coreDump(char *out, size_t len);
+    // Whether the saved dump came from the firmware running now (its ELF
+    // hash matches); elf gets the dump's hash prefix. False with no dump.
+    bool coreDumpFromThisBuild(char *elf, size_t len);
     void eraseCoreDump();
 
     // One-line description of the last reset (reason, and where the tasks

@@ -31,7 +31,7 @@ EXE = ".exe" if os.name == "nt" else ""
 
 LOGIC = ["config/Airport.cpp", "config/Airports.cpp", "display/ApproachModel.cpp", "display/RunwayTracker.cpp",
          "display/HoldTracker.cpp", "display/DailyStats.cpp", "utils/Weather.cpp", "adapters/ReadsbParser.cpp",
-         "utils/Spotter.cpp", "utils/SeenLog.cpp"]
+         "utils/Spotter.cpp", "utils/SeenLog.cpp", "utils/HttpRequest.cpp"]
 DRAW = ["display/FrameCanvas.cpp", "display/InfoScreens.cpp", "display/Globe.cpp", "display/Sky.cpp",
         "display/AircraftSprites.cpp", "display/OverheadScene.cpp", "display/LandingScene.cpp",
         "display/MapRenderer.cpp", "display/Traffic.cpp", "display/CardRenderer.cpp"]
@@ -96,7 +96,7 @@ def golden(update):
             continue
         d = ImageChops.difference(a, b)
         mask = d.convert("L").point(lambda v: 255 if v > PIXEL_TOLERANCE else 0)
-        n = sum(1 for v in mask.getdata() if v)
+        n = mask.histogram()[255]   # pixels over the tolerance
         status = "ok" if n <= MAX_DIFFERENT else "CHANGED"
         print(f"  {status:8} {p.stem} ({n} pixels differ)")
         if n > MAX_DIFFERENT:
