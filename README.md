@@ -45,6 +45,10 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Holding stacks](docs/holding.png) | ![Squawk alert](docs/squawk.png) |
 
+| Runway change | Rain at night: the landing lights' beam |
+| --- | --- |
+| ![Runway change: the number flipping on split-flap tiles, a windsock swinging round](docs/runway-change.png) | ![A night landing in rain: the landing lights' beam with the drops caught in it](docs/beam-rain.png) |
+
 | Map, with flight numbers and the spotlight | More on final: the aircraft |
 | --- | --- |
 | ![The map: flight numbers beside the aircraft, trails, and the spotlight's bar](docs/map.png) | ![On final: the aircraft page between the card's turns](docs/final-aircraft.png) |
@@ -57,8 +61,9 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Today's busiest airlines in their colours](docs/stats-airlines.png) | ![Today's commonest aircraft types](docs/stats-types.png) |
 
-The overhead pass, the aircraft page, the top airlines and types pages and
-the fireworks below are drawn by the firmware's own code on a desktop
+The runway change, the rain, the overhead pass, the aircraft page, the top
+airlines and types pages and the fireworks below are drawn by the
+firmware's own code on a desktop
 (`tools/host_build.py render`), with a made-up day of traffic; the rest
 are the board's own frames.
 
@@ -84,8 +89,9 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   airframe has been seen (`SEEN 14 TIMES`, `LAST ON 3 OCT`, `FIRST VISIT`),
   aircraft type with a
   matching side-profile sprite, smoothly counting altitude and speed,
-  `APPROACH 27L` and an ETA countdown, and a progress strip to the threshold
-  with approach lights running along it. The border takes the airline's
+  `APPROACH 27L` and an ETA countdown, and along the bottom a glide path with
+  a small aircraft (its fin in the airline's colour) coming down it to the
+  runway, the approach lights running ahead of it. The border takes the airline's
   colour. After touchdown: `LANDED 06:58` and the runway (or minutes
   early/late with an AeroAPI key).
 - **More on final**: while an arrival is on final its card takes turns
@@ -131,7 +137,9 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   trailing the last few minutes of its track, with its flight number in
   small type where there is room. A spotlight rings one aircraft at a time
   (those on final first) with its flight, type and height along the bottom.
-  A home marker can be set in the web page.
+  A home marker can be set in the web page. When a plane's card comes in
+  while the map is up, the map closes in on its icon and the card resolves
+  out of it.
 - **Arrivals board**: the next four arrivals with their type and
   minutes to touchdown (`~` while still a rough guess, before they join
   final), and Heathrow's weather along the bottom, e.g. `310/04 7KM RA 14C`
@@ -163,15 +171,22 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   final or climbing out counts, at any airport, with several runways at once
   (arrivals top left of the map, departures top right; `27L UNTIL 15:00` on
   the arrivals board). When the landing direction changes (a westerly to
-  easterly switch, confirmed by two aircraft) the panel announces
-  `RUNWAY CHANGE · NOW LANDING 09L`. With nothing landing for 30 minutes,
+  easterly switch, confirmed by two aircraft) the panel announces it: the
+  runway's number flips over on split-flap tiles while a windsock swings
+  round and a little runway seen from above shows the end the arrivals now
+  come in over. With nothing landing for 30 minutes,
   no runway is shown.
 - **Living sky**: landings, go-arounds and take-offs are drawn in the light
   at the airport at that moment, from the sun's real position: blue sky by
   day, an orange sun on the horizon at golden hour, twilight, then stars,
   the moon, lit windows, runway edge lights and the aircraft's landing
   lights, beacon and strobes after dark. The latest weather adds cloud,
-  rain, snow, thunder flashes or fog, and the map dims at night.
+  rain, snow, thunder flashes or fog, and the map dims at night. In rain
+  or fog the landing lights shine as a beam with the drops caught in it; on
+  a wet runway the aircraft throws spray and is reflected in the surface; a
+  windsock by the threshold blows in the real wind, with `XWIND 17G26` on
+  the approach when the crosswind is 10 kt or more; and departures tuck
+  their gear up as they climb away.
 - **Holding stacks**: at Heathrow the four stacks (Bovingdon, Lambourne,
   Biggin Hill, Ockham) are checked in turn, and anywhere in range an
   aircraft that keeps circling counts. A holding screen shows each stack
@@ -194,7 +209,8 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   squawks, rare spots, the watchlist, go-arounds, runway changes, busy
   stacks and the evening round-up, each switchable on the web page's Alerts
   tab. Emergency, rare-spot and watchlist alerts carry a picture of the
-  panel.
+  panel. Quiet hours (23:00 to 07:00 by default) let only emergencies
+  through.
 - **Home Assistant** over MQTT, found by discovery: next arrival and its ETA,
   runways in use, today's arrivals and departures, aircraft holding, the
   last flight and the last aircraft overhead.
@@ -341,6 +357,14 @@ pio run -e hd_wf2 -t uploadfs
 ```
 
 Without a logo, the card shows a tile in a default colour with the airline code.
+
+Or add one from the web page: the Display tab lists the airlines the board
+has seen without a logo; pick one, choose an image (a PNG with a
+transparent background works best), check the 32×32 preview and upload.
+The browser does the conversion; the logo goes onto the board, not into
+this repository.
+
+<p align="center"><img src="docs/webui-logos.png" alt="The Display tab's Airline logos: airlines seen without one, an image picker and a 32x32 preview" width="560"></p>
 
 ## Other airports
 

@@ -49,6 +49,7 @@ void NeoMatrixDisplay::refreshGlobe(unsigned long now)
 void NeoMatrixDisplay::beginNextCard(unsigned long now)
 {
     g_oldFrame.copyFrom(g_shownFrame);   // exactly what is on the panel now (card or map)
+    const bool fromMap = _ambientActive && _screen == Screen::Map && _mode == Mode::Auto;
     _ambientActive = false;
     _current    = _queue.front();
     _queue.pop_front();
@@ -59,6 +60,13 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
     _transStartMs = now;
     _path = FlyAcross::pathFor(_current.flight.heading, _current.flight.vertical_rate,
                                g_config.screen_facing);
+    // Coming from the map with the aircraft on it: zoom in on its icon.
+    _zoomFromMap = false;
+    if (fromMap && !isnan(_current.flight.lat))
+    {
+        MapRenderer::project(_current.flight.lat, _current.flight.lon, _zoomX, _zoomY);
+        _zoomFromMap = _zoomX >= 4 && _zoomY >= 4 && _zoomX < FrameCanvas::W - 4 && _zoomY < FrameCanvas::H - 4;
+    }
     const RareSpotter::Reason why = RareSpotter::check(_current.flight);
     if (why != RareSpotter::None)
     {

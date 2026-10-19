@@ -195,6 +195,10 @@ private:
 
     // Transition state (display task only)
     bool                 _inTransition = false;
+    // From the map, the card comes in by zooming on the aircraft's icon
+    // instead of the fly-across (map pixel the zoom closes in on).
+    bool                 _zoomFromMap = false;
+    float                _zoomX = 0, _zoomY = 0;
     unsigned long        _transStartMs = 0;
     FlyAcross::Path      _path;            // from the incoming flight's track + vertical rate
     // Ambient screen (map / scanning) state (display task only)

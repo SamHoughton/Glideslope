@@ -44,8 +44,6 @@ namespace
     constexpr uint32_t kRabbitMs     = 900;    // approach-light run, marker -> threshold
     constexpr float    kMaxAltDeadReckonMs = 60000.0f;
 
-    // 3x3 marker pointing left, drawn with a black outline so it reads over the strip.
-    const char *const kMarker[3] = { "...#.", "#####", "...#." };
     // 5x3 climb / descent arrows.
     const char *const kArrowDown[3] = { "#####", ".###.", "..#.." };
     const char *const kArrowUp[3]   = { "..#..", ".###.", "#####" };
@@ -211,46 +209,63 @@ namespace
         AircraftSprites::draw(c, sp, x, y, AircraftSprites::liveryFor(f, accent), faceRight, !known);
     }
 
+    // The approach along the bottom: a 3-degree glide path seen from the side,
+    // falling from the right to the runway on the left, with a small
+    // aircraft on it (white, its fin in the airline's colour) and the
+    // approach lights running ahead of it to the threshold.
+    //   ',' fin   '#' fuselage   '+' wing and engine   (nose on the left)
+    const char *const kMiniPlane[4] = { ".........,", "........,,", "##########", "...+++...." };
+    constexpr int kMiniW = 10, kMiniH = 4;
+
     void drawStrip(FrameCanvas &c, const ApproachStatus &s, Rgb accent, uint32_t animMs, bool landed)
     {
-        // Runway threshold "piano keys", then the approach strip.
-        // right = 121: the marker (mx-1..mx+3) and its 1px black halo stay at
-        // least 1px clear of the border at x 127.
-        const int barsX = 52, left = 64, right = 121, y = kBandY + 3;
-        for (int x = barsX; x <= barsX + 8; x += 2)
-            for (int yy = kBandY + 1; yy <= kBandY + 5; ++yy)
-                c.set(x, yy, kBarGrey);
+        // Runway: piano keys at the threshold, the surface after them.
+        const int rwyX0 = 52, rwyX1 = 70, groundY = kBandY + 6;
+        for (int x = rwyX0; x <= rwyX1; ++x) c.set(x, groundY, Rgb{70, 74, 86});
+        for (int x = rwyX0; x <= rwyX0 + 6; x += 2)
+            for (int yy = kBandY + 3; yy <= kBandY + 5; ++yy) c.set(x, yy, kBarGrey);
+
+        // The glide path: from the right edge, high, down to the threshold.
+        const int pathX0 = 60, pathX1 = 124, pathTop = kBandY;
+        auto pathY = [&](float x) { return pathTop + (groundY - 1 - pathTop) * (pathX1 - x) / (pathX1 - pathX0); };
 
         if (isnan(s.progress) && !landed)
         {
-            for (int x = left; x <= right; ++x)
-                if (x % 3 == 0) c.set(x, y, kDimGrey);
+            for (int x = pathX0; x <= pathX1; x += 3) c.set(x, (int)lroundf(pathY(x)), kDimGrey);
             return;
         }
         const float progress = landed ? 1.0f : s.progress;
-        const int mx = (int)lroundf(right - progress * (right - left - 2));
-        for (int x = left; x <= right; ++x)
+        const float px = pathX1 - progress * (pathX1 - pathX0);   // the aircraft's nose
+        // Flown (behind it, to the right): solid in the accent. Ahead: dotted.
+        for (int x = pathX0; x <= pathX1; ++x)
         {
-            if (x >= mx)           c.set(x, y, FrameCanvas::scale(accent, 0.45f));
-            else if (x % 3 == 0)   c.set(x, y, kDimGrey);
+            const int y = (int)lroundf(pathY(x));
+            if (x > px + kMiniW)  c.set(x, y, FrameCanvas::scale(accent, 0.3f));
+            else if (x < px && (x % 3 == 0)) c.set(x, y, kDimGrey);
         }
 
-        // Approach lights: a "rabbit" runs from the aircraft to the threshold.
-        if (!landed && s.phase == ApproachStatus::Approach && mx - 2 > left)
+        // Approach lights: a "rabbit" running from the aircraft to the threshold.
+        if (!landed && s.phase == ApproachStatus::Approach && px - 3 > pathX0)
         {
-            const float q   = (float)(animMs % kRabbitMs) / kRabbitMs;
-            const int   pos = (int)lroundf((mx - 2) - q * ((mx - 2) - left));
-            c.set(pos, y, Rgb{255, 255, 255});
-            c.set(pos + 1, y, Rgb{255, 200, 110});
-            c.set(pos + 2, y, Rgb{140, 92, 25});
+            const float q = (float)(animMs % kRabbitMs) / kRabbitMs;
+            const float x = (px - 3) - q * ((px - 3) - pathX0);
+            const int ix = (int)lroundf(x), iy = (int)lroundf(pathY(x));
+            c.set(ix, iy, Rgb{255, 255, 255});
+            c.set(ix + 1, iy, Rgb{255, 200, 110});
+            c.set(ix + 2, iy, Rgb{140, 92, 25});
         }
 
-        // Marker: clear a 1px halo, then draw.
-        const int ox = mx - 1, oy = y - 1;
-        for (int r = -1; r <= 3; ++r)
-            for (int col = -1; col <= 5; ++col)
-                c.set(ox + col, oy + r, (uint16_t)0);
-        drawBits(c, kMarker, 3, ox, oy, Rgb{255, 255, 255});
+        // The aircraft: on the path, or on the runway once down.
+        const int ox = landed ? rwyX0 + 8 : (int)lroundf(px);   // landed: on the runway, past the keys
+        const int oy = landed ? groundY - kMiniH : (int)lroundf(pathY(px + 4)) - 2;
+        for (int r = 0; r < kMiniH; ++r)
+            for (int col = 0; col < kMiniW; ++col)
+            {
+                const char ch = kMiniPlane[r][col];
+                if (ch == '.') continue;
+                const Rgb colr = ch == ',' ? accent : ch == '+' ? Rgb{120, 128, 145} : Rgb{235, 240, 245};
+                c.set(ox + col, oy + r, colr);
+            }
     }
 
     void drawBorder(FrameCanvas &c, Rgb col)

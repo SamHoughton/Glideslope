@@ -267,7 +267,10 @@ int main(int argc, char **argv)
         InfoScreens::renderClock(c, 2000, "250/14 10KM RA 11C");                              save(c, "clock_night");
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");
         InfoScreens::renderRareBanner(c, "RARE SPOT", "A380", 900);                           save(c, "banner_rare");
-        InfoScreens::renderRunwayChange(c, "27R", "09L", 1500);                               save(c, "runway_change");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 600);                                save(c, "runway_change_a");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 1900);                               save(c, "runway_change_b");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 2600);                               save(c, "runway_change_c");
+        InfoScreens::renderRunwayChange(c, "27R", "09L", 4500);                               save(c, "runway_change");
     }
 
     // On final: the aircraft page between the card's turns.
@@ -298,6 +301,9 @@ int main(int argc, char **argv)
             {"night+fireworks", "landing_fireworks", 1500}, {"night+fireworks", "landing_fireworks2", 2300},
             {"night+fireworks", "landing_fireworks3", 3100}, {"night+christmas", "landing_christmas", 1500},
             {"day+frost", "landing_frost_day", 1500}, {"night+snow", "landing_snow_night", 1500},
+            {"night+rain", "wx_night_rain_approach", 900}, {"night+fog", "wx_night_fog_approach", 900},
+            {"day+rain", "wx_day_rain_rollout", 2300},
+            {"day+windy", "wx_crosswind_approach", 800}, {"day+windy", "wx_crosswind_touchdown", 1500},
         };
         for (const auto &k : kLooks)
         {
@@ -305,6 +311,13 @@ int main(int argc, char **argv)
                                  false, "BA117", "27L", LandingScene::Landing, Sky::preview(k.look), &ba);
             save(c, k.name);
         }
+        // Take-off: the gear tucking up, and the roll on a wet runway.
+        LandingScene::render(c, 2900, AircraftSprites::getScene(AircraftSprites::A320), Rgb{70, 130, 255}, false,
+                             false, "BA117", "27R", LandingScene::Takeoff, Sky::preview("day"), &ba);
+        save(c, "wx_takeoff_gear_up");
+        LandingScene::render(c, 1100, AircraftSprites::getScene(AircraftSprites::A320), Rgb{70, 130, 255}, false,
+                             false, "BA117", "27R", LandingScene::Takeoff, Sky::preview("day+rain"), &ba);
+        save(c, "wx_takeoff_wet_roll");
     }
     return 0;
 }

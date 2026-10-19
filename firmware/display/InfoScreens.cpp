@@ -288,7 +288,18 @@ void InfoScreens::renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent
     // Below: the airline, then where it has come from.
     for (int x = 4; x < FrameCanvas::W - 4; x += 2) c.set(x, 38, kDim);
     if (f.airline_display_name_full.length())
-        c.text(3, 42, f.airline_display_name_full.c_str(), FrameCanvas::scale(accent, 0.85f), 1, 0, 20);
+    {
+        // Whole words only: "British Airways Shuttle" -> "British Airways".
+        char name[24];
+        strlcpy(name, f.airline_display_name_full.c_str(), sizeof(name));
+        while (strlen(name) > 20)
+        {
+            char *sp = strrchr(name, ' ');
+            if (!sp) { name[20] = '\0'; break; }
+            *sp = '\0';
+        }
+        c.text(3, 42, name, FrameCanvas::scale(accent, 0.85f));
+    }
     char from[32] = "";
     const char *city = Airports::city(f.origin);
     const String &code = f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao;
@@ -669,23 +680,127 @@ void InfoScreens::renderRareBanner(FrameCanvas &c, const char *line1, const char
     else                         centred(c, 32, line2, kGold);
 }
 
+namespace
+{
+    void line(FrameCanvas &c, int x0, int y0, int x1, int y1, Rgb col)
+    {
+        int dx = abs(x1 - x0), dy = -abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy;
+        for (int guard = 0; guard < 256; ++guard)
+        {
+            c.set(x0, y0, col);
+            if (x0 == x1 && y0 == y1) break;
+            const int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+        }
+    }
+
+    // Runway course from its name ("27L" -> 270), NAN if it isn't one.
+    float courseOf(const char *rwy)
+    {
+        if (!rwy || !isdigit((unsigned char)rwy[0]) || !isdigit((unsigned char)rwy[1])) return NAN;
+        return ((rwy[0] - '0') * 10 + (rwy[1] - '0')) * 10.0f;
+    }
+
+    // One split-flap tile at double size: a dark tile with the split across
+    // its middle; while flipping it shows passing letters, dimmer.
+    void flapTile(FrameCanvas &c, int x, int y, char ch, Rgb col, bool flipping, uint32_t seed)
+    {
+        for (int yy = 0; yy < 18; ++yy)
+            for (int xx = 0; xx < 14; ++xx) c.set(x + xx, y + yy, Rgb{24, 27, 36});
+        char s[2] = {ch, 0};
+        if (flipping)
+        {
+            static const char kFlaps[] = "0123456789LRC";
+            s[0] = kFlaps[seed % (sizeof(kFlaps) - 1)];
+        }
+        c.text(x + 2, y + 2, s, flipping ? FrameCanvas::scale(col, 0.6f) : col, 2, 11);
+        for (int xx = 0; xx < 14; ++xx) c.set(x + xx, y + 8, Rgb{0, 0, 0});   // the split
+    }
+}
+
+// The landing direction has changed. The runway's number flips over on
+// split-flap tiles, a windsock swings round to the new wind, and a little
+// runway seen from above shows the end the arrivals now come in over.
 void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const char *to, uint32_t tMs)
 {
     c.clear();
-    // An amber frame that pulses, the new runway large in the middle.
-    const float k = 0.55f + 0.45f * sinf(tMs / 160.0f);
-    const Rgb frame = FrameCanvas::scale(kValue, k);
-    for (int x = 0; x < FrameCanvas::W; ++x) { c.set(x, 0, frame); c.set(x, FrameCanvas::H - 1, frame); }
-    for (int y = 0; y < FrameCanvas::H; ++y) { c.set(0, y, frame); c.set(FrameCanvas::W - 1, y, frame); }
-    centred(c, 5, "RUNWAY CHANGE", (tMs / 400) % 2 ? kValue : kTitle);
-    centred(c, 16, "NOW LANDING", kLabel);
-    const int w = FrameCanvas::textWidth(to, 2, 11);
-    c.text((FrameCanvas::W - w) / 2, 27, to, kValue, 2, 11);
+    constexpr uint32_t kFlipAt = 1200, kFlipMs = 1500;
+    const float u = tMs < kFlipAt ? 0 : (tMs > kFlipAt + kFlipMs ? 1 : (float)(tMs - kFlipAt) / kFlipMs);
+    const float e = u * u * (3 - 2 * u);   // smoothstep
+    const bool flipped = u >= 1;
+    const char *shown = (from && from[0] && u < 0.5f) ? from : to;
+
+    // Title, pulsing once the new runway is in.
+    const float k = flipped ? 0.6f + 0.4f * sinf(tMs / 160.0f) : 1.0f;
+    centred(c, 2, "RUNWAY CHANGE", FrameCanvas::scale(kValue, k));
+
+    // The tiles: three characters, flipping one after another.
+    const int tilesX = 6, tilesY = 16;
+    for (int i = 0; i < 3; ++i)
+    {
+        const char target = to[i] ? to[i] : ' ', old = from && from[i] ? from[i] : ' ';
+        const uint32_t start = kFlipAt + i * 220, end = start + 700;
+        const bool flipping = tMs >= start && tMs < end && target != old;
+        const char ch = tMs >= end ? target : (tMs < start ? old : target);
+        flapTile(c, tilesX + i * 16, tilesY, ch, tMs >= end ? kValue : kTitle, flipping,
+                 (tMs / 60) * 2654435761u + i * 977u);
+    }
+    (void)shown;
+
+    // A runway from above (north up), the arrivals' end marked by an
+    // aircraft coming in, and a windsock blowing downwind.
+    const float cOld = courseOf(from), cNew = courseOf(to);
+    if (!isnan(cNew))
+    {
+        const int cx = 96, cy = 27;
+        // The runway's axis is the same both ways round (27 and 09): drawn once.
+        const float ax = sinf(cNew * (float)M_PI / 180), ay = -cosf(cNew * (float)M_PI / 180);
+        for (int w = -1; w <= 1; ++w)
+            line(c, (int)lroundf(cx - ax * 16 - ay * w), (int)lroundf(cy - ay * 16 + ax * w),
+                 (int)lroundf(cx + ax * 16 - ay * w), (int)lroundf(cy + ay * 16 + ax * w), Rgb{70, 74, 86});
+        for (int d = -12; d <= 12; d += 4)   // centreline
+            c.set((int)lroundf(cx + ax * d), (int)lroundf(cy + ay * d), Rgb{200, 205, 215});
+
+        // The aircraft: a dot with a trail, coming in over the landing end
+        // (old end fading out, new end fading in).
+        auto approach = [&](float course, float bright) {
+            if (isnan(course) || bright <= 0.02f) return;
+            const float bx = sinf(course * (float)M_PI / 180), by = -cosf(course * (float)M_PI / 180);
+            const float q = (tMs % 1600) / 1600.0f;   // gliding in, again and again
+            const float d = 30 - q * 12;              // from 30 px out to the threshold at 18
+            const int px = (int)lroundf(cx - bx * d), py = (int)lroundf(cy - by * d);
+            for (int t = 1; t <= 4; ++t)
+                c.set((int)lroundf(cx - bx * (d + t * 2)), (int)lroundf(cy - by * (d + t * 2)),
+                      FrameCanvas::scale(kValue, bright * (0.5f - t * 0.1f)));
+            c.set(px, py, FrameCanvas::scale(Rgb{255, 255, 255}, bright));
+        };
+        approach(cOld, 1 - e);
+        approach(cNew, e);
+
+        // Windsock: blows the way the arrivals fly (they land into the wind),
+        // swinging the short way round from the old course to the new.
+        float sockFrom = isnan(cOld) ? cNew : cOld, sockTo = cNew;
+        float diff = fmodf(sockTo - sockFrom + 540, 360) - 180;
+        const float sock = (sockFrom + diff * e) * (float)M_PI / 180;
+        const int sx = 116, sy = 10;
+        c.set(sx, sy, Rgb{200, 205, 215});
+        for (int i = 1; i <= 6; ++i)
+        {
+            const Rgb col = (i % 2) ? Rgb{255, 120, 40} : Rgb{235, 235, 240};
+            c.set((int)lroundf(sx + sinf(sock) * i), (int)lroundf(sy - cosf(sock) * i), col);
+        }
+    }
+
+    // Below: the change in words.
+    char line1[24];
+    snprintf(line1, sizeof(line1), "NOW LANDING %s", to);
+    centred(c, 44, line1, flipped ? kTitle : FrameCanvas::scale(kTitle, 0.4f + 0.6f * e));
     if (from && from[0])
     {
         char was[12];
         snprintf(was, sizeof(was), "WAS %s", from);
-        centred(c, 52, was, Rgb{140, 146, 160});
+        centred(c, 54, was, Rgb{140, 146, 160});
     }
 }
 

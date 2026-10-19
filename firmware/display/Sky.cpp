@@ -51,6 +51,9 @@ namespace
         else if (strstr(m.wx, "SN") || strstr(m.wx, "SG")) l.precip = Sky::Snow;
         else if (strstr(m.wx, "RA") || strstr(m.wx, "DZ") || strstr(m.wx, "SH")) l.precip = Sky::Rain;
         l.fog = strstr(m.wx, "FG") || (m.visM >= 0 && m.visM < 1500);
+        l.windDir = m.windDir;
+        l.windKt  = m.windKt;
+        l.gustKt  = m.gustKt;
     }
 
     void finish(Sky::Look &l)
@@ -150,6 +153,8 @@ Sky::Look Sky::preview(const char *name)
     if (strstr(name, "rain"))  { l.precip = Rain;    l.cloud = max<uint8_t>(l.cloud, 2); }
     if (strstr(name, "snow"))  { l.precip = Snow;    l.cloud = 3; l.frost = true; }
     if (strstr(name, "frost"))     l.frost = true;
+    if (strstr(name, "windy"))     { l.windDir = 220; l.windKt = 22; l.gustKt = 34; }   // a gusty south-westerly
+    if (strstr(name, "storm"))     { l.windDir = 250; l.windKt = 26; l.gustKt = 41; }
     if (strstr(name, "christmas")) l.season = Look::Christmas;
     if (strstr(name, "fireworks")) l.season = Look::Fireworks;
     if (strstr(name, "storm")) { l.precip = Thunder; l.cloud = 3; }

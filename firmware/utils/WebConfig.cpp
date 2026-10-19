@@ -22,6 +22,7 @@ WebServer library to avoid framework include-path issues.
 #include "utils/HeapWatch.h"
 #include "utils/HttpRequest.h"
 #include "utils/TlsArena.h"
+#include "adapters/LocalLogoStore.h"
 #include <vector>
 
 WebConfig g_webConfig;
@@ -68,7 +69,7 @@ bool WebConfig::hostAllowed(const String &hostPort)
 
 bool WebConfig::needsToken(const String &p)
 {
-    return p == "/api/update" || p == "/api/airport" || p == "/api/airport/reset" || p == "/api/config" ||
+    return p == "/api/update" || p == "/api/airport" || p == "/api/logo" || p == "/api/airport/reset" || p == "/api/config" ||
            p == "/api/config/reset" || p == "/api/restart" || p == "/api/wifi/reset" ||
            p == "/api/coredump/erase" || p == "/api/notify/test";
 }
@@ -173,7 +174,7 @@ void WebConfig::loop()
             int bodyLen = (int)cl;
             r.contentLength = bodyLen;
             // A firmware image is streamed straight to flash by its handler.
-            if (r.path == "/api/update" || r.path == "/api/airport") bodyLen = 0;
+            if (r.path == "/api/update" || r.path == "/api/airport" || r.path == "/api/logo") bodyLen = 0;
             if (bodyLen > 0 && bodyLen < 8192)
             {
                 r.body.reserve(bodyLen + 1);
@@ -238,6 +239,12 @@ void WebConfig::loop()
         }
         sendHttp(client, 200, "application/json", body);
     }
+    else if (r.path == "/api/logos"          && r.method == "GET")
+    {
+        String body = String("{\"count\":") + LogoBook::count() + ",\"missing\":" + LogoBook::missingJson() + "}";
+        sendHttp(client, 200, "application/json", body);
+    }
+    else if (r.path == "/api/logo"           && r.method == "POST") handleLogo(client, r);
     else if (r.path == "/api/coredump/erase" && r.method == "POST") { StageTrace::eraseCoreDump(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/notify/test"   && r.method == "POST")
     {
@@ -370,6 +377,9 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["ntfy_topic"]            = g_config.ntfy_topic;
     doc["ntfy_token"]            = g_config.ntfy_token[0] ? "***" : "";
     doc["overhead_km"]           = g_config.overhead_km;
+    doc["quiet_alerts"]          = g_config.quiet_alerts;
+    doc["quiet_start_minutes"]   = g_config.quiet_start_minutes;
+    doc["quiet_end_minutes"]     = g_config.quiet_end_minutes;
     doc["overhead_all"]          = g_config.overhead_all;
     doc["watchlist"]             = g_config.watchlist;
     doc["mqtt_host"]             = g_config.mqtt_host;
@@ -448,6 +458,9 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
     if (next.overhead_km < 0) next.overhead_km = 0;
     if (next.overhead_km > 20) next.overhead_km = 20;
     next.overhead_all                  = doc["overhead_all"]                  | next.overhead_all;
+    next.quiet_alerts                  = doc["quiet_alerts"]                  | next.quiet_alerts;
+    next.quiet_start_minutes           = (uint16_t)min(1439, (int)(doc["quiet_start_minutes"] | (int)next.quiet_start_minutes));
+    next.quiet_end_minutes             = (uint16_t)min(1439, (int)(doc["quiet_end_minutes"] | (int)next.quiet_end_minutes));
     next.mqtt_port                     = (uint16_t)(doc["mqtt_port"] | (int)next.mqtt_port);
     if (doc["watchlist"].is<const char *>()) strlcpy(next.watchlist, doc["watchlist"].as<const char *>(), sizeof(next.watchlist));
     if (doc["mqtt_host"].is<const char *>())
@@ -905,3 +918,29 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
     sendChunked(c, (const uint8_t *)s_json, n, 1024);
 }
 
+
+// An airline logo from the web page (converted to 32x32 RGB565 in the
+// browser): POST /api/logo?code=CTN with exactly 2,048 bytes; &delete=1
+// removes one.
+void WebConfig::handleLogo(WiFiClient &c, const Req &r)
+{
+    String code = qparam(r.query, "code");
+    code.toUpperCase();
+    auto reply = [&](bool ok, const char *error) {
+        sendHttp(c, ok ? 200 : 400, "application/json",
+                 ok ? String("{\"ok\":true}") : String("{\"ok\":false,\"error\":\"") + error + "\"}");
+    };
+    if (qparam(r.query, "delete") == "1") { reply(LogoBook::remove(code), "no such logo"); return; }
+    if (r.contentLength != (int)LogoBook::kBytes) { reply(false, "a logo is 2048 bytes"); return; }
+    uint8_t *buf = (uint8_t *)malloc(LogoBook::kBytes);
+    if (!buf) { reply(false, "no memory"); return; }
+    size_t got = 0;
+    for (const unsigned long t0 = millis(); got < LogoBook::kBytes && c.connected() && millis() - t0 < 5000;)
+    {
+        const int n = c.read(buf + got, LogoBook::kBytes - got);
+        if (n > 0) got += n; else delay(2);
+    }
+    const bool ok = got == LogoBook::kBytes && LogoBook::save(code, buf, got);
+    free(buf);
+    reply(ok, got < LogoBook::kBytes ? "upload interrupted" : "not saved (code must be 2-4 letters or digits)");
+}

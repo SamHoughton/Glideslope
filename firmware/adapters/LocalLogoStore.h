@@ -19,3 +19,22 @@ public:
 private:
     bool _mounted = false;
 };
+
+// The logos on the board, from the web page's side: which airlines were seen
+// without one (for the Logos section), and adding one (POST /api/logo).
+// Safe from any task.
+namespace LogoBook
+{
+    static constexpr size_t kBytes = 32 * 32 * 2;   // one logo: 32x32 RGB565
+
+    // An airline seen in traffic with no logo file (ICAO code).
+    void noteMissing(const String &icao);
+    // [{"code":"CTN","seen":12},...], most seen first, without any added since.
+    String missingJson();
+    // Write /logos/<CODE>.bin (via a temporary file); false on a bad code or size.
+    bool save(const String &code, const uint8_t *data, size_t len);
+    bool remove(const String &code);
+    int count();
+    // Changes whenever a logo is added: callers caching "no logo" start again.
+    uint32_t version();
+}

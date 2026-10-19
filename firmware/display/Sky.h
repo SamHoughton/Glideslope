@@ -36,6 +36,8 @@ namespace Sky
         bool    frost = false;     // at or below freezing (or snowing): snow on the roofs
         enum Season : uint8_t { Ordinary, Christmas, Fireworks };
         Season  season = Ordinary; // lights through December, fireworks on 5 Nov and New Year's Eve
+        int     windDir = -1;      // the METAR's wind: degrees true, -1 = variable or calm
+        int     windKt = 0, gustKt = 0;
         Rgb     top{0, 0, 0}, horizon{0, 0, 0};
     };
 

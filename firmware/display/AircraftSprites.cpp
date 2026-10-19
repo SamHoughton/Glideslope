@@ -235,7 +235,7 @@ AircraftSprites::Kind AircraftSprites::classify(const String &icaoType, bool &kn
 }
 
 void AircraftSprites::draw(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,
-                           bool flipX, bool grey, bool outline)
+                           bool flipX, bool grey, bool outline, int gearHidden)
 {
     auto at = [&](int r, int col) -> char {
         if (r < 0 || r >= s.h || col < 0 || col >= s.w) return '.';
@@ -266,6 +266,7 @@ void AircraftSprites::draw(FrameCanvas &c, const Sprite &s, int x, int y, const 
         for (int col = 0; col < s.w; ++col)
         {
             Rgb px;
+            if (gearHidden > 0 && at(r, col) == 'd' && r >= s.h - gearHidden) continue;   // tucked up
             if (!shade(at(r, col), grey ? greys : livery, px)) continue;
             if (grey)
             {

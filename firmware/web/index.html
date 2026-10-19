@@ -41,6 +41,9 @@ header svg{width:34px;height:34px;flex:none}
 .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
 h2{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:8px}
 h2::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber)}
+#lgp{width:96px;height:96px;image-rendering:pixelated;background:#0b1017;border:1px solid var(--line2);border-radius:8px}
+.lgrow{display:flex;align-items:center;gap:12px;margin:6px 0 4px}
+.pills button.lg{font:inherit;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line2);background:#1a2230;color:var(--text);cursor:pointer;margin:0 6px 6px 0}
 h3{font-size:13px;color:var(--text);margin:16px 0 8px;font-weight:600}
 h3:first-child{margin-top:0}
 
@@ -202,6 +205,15 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <label class="sw"><input type="checkbox" id="route_cities"><span>City names on routes<small>London &gt; New York instead of LHR &gt; JFK</small></span></label>
       <label class="sw"><input type="checkbox" id="display_nearest_only"><span>Nearest aircraft only<small>One route lookup per fetch; easier on memory and APIs</small></span></label>
       <label class="sw"><input type="checkbox" id="display_flip"><span>Rotate 180&deg;</span></label>
+      <h3>Airline logos</h3>
+      <p class="hint" id="lgs">Logos on the board: &hellip;</p>
+      <div class="pills" id="lgm"></div>
+      <div class="row">
+        <div class="f"><label for="lgc">Airline <small>(ICAO code, e.g. CTN)</small></label><input id="lgc" maxlength="4" autocomplete="off" spellcheck="false" style="text-transform:uppercase"></div>
+        <div class="f"><label for="lgf">Image <small>&mdash; PNG with a transparent background works best</small></label><input type="file" id="lgf" accept="image/*"></div>
+      </div>
+      <div class="lgrow"><canvas id="lgp" width="32" height="32"></canvas><span class="hint">How it will look on the panel (32&times;32)</span></div>
+      <div class="btns"><button id="lgu">Upload logo</button><span class="msg" id="lgt"></span></div>
     </section>
 
     <section class="tab" id="t-airport">
@@ -272,6 +284,11 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <div class="btns"><button id="ntr">Random topic</button><button id="ntt">Save and send a test</button><span class="msg" id="ntst"></span></div>
       <div class="f"><label>Tell me about</label>
         <div class="pills"><label><input type="checkbox" data-ntf="1">Emergency squawks</label><label><input type="checkbox" data-ntf="2">Rare spots</label><label><input type="checkbox" data-ntf="4">Go-arounds</label><label><input type="checkbox" data-ntf="8">Runway changes</label><label><input type="checkbox" data-ntf="16">Busy holding</label><label><input type="checkbox" data-ntf="32">Evening round-up</label><label><input type="checkbox" data-ntf="64">Watchlist</label></div></div>
+      <label class="sw"><input type="checkbox" id="quiet_alerts"><span>Quiet hours<small>Only emergency squawks between these times; everything else waits for tomorrow (it isn't sent)</small></span></label>
+      <div class="row">
+        <div class="f"><label for="quiet_start_time">From</label><input type="time" id="quiet_start_time"></div>
+        <div class="f"><label for="quiet_end_time">Until</label><input type="time" id="quiet_end_time"></div>
+      </div>
       <h3>Home Assistant</h3>
       <p class="hint">Sensors over MQTT with discovery: next arrival, runways in use, today's arrivals and departures, aircraft holding, the last flight. Blank host = off.</p>
       <div class="row">
@@ -335,6 +352,7 @@ function load(){fetch('/api/config').then(function(r){return r.json();}).then(fu
   Object.keys(d).forEach(function(k){var e=$(k);if(!e)return;if(e.type==='checkbox')e.checked=!!d[k];else e.value=d[k];});
   if(d.min_altitude_ft===-1)$('min_altitude_ft').value='';
   $('night_start_time').value=toTime(d.night_start_minutes||0);$('night_end_time').value=toTime(d.night_end_minutes||0);
+  $('quiet_start_time').value=toTime(d.quiet_start_minutes||0);$('quiet_end_time').value=toTime(d.quiet_end_minutes||0);
   ['opensky_client_secret','aeroapi_key','ntfy_token'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});
   document.querySelectorAll('[data-scr]').forEach(function(e){e.checked=!!(d.screens&parseInt(e.dataset.scr));});
   document.querySelectorAll('[data-ntf]').forEach(function(e){e.checked=!!(d.notify_mask&parseInt(e.dataset.ntf));});
@@ -344,12 +362,13 @@ function save(){var d={};
   d.watchlist=$('watchlist').value.trim();d.mqtt_host=$('mqtt_host').value.trim();d.mqtt_user=$('mqtt_user').value;d.mqtt_port=parseInt($('mqtt_port').value)||1883;
   ['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',
    'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});
-  ['display_nearest_only','display_border','display_flip','route_cities','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds','overhead_all'].forEach(function(k){d[k]=$(k).checked;});
+  ['display_nearest_only','display_border','display_flip','route_cities','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds','overhead_all','quiet_alerts'].forEach(function(k){d[k]=$(k).checked;});
   d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});
   d.screen_facing=$('screen_facing').value;d.tar1090_host=$('tar1090_host').value;
   d.ntfy_topic=$('ntfy_topic').value.trim();d.notify_mask=ntfMask();
   var ma=$('min_altitude_ft').value;d.min_altitude_ft=ma===''?-1:parseInt(ma);
   d.night_start_minutes=toMin($('night_start_time').value);d.night_end_minutes=toMin($('night_end_time').value);
+  d.quiet_start_minutes=toMin($('quiet_start_time').value);d.quiet_end_minutes=toMin($('quiet_end_time').value);
   ['opensky_client_id','opensky_client_secret','aeroapi_key','ntfy_token','mqtt_pass'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});
   status('Saving…');post('/api/config',d).then(function(r){return r.json();})
     .then(function(j){status(j.ok?'Saved':'Error: '+(j.error||'?'),3000);load();}).catch(function(){status('Could not reach the board',4000);});}
@@ -385,6 +404,33 @@ function upload(f,u,retried,unsigned){var x=new XMLHttpRequest();x.open('POST','
     if(j.error==='unsigned'&&!unsigned){if(confirm('This firmware is not a signed Glideslope release (your own build?). Install it anyway?'))upload(f,u,true,true);else u.textContent='Not installed';return;}if(j.ok){u.textContent='Installed, restarting…';setTimeout(function(){location.reload();},12000);}else u.textContent='Failed: '+(j.error||x.status);};
   x.onerror=function(){u.textContent='Upload failed (connection lost)';};var h=hdrs('application/octet-stream');if(unsigned)h['X-Glideslope-Unsigned']='1';
   Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send(f);}
+
+// Airline logos: the board lists airlines it has seen without one; an image
+// is fitted into 32x32 here and sent as RGB565 (magenta = transparent).
+var LOGO=null;
+function logos(){fetch('/api/logos').then(function(r){return r.json();}).then(function(d){
+  $('lgs').textContent=d.count+' logos on the board.'+(d.missing.length?' Seen without one (tap to choose):':' Every airline seen so far has one.');
+  var m=$('lgm');m.innerHTML='';d.missing.forEach(function(x){var b=document.createElement('button');b.className='lg';
+    b.textContent=x.code+' \u00b7 '+x.seen;b.title='Seen '+x.seen+' times';b.addEventListener('click',function(){$('lgc').value=x.code;});m.appendChild(b);});
+}).catch(function(){});}
+function lgDraw(img){var c=$('lgp'),g=c.getContext('2d');g.clearRect(0,0,32,32);
+  var k=Math.min(32/img.width,32/img.height),w=Math.max(1,Math.round(img.width*k)),h=Math.max(1,Math.round(img.height*k));
+  g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.drawImage(img,Math.floor((32-w)/2),Math.floor((32-h)/2),w,h);
+  var px=g.getImageData(0,0,32,32).data,out=new Uint8Array(2048);
+  for(var i=0;i<1024;i++){var r=px[i*4],gg=px[i*4+1],b=px[i*4+2],a=px[i*4+3],v;
+    if(a<16)v=0xF81F;else{r=r*a/255|0;gg=gg*a/255|0;b=b*a/255|0;v=(r>>3)<<11|(gg>>2)<<5|b>>3;if(v===0xF81F)v=0xF820;}
+    out[i*2]=v&255;out[i*2+1]=v>>8;}
+  LOGO=out;}
+$('lgf').addEventListener('change',function(){var f=this.files[0];LOGO=null;if(!f)return;var img=new Image();
+  img.onload=function(){lgDraw(img);URL.revokeObjectURL(img.src);};img.onerror=function(){$('lgt').textContent='Not an image the browser can read';};
+  img.src=URL.createObjectURL(f);});
+$('lgu').addEventListener('click',function(){var code=$('lgc').value.trim().toUpperCase(),t=$('lgt');
+  if(!/^[A-Z0-9]{2,4}$/.test(code)){t.textContent='Enter the airline\'s ICAO code (e.g. CTN)';return;}
+  if(!LOGO){t.textContent='Choose an image first';return;}t.textContent='Uploading…';
+  send('/api/logo?code='+code,'application/octet-stream',LOGO).then(function(r){return r.json();})
+  .then(function(j){t.textContent=j.ok?'Added '+code+': it shows on the next card':'Failed: '+j.error;if(j.ok)logos();})
+  .catch(function(){t.textContent='Upload failed';});});
+logos();
 
 // Airport.
 fetch(PACKS+'index.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){

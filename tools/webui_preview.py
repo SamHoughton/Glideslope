@@ -51,11 +51,11 @@ CONFIG = {
     'opensky_client_id': '', 'opensky_client_secret': '', 'opensky_priority': False,
     'use_community_feeds': True, 'aeroapi_key': '', 'night_follow_sun': True,
     'ntfy_topic': 'glideslope-k3x9q2m7wt', 'ntfy_token': '', 'notify_mask': 127,
-    'overhead_km': 2.0, 'overhead_all': False, 'watchlist': 'G-CIVA, B74*, A388, RRR*',
+    'quiet_alerts': True, 'quiet_start_minutes': 1380, 'quiet_end_minutes': 420, 'overhead_km': 2.0, 'overhead_all': False, 'watchlist': 'G-CIVA, B74*, A388, RRR*',
     'mqtt_host': '192.168.1.20', 'mqtt_port': 1883, 'mqtt_user': 'glideslope', 'mqtt_pass': '***',
 }
 STATUS = {
-    'version': 'v5.0.0', 'built': 'Oct 19 2026 10:00:00', 'uptime_s': 86400, 'last_reset': 'power on',
+    'version': 'v6.0.0', 'built': 'Oct 20 2026 10:00:00', 'uptime_s': 86400, 'last_reset': 'power on',
     'heap_free': 84000, 'heap_max_block': 55000, 'heap_min_free': 18000, 'display_frames': 1700000,
     'web_requests': 5200, 'metar': 'METAR EGLL 071650Z 36011KT 9999 FEW030 12/06 Q1012 NOSIG',
     'airport': 'EGLL', 'airport_name': 'HEATHROW', 'airport_lat': 51.47, 'airport_lon': -0.4543, 'airport_pack': False,
@@ -126,8 +126,10 @@ class Handler(BaseHTTPRequestHandler):
         p = self.path.split('?')[0]
         if p == '/':                 self.send(self.html, 'text/html; charset=utf-8')
         elif p == '/phone':          self.send(PHONE, 'text/html; charset=utf-8')
+        elif p == '/logos':          self.send(self.html.replace(b'</body>', b'<script>(function(){var t=document.getElementById("t-display");for(var e=t.firstElementChild;e&&e.textContent.indexOf("Airline logos")<0;e=e.nextElementSibling)e.style.display="none";})()</script></body>'), 'text/html; charset=utf-8')
         elif p == '/api/config':     self.send(CONFIG)
         elif p == '/api/status':     self.send(STATUS)
+        elif p == '/api/logos':      self.send({'count': 177, 'missing': [{'code': 'CTN', 'seen': 9}, {'code': 'LZB', 'seen': 4}, {'code': 'RBA', 'seen': 2}]})
         elif p == '/api/display':    self.send(DISPLAY)
         elif p == '/api/frame':      self.send(rle(self.frame) if 'z=1' in self.path else self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
@@ -184,6 +186,7 @@ def main():
     shoot(url, str(ROOT / 'docs' / 'webui-desktop.png'), 1280, 820, 1)
     shoot(url + '#alerts', str(ROOT / 'docs' / 'webui-alerts.png'), 1280, 820, 1)
     shoot(url + '#spotter', str(ROOT / 'docs' / 'webui-spotter.png'), 1280, 820, 1)
+    shoot(url + 'logos', str(ROOT / 'docs' / 'webui-logos.png'), 1280, 820, 1)
     phone = ROOT / 'docs' / 'webui-phone.png'
     shoot(url + 'phone', str(phone), 600, 1100, 2)
     from PIL import Image

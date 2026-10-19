@@ -13,6 +13,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/StageTrace.h"
 #include "utils/ImageCheck.h"
 #include <WiFi.h>
+#include <Preferences.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -134,6 +135,18 @@ static void noteHistory(const std::vector<StateVector> &states, std::vector<Flig
     const time_t now = time(nullptr);
     if (now < 1600000000 || flights.empty()) return;
     const uint16_t today = SeenLog::dayNumber(now);
+    // The day the history began (kept in NVS): until it is a week old,
+    // nearly everything is new to it, so "FIRST VISIT" would say little.
+    static uint16_t historyStart = 0;
+    if (!historyStart)
+    {
+        Preferences p;
+        p.begin("seenlog", false);
+        historyStart = (uint16_t)p.getUInt("start", 0);
+        if (!historyStart) { historyStart = today; p.putUInt("start", today); }
+        p.end();
+    }
+    const bool youngHistory = today - historyStart < 7;
     struct Known { uint32_t icao; uint16_t day, days, prev; };
     static Known known[24] = {};
     static uint8_t next = 0;
@@ -158,7 +171,7 @@ static void noteHistory(const std::vector<StateVector> &states, std::vector<Flig
             c.prev = before.lastDay == today ? 0 : before.lastDay;
             k = &c;
         }
-        f.seen_days = k->days;
+        f.seen_days = (k->days == 1 && youngHistory) ? 0 : k->days;   // 0: nothing shown
         f.seen_prev_day = k->prev;
     }
 }
@@ -293,11 +306,14 @@ static Rgb airlineColour(const String &callsign)
         return kNeutral;
     String icao = callsign.substring(0, 3);
     icao.toUpperCase();
+    static uint32_t logosVersion = 0;
+    if (logosVersion != LogoBook::version()) { cache.clear(); logosVersion = LogoBook::version(); }   // a logo was added
     auto it = cache.find(icao);
     if (it != cache.end()) return it->second;
     FlightInfo tmp;
-    const Rgb c = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565)
-                      ? CardRenderer::accentFor(tmp) : kNeutral;
+    const bool have = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565);
+    if (!have) LogoBook::noteMissing(icao);   // for the web page's Logos section
+    const Rgb c = have ? CardRenderer::accentFor(tmp) : kNeutral;
     if (cache.size() < 64) cache[icao] = c;
     return c;
 }
