@@ -57,6 +57,14 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![The route globe: New York to London, the night side shaded](docs/globe.png) | ![An A380 overhead at 37,000 ft with contrails](docs/overhead.png) |
 
+| Runway rhythm | Spotted today |
+| --- | --- |
+| ![Runway rhythm: a landing every 1:45, today's average and tightest gap, each runway's share](docs/rhythm.png) | ![Today's spotter log: rare spots, first visits, overhead and watchlist passes, go-arounds](docs/spotted.png) |
+
+| Overnight: the night scene | The day in one card |
+| --- | --- |
+| ![The night scene: the skyline under the stars, the time and the next sunrise](docs/night.png) | ![The bedtime summary: movements, the busiest hour, the tightest gap and the best spot](docs/summary.png) |
+
 | Top airlines | Aircraft types |
 | --- | --- |
 | ![Today's busiest airlines in their colours](docs/stats-airlines.png) | ![Today's commonest aircraft types](docs/stats-types.png) |
@@ -77,6 +85,11 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
 | Desktop | Phone |
 | --- | --- |
 | <img src="docs/webui-desktop.png" alt="The Glideslope web page on a desktop" width="560"> | <img src="docs/webui-phone.png" alt="The Glideslope web page on a phone" width="220"> |
+
+The **Today** card under the panel: the day's movements and rhythm, and
+what was spotted.
+
+<img src="docs/webui-today.png" alt="The Today card: movements, a landing every 1:45, the tightest gap, runway shares and today's spotter log" width="420">
 
 | Alerts | Spotter |
 | --- | --- |

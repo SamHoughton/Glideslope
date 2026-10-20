@@ -204,7 +204,7 @@ def main():
     today = ROOT / 'docs' / 'webui-today.png'
     shoot(url, str(today), 1280, 1240, 1)
     from PIL import Image
-    Image.open(today).crop((0, 600, 480, 1240)).save(today)
+    Image.open(today).crop((16, 526, 624, 982)).save(today)
     phone = ROOT / 'docs' / 'webui-phone.png'
     shoot(url + 'phone', str(phone), 600, 1100, 2)
     from PIL import Image
