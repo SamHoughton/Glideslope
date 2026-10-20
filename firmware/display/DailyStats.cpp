@@ -100,7 +100,10 @@ void DailyStats::noteArrival(const StateVector &s, const char *runway)
     if (_lastArr)
     {
         const uint32_t gap = (uint32_t)now - _lastArr;
-        if (gap >= 20 && gap <= 900)   // closer than 20 s is the same feed twice, longer is a lull
+        // Under a minute is two aircraft bunching as they join final (they are
+        // timed there, not at the threshold), not a real gap on one runway;
+        // over 15 minutes is a lull.
+        if (gap >= 60 && gap <= 900)
         {
             _gapSum += gap; ++_gapN;
             memmove(_recent + 1, _recent, sizeof(_recent) - sizeof(_recent[0]));
@@ -452,6 +455,7 @@ void DailyStats::load()
                 _lastArr = 0; _gapSum = 0; _gapN = 0; _tightSec = 0; _nRecent = 0; _nRwy = 0;
                 _nSpots = 0; _spotHead = 0; _spotsToday = 0; _tightId[0] = '\0';
             }
+            if (_tightSec && _tightSec < 60) { _tightSec = 0; _tightId[0] = 0; }   // saved before 7.1.0's one-minute floor
             for (Spot &sp : _spots) { sp.ident[sizeof(sp.ident) - 1] = '\0'; sp.what[sizeof(sp.what) - 1] = '\0'; }
         }
     }
