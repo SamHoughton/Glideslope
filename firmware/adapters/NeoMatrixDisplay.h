@@ -214,7 +214,8 @@ private:
     enum class Mode : uint8_t { Auto, Map, Arrivals, Stats, Weather };
     // Rotation screens; bit n of g_config.screens enables Screen n. Bit 5
     // is the departures page of the arrivals board, not a screen of its own.
-    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Departures, Globe, Count };
+    // The index is the bit in g_config.screens (FinalPages is bit 7, a setting, not a screen).
+    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Departures, Globe, FinalPages, Lineup, Count };
     // Overhead / watchlist scene (display task; _spotPending set under the lock).
     OverheadScene::Info  _spot;
     bool                 _spotPending = false, _spotActive = false;

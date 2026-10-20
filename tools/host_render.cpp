@@ -22,6 +22,7 @@
 #include "utils/Weather.h"
 #include "display/MapRenderer.h"
 #include "display/Traffic.h"
+#include "display/LineupScreen.h"
 #include "adapters/ReadsbParser.h"
 #include "config/AirlineCodes.h"
 #include <fstream>
@@ -317,6 +318,15 @@ int main(int argc, char **argv)
         HoldTracker::Row rows[] = {{"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7}};
         InfoScreens::renderHolding(c, rows, 4, 2000);                                         save(c, "holding");
         InfoScreens::renderClock(c, 2000, wxLine);                              save(c, "clock_night");
+        {
+            LineupScreen::Plane lp[LineupScreen::kMax];
+            int n = LineupScreen::demo(lp);
+            LineupScreen::render(c, lp, n, 5000, Sky::preview("day"));                 save(c, "lineup_busy");
+            LineupScreen::render(c, lp, 3, 5000, Sky::preview("golden"));              save(c, "lineup_quiet_golden");
+            n = LineupScreen::demo(lp);
+            lp[1].km = 5.6f; lp[1].altFt = 5.6f * 172;   // a tight one: under a minute behind
+            LineupScreen::render(c, lp, 2, 5000, Sky::preview("night"));               save(c, "lineup_tight_night");
+        }
         InfoScreens::renderNightScene(c, 2000, wxLine, Sky::preview("night"));          save(c, "night_scene");
         InfoScreens::renderNightScene(c, 110000, wxLine, Sky::preview("night"));        save(c, "night_scene_sunrise");   // a plane far off, sunrise line
         InfoScreens::renderNightScene(c, 12000, wxLine, Sky::preview("night+christmas")); save(c, "night_scene_weather");

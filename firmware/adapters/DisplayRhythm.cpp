@@ -4,6 +4,7 @@ scenes first, then the card or the rotation), the rotation of screens, and
 the pages on final. Part of NeoMatrixDisplay (see NeoMatrixDisplay.cpp).
 */
 #include "adapters/DisplayInternal.h"
+#include "display/LineupScreen.h"
 
 bool NeoMatrixDisplay::departuresPage() const
 {
@@ -424,9 +425,10 @@ uint32_t NeoMatrixDisplay::renderRhythm(unsigned long now)
     return kCardFrameMs;
 }
 
-// Which page, and how long it has been up. The cycle from when the card came
-// on: card 12 s, globe 7 s, card 12 s, aircraft 6 s. A page only starts if it
-// will be over 40 s before touchdown.
+// Which page, and how long it has been up. From when the card came on: the
+// card 12 s, then a page 7 s, the pages taking turns (the route globe, the
+// approach line-up when someone else is on final too, the aircraft). A page
+// only starts if it will be over 40 s before touchdown.
 uint8_t NeoMatrixDisplay::storyPage(unsigned long now, uint32_t &pageMs)
 {
     pageMs = 0;
@@ -435,18 +437,25 @@ uint8_t NeoMatrixDisplay::storyPage(unsigned long now, uint32_t &pageMs)
         return 0;
     const float eta = entryEta(_current, now);
     if (isnan(eta)) return 0;
-    constexpr uint32_t kCard = 12000, kGlobe = 7000, kPlane = 6000, kCycle = 2 * kCard + kGlobe + kPlane;
+    constexpr uint32_t kCard = 12000, kPage = 7000, kSlot = kCard + kPage;
     constexpr float kCutoffSec = 40;
-    const uint32_t u = (now - _shownSinceMs) % kCycle;
-    uint8_t page = 0;
-    uint32_t start = 0, len = 0;
-    if (u >= kCard && u < kCard + kGlobe)               { page = 1; start = kCard; len = kGlobe; }
-    else if (u >= 2 * kCard + kGlobe)                   { page = 2; start = 2 * kCard + kGlobe; len = kPlane; }
-    if (!page) return 0;
-    if (page == 1 && (!_globe.valid || strcmp(_globe.ident, (_current.flight.ident_iata.length() ?
-                                              _current.flight.ident_iata : _current.flight.ident).c_str()) != 0))
-        return 0;
-    pageMs = u - start;
+    uint8_t pages[3];
+    int np = 0;
+    if (_globe.valid && strcmp(_globe.ident, (_current.flight.ident_iata.length() ?
+                                              _current.flight.ident_iata : _current.flight.ident).c_str()) == 0)
+        pages[np++] = 1;
+    if (g_config.screens & 0x100)
+    {
+        LineupScreen::Plane p[LineupScreen::kMax];
+        if (LineupScreen::collect(_traffic, now, p) >= 2) pages[np++] = 3;
+    }
+    pages[np++] = 2;
+    const uint32_t t = now - _shownSinceMs;
+    const uint32_t slot = t / kSlot, u = t % kSlot;
+    if (u < kCard) return 0;
+    const uint8_t page = pages[slot % np];
+    const uint32_t len = kPage;
+    pageMs = u - kCard;
     if (eta - (len - pageMs) / 1000.0f < kCutoffSec && pageMs < 400) return 0;   // too late to start one
     if (eta < kCutoffSec) return 0;
     return page;
@@ -473,6 +482,12 @@ void NeoMatrixDisplay::renderHeld(unsigned long now)
         const float eta = entryEta(_current, now);
         InfoScreens::renderAircraft(g_workFrame, _current.flight, _current.accent, isnan(eta) ? -1 : eta,
                                     _current.runway, pageMs);
+    }
+    else if (page == 3)
+    {
+        LineupScreen::Plane p[LineupScreen::kMax];
+        const int n = LineupScreen::collect(_traffic, now, p);
+        LineupScreen::render(g_workFrame, p, n, pageMs, _sky);
     }
 }
 
@@ -523,6 +538,12 @@ bool NeoMatrixDisplay::screenAvailable(Screen s) const
         case Screen::Holding:  return _holds.total(millis()) > 0;
         case Screen::Departures: return false;   // a page of the arrivals board
         case Screen::Globe:    return _globe.valid;
+        case Screen::FinalPages: return false;
+        case Screen::Lineup:
+        {
+            LineupScreen::Plane p[LineupScreen::kMax];
+            return LineupScreen::collect(_traffic, millis(), p) >= 2;
+        }
         default:               return true;
     }
 }
@@ -570,6 +591,15 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     else if (s_screenPreview == 4) s = Screen::Weather;
     else if (s_screenPreview == 5) s = Screen::Holding;
     else if (s_screenPreview == 6) s = Screen::Globe;
+    else if (s_screenPreview == 8)
+    {
+        LineupScreen::Plane p[LineupScreen::kMax];
+        int n = LineupScreen::collect(_traffic, now, p);
+        if (n < 2) n = LineupScreen::demo(p);   // nobody on final: a busy morning
+        LineupScreen::render(g_workFrame, p, n, shownFor(Screen::Lineup, now),
+                             s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky);
+        return;
+    }
     else if (s_mapPreviewUntil)    s = Screen::Map;
     else if (_mode == Mode::Map)      s = Screen::Map;
     else if (_mode == Mode::Arrivals) s = Screen::Arrivals;
@@ -659,6 +689,13 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
             InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now,
                                        s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky);
             return;
+        case Screen::Lineup:
+        {
+            LineupScreen::Plane p[LineupScreen::kMax];
+            const int n = LineupScreen::collect(_traffic, now, p);
+            LineupScreen::render(g_workFrame, p, n, shownFor(s, now), _sky);
+            return;
+        }
         case Screen::Holding:
         {
             HoldTracker::Row rows[Airport::kMaxHolds + 1];

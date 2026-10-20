@@ -19,6 +19,8 @@ struct TrafficPoint
     char     label[8] = "";    // flight number (BA213) or call sign, for the map
     char     type[5]  = "";    // ICAO type code
     uint8_t  size     = 1;     // map icon: 0 small, 1 narrowbody, 2 widebody (AircraftSprites::sizeClass)
+    uint8_t  finalKm10 = 255;  // on final: tenths of a km to the threshold (255 = not on final)
+    char     rwy[4]   = "";    // and for which runway
     float    altFt    = NAN;
 };
 

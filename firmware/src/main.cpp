@@ -353,7 +353,15 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
         f.baro_altitude = isnan(s.baro_altitude) ? NAN : s.baro_altitude * 3.28084;
         f.velocity      = p.gsKt;
         f.vertical_rate = isnan(s.vertical_rate) ? NAN : s.vertical_rate * 196.85;
-        p.onFinal = ApproachModel::evaluate(f).phase == ApproachStatus::Approach;
+        const ApproachStatus st = ApproachModel::evaluate(f);
+        p.onFinal = st.phase == ApproachStatus::Approach;
+        // For the approach line-up: on final (or just landing) within 25 km.
+        if ((st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing) &&
+            !isnan(st.distKm) && st.distKm <= 25.4f)
+        {
+            p.finalKm10 = (uint8_t)lroundf(st.distKm * 10);
+            strlcpy(p.rwy, st.runway, sizeof(p.rwy));
+        }
         if (pts.size() >= (size_t)TrafficTracker::kMax) break;   // never past the reservation
         pts.push_back(p);
     }

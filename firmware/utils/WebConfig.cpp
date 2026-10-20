@@ -218,6 +218,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/stats"    && r.method == "POST") { requestScreenPreview(1, 24000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/overhead" && r.method == "POST") { requestOverheadDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/globe"    && r.method == "POST") { requestScreenPreview(6, 12000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/lineup"   && r.method == "POST") { requestScreenPreview(8, 12000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/coredump"      && r.method == "GET")
     {
         static char text[300];
@@ -505,7 +506,7 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
     next.display_cycle_seconds         = doc["display_cycle_seconds"]         | next.display_cycle_seconds;
     next.card_lead_seconds             = doc["card_lead_seconds"]             | next.card_lead_seconds;
     next.interlude_seconds             = doc["interlude_seconds"]             | next.interlude_seconds;
-    next.screens                       = (uint8_t)(doc["screens"]             | (int)next.screens);
+    next.screens                       = (uint16_t)(doc["screens"]            | (int)next.screens);
     next.aeroapi_cache_ttl_seconds     = doc["aeroapi_cache_ttl_seconds"]      | next.aeroapi_cache_ttl_seconds;
     next.aeroapi_fail_cache_ttl_seconds = doc["aeroapi_fail_cache_ttl_seconds"] | next.aeroapi_fail_cache_ttl_seconds;
 
