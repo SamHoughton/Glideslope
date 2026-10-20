@@ -7,7 +7,7 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
-## 8.0.0 (in progress)
+## 8.0.0 (20 Oct 2026)
 
 The line-up: everyone coming in, where they came from, where they're going.
 
@@ -25,6 +25,13 @@ The line-up: everyone coming in, where they came from, where they're going.
 - **Departure headings**, a third page of the board when departures are
   on: a compass round the airport with a ray along each recent
   departure's course to its destination.
+
+**Fixes**
+- Over a busy hour or so the free memory became too fragmented for a
+  secure connection and the board restarted itself (7.x too, more
+  slowly). The route and airline-colour caches are fixed tables now, and
+  airport codes come from the offline table, so the largest free block
+  holds steady.
 
 ## 7.1.0 (20 Oct 2026)
 
