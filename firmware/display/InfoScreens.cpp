@@ -15,9 +15,9 @@ namespace
     const Rgb kDim   { 60,  66,  80};
     const Rgb kGold  {255, 200,  60};
 
-    void centred(FrameCanvas &c, int y, const char *s, Rgb col, int scale = 1, int pitch = 0)
+    void centred(FrameCanvas &c, int y, const char *s, Rgb col)
     {
-        c.text((FrameCanvas::W - FrameCanvas::textWidth(s, scale, pitch)) / 2, y, s, col, scale, pitch);
+        c.print(Fonts::Label, (FrameCanvas::W - FrameCanvas::width(Fonts::Label, s)) / 2, y, s, col);
     }
 
     // 7.0 type, centred.
@@ -633,8 +633,8 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     c.clear();
     if (!m.valid)
     {
-        centred(c, 2, "WEATHER", kTitle);
-        centred(c, 30, "NO REPORT YET", kDim);
+        centred(c, 2, "Weather", kTitle);
+        centred(c, 30, "No report yet", kDim);
         return;
     }
 
@@ -738,13 +738,12 @@ void InfoScreens::renderAlert(FrameCanvas &c, const char *code, const char *mean
         for (int y = 0; y < FrameCanvas::H; ++y) { c.set(i, y, frame); c.set(FrameCanvas::W - 1 - i, y, frame); }
     }
     char sq[16];
-    snprintf(sq, sizeof(sq), "SQUAWK %s", code);
+    snprintf(sq, sizeof(sq), "Squawk %s", code);
     centred(c, 5, sq, on ? Rgb{255, 255, 255} : red);
-    const int w = FrameCanvas::textWidth(meaning, 2, 11);
-    if (w <= FrameCanvas::W - 6) c.text((FrameCanvas::W - w) / 2, 16, meaning, red, 2, 11);
-    else                         centred(c, 20, meaning, red);
-    centred(c, 36, ident, kTitle);
-    centred(c, 48, detail, Rgb{200, 205, 215});
+    const Fonts::Font &big = FrameCanvas::width(Fonts::Large, meaning) <= FrameCanvas::W - 6 ? Fonts::Large : Fonts::Medium;
+    centredL(c, &big == &Fonts::Large ? 16 : 18, meaning, red, big);
+    centredL(c, 35, ident, kTitle, Fonts::Medium);
+    centred(c, 50, detail, Rgb{200, 205, 215});
 }
 
 void InfoScreens::renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs)
@@ -765,10 +764,13 @@ void InfoScreens::renderRareBanner(FrameCanvas &c, const char *line1, const char
     }
     // Title flashes white/gold, the subject stays steady.
     const Rgb titleCol = (tMs / 200) % 2 ? kGold : Rgb{255, 255, 255};
-    centred(c, 14, line1, titleCol);
-    const int w2 = FrameCanvas::textWidth(line2, 2, 11);
-    if (w2 <= FrameCanvas::W - 4) c.text((FrameCanvas::W - w2) / 2, 28, line2, kGold, 2, 11);
-    else                         centred(c, 32, line2, kGold);
+    char l1[32];
+    strlcpy(l1, line1, sizeof(l1));
+    Fonts::sentenceCase(l1);
+    centred(c, 14, l1, titleCol);
+    const Fonts::Font &big = FrameCanvas::width(Fonts::Large, line2) <= FrameCanvas::W - 4 ? Fonts::Large
+                           : FrameCanvas::width(Fonts::Medium, line2) <= FrameCanvas::W - 4 ? Fonts::Medium : Fonts::Label;
+    centredL(c, 28, line2, kGold, big);
 }
 
 namespace
@@ -805,7 +807,7 @@ namespace
             static const char kFlaps[] = "0123456789LRC";
             s[0] = kFlaps[seed % (sizeof(kFlaps) - 1)];
         }
-        c.text(x + 2, y + 2, s, flipping ? FrameCanvas::scale(col, 0.6f) : col, 2, 11);
+        c.print(Fonts::Large, x + (14 - FrameCanvas::width(Fonts::Large, s)) / 2, y + 2, s, flipping ? FrameCanvas::scale(col, 0.6f) : col);
         for (int xx = 0; xx < 14; ++xx) c.set(x + xx, y + 8, Rgb{0, 0, 0});   // the split
     }
 }
@@ -824,7 +826,7 @@ void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const cha
 
     // Title, pulsing once the new runway is in.
     const float k = flipped ? 0.6f + 0.4f * sinf(tMs / 160.0f) : 1.0f;
-    centred(c, 2, "RUNWAY CHANGE", FrameCanvas::scale(kValue, k));
+    centred(c, 2, "Runway change", FrameCanvas::scale(kValue, k));
 
     // The tiles: three characters, flipping one after another.
     const int tilesX = 6, tilesY = 16;
@@ -885,12 +887,12 @@ void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const cha
 
     // Below: the change in words.
     char line1[24];
-    snprintf(line1, sizeof(line1), "NOW LANDING %s", to);
+    snprintf(line1, sizeof(line1), "Now landing %s", to);
     centred(c, 44, line1, flipped ? kTitle : FrameCanvas::scale(kTitle, 0.4f + 0.6f * e));
     if (from && from[0])
     {
         char was[12];
-        snprintf(was, sizeof(was), "WAS %s", from);
+        snprintf(was, sizeof(was), "was %s", from);
         centred(c, 54, was, Rgb{140, 146, 160});
     }
 }
@@ -901,7 +903,7 @@ void InfoScreens::renderHolding(FrameCanvas &c, const HoldTracker::Row *rows, in
     int total = 0;
     for (int i = 0; i < n; ++i) total += rows[i].count;
     char title[20];
-    snprintf(title, sizeof(title), total == 1 ? "1 HOLDING" : "%d HOLDING", total);
+    snprintf(title, sizeof(title), "%d holding", total);
     centred(c, 1, title, kTitle);
     for (int x = 4; x < FrameCanvas::W - 4; ++x) c.set(x, 10, kDim);
 
@@ -912,10 +914,10 @@ void InfoScreens::renderHolding(FrameCanvas &c, const HoldTracker::Row *rows, in
         const HoldTracker::Row &r = rows[i];
         const int y = y0 + i * pitch;
         const bool any = r.count > 0;
-        c.text(2, y, r.name, any ? kLabel : kDim);
+        c.print(Fonts::Label, 2, y, r.name, any ? kLabel : kDim);
         char num[6];
         snprintf(num, sizeof(num), "%u", (unsigned)r.count);
-        c.text(42 - FrameCanvas::textWidth(num), y, num, any ? kValue : kDim);
+        c.print(Fonts::Label, 42 - FrameCanvas::width(Fonts::Label, num), y, num, any ? kValue : kDim);
 
         // The racetrack: two straights and two half circles, aircraft
         // spaced evenly around it, all going round once every 8 s.
@@ -953,8 +955,8 @@ void InfoScreens::renderHolding(FrameCanvas &c, const HoldTracker::Row *rows, in
         if (any)
         {
             char mins[8];
-            snprintf(mins, sizeof(mins), r.longestMin ? "%uM" : "<1M", (unsigned)r.longestMin);
-            c.text(FrameCanvas::W - 2 - FrameCanvas::textWidth(mins), y, mins, kTitle);
+            snprintf(mins, sizeof(mins), r.longestMin ? "%um" : "<1m", (unsigned)r.longestMin);
+            c.print(Fonts::Label, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, mins), y, mins, kTitle);
         }
     }
 }
@@ -962,5 +964,8 @@ void InfoScreens::renderHolding(FrameCanvas &c, const HoldTracker::Row *rows, in
 void InfoScreens::renderCaption(FrameCanvas &c, const char *text)
 {
     c.clear();
-    centred(c, 28, text, kTitle);
+    char t[32];
+    strlcpy(t, text, sizeof(t));
+    Fonts::sentenceCase(t);
+    centred(c, 28, t, kTitle);
 }

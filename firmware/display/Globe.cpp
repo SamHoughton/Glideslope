@@ -1,4 +1,5 @@
 #include "display/Globe.h"
+#include "display/Fonts.h"
 #include "display/LandMask.h"
 #include <math.h>
 
@@ -200,15 +201,17 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
     }
 
     // ── The column beside it ──────────────────────────────────────────────
-    if (FrameCanvas::textWidth(r.ident, 2, 11) <= FrameCanvas::W - kTextX)
-        c.text(kTextX, 2, r.ident, r.accent, 2, 11);
+    c.setClip(kTextX, FrameCanvas::W - 1);
+    if (FrameCanvas::width(Fonts::Large, r.ident) <= FrameCanvas::W - kTextX)
+        c.print(Fonts::Large, kTextX, 2, r.ident, r.accent);
     else
-        c.text(kTextX, 6, r.ident, r.accent, 1, 0, 10);
-    c.text(kTextX, 19, r.from, Rgb{150, 200, 235}, 1, 0, 10);
+        c.print(Fonts::Medium, kTextX, 4, r.ident, r.accent);
+    c.print(Fonts::Label, kTextX, 19, r.from, Rgb{150, 200, 235});
     // A small chevron down to the destination.
     c.set(kTextX - 4, 30, Rgb{120, 130, 150}); c.set(kTextX - 3, 31, Rgb{120, 130, 150});
     c.set(kTextX - 4, 32, Rgb{120, 130, 150});
-    c.text(kTextX, 28, r.to, Rgb{235, 240, 245}, 1, 0, 10);
+    c.print(Fonts::Label, kTextX, 28, r.to, Rgb{235, 240, 245});
+    c.resetClip();
 
     // Progress bar, filling as the route draws.
     constexpr int kBarW = 58;
@@ -221,8 +224,8 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
     const float km = d * 6371.0f;
     char num[16], line[24];
     thousands(lroundf(r.landed ? km : km * frac), num, sizeof(num));
-    snprintf(line, sizeof(line), "%s KM", num);
-    c.text(kTextX, 46, line, Rgb{200, 205, 215});
+    snprintf(line, sizeof(line), "%s km", num);
+    c.print(Fonts::Label, kTextX, 46, line, Rgb{200, 205, 215});
     struct tm lt;
     time_t when = r.landed ? r.landedAt : r.eta;
     if (!when && !r.landed && sunKnown && r.speedKts > 60 && frac > 0)
@@ -230,14 +233,16 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
     if (when > 1600000000)
     {
         localtime_r(&when, &lt);
-        snprintf(line, sizeof(line), "%s %02d:%02d", r.landed ? "ARR" : "ETA", lt.tm_hour, lt.tm_min);
+        snprintf(line, sizeof(line), "%s %02d:%02d", r.landed ? "Landed" : "ETA", lt.tm_hour, lt.tm_min);
     }
     else if (r.landed)
-        snprintf(line, sizeof(line), "LANDED");
+        snprintf(line, sizeof(line), "Landed");
     else
     {
         thousands(lroundf(km * (1 - frac)), num, sizeof(num));
-        snprintf(line, sizeof(line), "%s LEFT", num);
+        snprintf(line, sizeof(line), "%s km to go", num);
     }
-    c.text(kTextX, 55, line, Rgb{120, 130, 150}, 1, 0, 10);
+    c.setClip(kTextX, FrameCanvas::W - 1);
+    c.print(Fonts::Label, kTextX, 55, line, Rgb{120, 130, 150});
+    c.resetClip();
 }

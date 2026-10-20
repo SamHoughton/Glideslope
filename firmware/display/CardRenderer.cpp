@@ -119,23 +119,6 @@ namespace
         return true;
     }
 
-    // Labels from elsewhere arrive in capitals ("APPROACH 27L"): sentence
-    // case for the 7.0 type, leaving words with digits (27L, 20:15) alone.
-    void sentenceCase(char *s)
-    {
-        bool first = true;
-        for (char *w = s; *w; )
-        {
-            char *e = w;
-            bool digit = false;
-            while (*e && *e != ' ') digit |= isdigit((unsigned char)*e++) != 0;
-            if (!digit)
-                for (char *p = w + (first ? 1 : 0); p < e; ++p) *p = (char)tolower((unsigned char)*p);
-            first = false;
-            w = *e ? e + 1 : e;
-        }
-    }
-
     // The route line: "LHR -> JFK", or with the city-names setting
     // "Paris -> Rome" ('~' is the Label font's arrow). A city route too long
     // for the line becomes "From New York" / "To New York" when the other end
@@ -523,7 +506,7 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
             statusCol = kCyan;
         }
     }
-    if (!opt.goAround && !opt.landed) sentenceCase(label);   // a go-around stays shouted
+    if (!opt.goAround && !opt.landed) Fonts::sentenceCase(label);   // a go-around stays shouted
     c.setClip(kTextX, kRightX);
     c.print(Fonts::Label, kTextX, 46, label, statusCol);
     c.resetClip();

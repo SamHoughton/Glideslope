@@ -1,4 +1,5 @@
 #include "display/LandingScene.h"
+#include "display/Fonts.h"
 #include "config/Airport.h"
 #include <math.h>
 
@@ -69,11 +70,11 @@ namespace
 
     // Captions get a dark shadow when there is sky behind them.
     bool s_shadow = false;
-    void caption(FrameCanvas &c, int y, const char *s, Rgb col)
+    void caption(FrameCanvas &c, int y, const char *s, Rgb col, const Fonts::Font &f = Fonts::Label)
     {
-        const int x = (FrameCanvas::W - FrameCanvas::textWidth(s)) / 2;
-        if (s_shadow) c.text(x + 1, y + 1, s, Rgb{0, 0, 0});
-        c.text(x, y, s, col);
+        const int x = (FrameCanvas::W - FrameCanvas::width(f, s)) / 2;
+        if (s_shadow) c.print(f, x + 1, y + 1, s, Rgb{0, 0, 0});
+        c.print(f, x, y, s, col);
     }
 
     // Aircraft lights after dark: landing light and its beam ahead of the
@@ -513,9 +514,9 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
             char tag[16];
             if (crossGust > cross) snprintf(tag, sizeof(tag), "XWIND %dG%d", cross, crossGust);
             else                   snprintf(tag, sizeof(tag), "XWIND %dKT", cross);
-            const int x = (FrameCanvas::W - FrameCanvas::textWidth(tag)) / 2, y = 6;
-            c.text(x + 1, y + 1, tag, Rgb{0, 0, 0});
-            c.text(x, y, tag, Rgb{255, 185, 60});
+            const int x = (FrameCanvas::W - FrameCanvas::width(Fonts::Label, tag)) / 2, y = 6;
+            c.print(Fonts::Label, x + 1, y + 1, tag, Rgb{0, 0, 0});
+            c.print(Fonts::Label, x, y, tag, Rgb{255, 185, 60});
         }
     }
 
@@ -525,8 +526,8 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
         char line1[16];
         snprintf(line1, sizeof(line1), "GO AROUND");
         const Rgb red = (tMs / 250) % 2 ? Rgb{255, 70, 60} : Rgb{255, 255, 255};
-        caption(c, 6, line1, red);
-        caption(c, 17, ident, kText);
+        caption(c, 4, line1, red);
+        caption(c, 14, ident, kText, Fonts::Medium);
         return;
     }
 
@@ -535,9 +536,9 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     {
         const float k = min(1.0f, (float)(tMs - kLiftOffMs) / 250.0f);
         char line1[16];
-        snprintf(line1, sizeof(line1), runway && runway[0] ? "DEPARTED %s" : "DEPARTED", runway);
-        caption(c, 6, line1, FrameCanvas::scale(accent, k));
-        caption(c, 17, ident, FrameCanvas::scale(kText, k));
+        snprintf(line1, sizeof(line1), runway && runway[0] ? "Departed %s" : "Departed", runway);
+        caption(c, 4, line1, FrameCanvas::scale(accent, k));
+        caption(c, 14, ident, FrameCanvas::scale(kText, k), Fonts::Medium);
         return;
     }
 
@@ -546,8 +547,8 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     {
         const float k = min(1.0f, (float)(tMs - kTouchdownMs) / 250.0f);
         char line1[16];
-        snprintf(line1, sizeof(line1), runway && runway[0] ? "LANDED %s" : "LANDED", runway);
-        caption(c, 6, line1, FrameCanvas::scale(accent, k));
-        caption(c, 17, ident, FrameCanvas::scale(kText, k));
+        snprintf(line1, sizeof(line1), runway && runway[0] ? "Landed %s" : "Landed", runway);
+        caption(c, 4, line1, FrameCanvas::scale(accent, k));
+        caption(c, 14, ident, FrameCanvas::scale(kText, k), Fonts::Medium);
     }
 }

@@ -142,7 +142,7 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
         OverheadScene::Info d;
         strlcpy(d.ident, "EK2", sizeof(d.ident));
         strlcpy(d.type, "A380", sizeof(d.type));
-        strlcpy(d.where, g_config.route_cities ? "TO DUBAI" : "TO DXB", sizeof(d.where));
+        strlcpy(d.where, g_config.route_cities ? "To Dubai" : "To DXB", sizeof(d.where));
         d.altFt = 36000;
         d.kind = AircraftSprites::A380;
         d.livery = AircraftSprites::Livery(Rgb{200, 30, 40});

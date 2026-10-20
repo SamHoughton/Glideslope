@@ -121,15 +121,15 @@ int main(int argc, char **argv)
 
 #ifdef HAVE_OVERHEAD
     OverheadScene::Info o;
-    strcpy(o.ident, "QR8"); strcpy(o.type, "B777F"); strcpy(o.where, "TO DOHA");
+    strcpy(o.ident, "QR8"); strcpy(o.type, "B777F"); strcpy(o.where, "To Doha");
     o.altFt = 3400; o.kind = AircraftSprites::B777; o.livery = AircraftSprites::Livery(Rgb{110, 30, 70});
     o.accent = Rgb{180, 60, 120}; o.rightward = true;
     OverheadScene::render(c, o, 3200, Sky::preview("day"));        save(c, "overhead_low_day");
-    strcpy(o.ident, "VS3"); strcpy(o.type, "A350"); strcpy(o.where, "TO NEW YORK");
+    strcpy(o.ident, "VS3"); strcpy(o.type, "A350"); strcpy(o.where, "To New York");
     o.altFt = 14250; o.kind = AircraftSprites::A350; o.livery = AircraftSprites::Livery(Rgb{210, 20, 40});
     o.accent = Rgb{230, 40, 60}; o.rightward = false;
     OverheadScene::render(c, o, 3000, Sky::preview("golden"));     save(c, "overhead_mid_golden");
-    strcpy(o.ident, "UAE38"); strcpy(o.type, "A380"); strcpy(o.where, "TO DUBAI");
+    strcpy(o.ident, "UAE38"); strcpy(o.type, "A380"); strcpy(o.where, "To Dubai");
     o.altFt = 36000; o.kind = AircraftSprites::A380; o.livery = AircraftSprites::Livery(Rgb{200, 30, 40});
     o.accent = Rgb{220, 40, 50}; o.rightward = true;
     OverheadScene::render(c, o, 4200, Sky::preview("day"));        save(c, "overhead_high_contrail");
@@ -161,7 +161,7 @@ int main(int argc, char **argv)
         Globe::render(c, g, 6000, evening);               save(c, "docs_globe");
 #ifdef HAVE_OVERHEAD
         OverheadScene::Info o;
-        strcpy(o.ident, "GS202"); strcpy(o.type, "A380"); strcpy(o.where, "TO SINGAPORE");
+        strcpy(o.ident, "GS202"); strcpy(o.type, "A380"); strcpy(o.where, "To Singapore");
         o.altFt = 37000; o.kind = AircraftSprites::A380; o.livery = AircraftSprites::Livery(Rgb{255, 185, 60});
         o.accent = Rgb{255, 185, 60}; o.rightward = true;
         OverheadScene::render(c, o, 3900, Sky::preview("day"));  save(c, "docs_overhead");

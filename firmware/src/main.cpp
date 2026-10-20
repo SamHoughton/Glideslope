@@ -218,7 +218,7 @@ static void spotterCheck(const std::vector<StateVector> &states, const std::vect
         const AirportInfo &end = home ? route.origin : route.destination;
         const char *city = cfg.route_cities ? Airports::city(end) : nullptr;
         const String code = end.code_iata.length() ? end.code_iata : end.code_icao;
-        snprintf(info.where, sizeof(info.where), "%s %s", home ? "FROM" : "TO", city ? city : code.c_str());
+        snprintf(info.where, sizeof(info.where), "%s %s", home ? "From" : "To", city ? city : code.c_str());
     }
     info.altFt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
     info.kind = AircraftSprites::classify(s.aircraft_type, info.known);

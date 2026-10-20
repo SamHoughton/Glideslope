@@ -1,4 +1,5 @@
 #include "display/MapRenderer.h"
+#include "display/Fonts.h"
 #include "config/Airport.h"
 #include "display/PlaneIcons.h"
 #include "display/Font3x5.h"
@@ -138,14 +139,14 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
     int arrW = 0;
     if (arrivals && arrivals[0])
     {
-        c.text(1, 1, arrivals, kLabel);
-        arrW = FrameCanvas::textWidth(arrivals);
+        c.print(Fonts::Label, 1, 1, arrivals, kLabel);
+        arrW = FrameCanvas::width(Fonts::Label, arrivals);
     }
     if (departures && departures[0] && strcmp(departures, arrivals ? arrivals : "") != 0)
     {
-        const int w = FrameCanvas::textWidth(departures);
+        const int w = FrameCanvas::width(Fonts::Label, departures);
         if (arrW + w + 8 <= FrameCanvas::W)
-            c.text(FrameCanvas::W - 1 - w, 1, departures, Rgb{200, 140, 50});
+            c.print(Fonts::Label, FrameCanvas::W - 1 - w, 1, departures, Rgb{200, 140, 50});
     }
 
     // Trails: where each aircraft has been over the last few minutes, fading
@@ -216,13 +217,15 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
         if (!isnan(t.p.altFt))
         {
             const int a = max(0, (int)lroundf(t.p.altFt / 25.0f) * 25);   // baro reads below 0 on the runway
-            if (a >= 1000) snprintf(alt, sizeof(alt), "%d,%03dFT", a / 1000, a % 1000);
-            else           snprintf(alt, sizeof(alt), "%dFT", a);
+            if (a >= 1000) snprintf(alt, sizeof(alt), "%d,%03dft", a / 1000, a % 1000);
+            else           snprintf(alt, sizeof(alt), "%dft", a);
         }
         char hex[8];
         snprintf(hex, sizeof(hex), "%06lX", (unsigned long)t.p.id);
-        snprintf(line, sizeof(line), "%s %s %s", t.p.label[0] ? t.p.label : hex, t.p.type, alt);
-        c.text(2, kBarY + 1, line, kSpot, 1, 0, 21);
+        snprintf(line, sizeof(line), "%s  %s  %s", t.p.label[0] ? t.p.label : hex, t.p.type, alt);
+        c.setClip(0, FrameCanvas::W - 2);
+        c.print(Fonts::Label, 2, kBarY + 1, line, kSpot);
+        c.resetClip();
     }
 
     // Everyone else: the flight number in tiny type beside its icon, right,

@@ -1,4 +1,5 @@
 #include "display/BootSplash.h"
+#include "display/Fonts.h"
 #include "display/InfoScreens.h"
 #include "config/Airport.h"
 #include <math.h>
@@ -27,8 +28,8 @@ void BootSplash::render(FrameCanvas &c, uint32_t tMs, const char *runway)
 
     // "SCANNING" plus 0-3 dots; position fixed so the word doesn't shuffle.
     const int dots = (int)((tMs / kDotMs) % 4);
-    c.text((FrameCanvas::W - FrameCanvas::textWidth("SCANNING...")) / 2, 8, "SCANNING...", kText,
-           1, 0, 8 + dots);
+    static const char *const kScan[] = {"Scanning", "Scanning.", "Scanning..", "Scanning..."};
+    c.print(Fonts::Label, (FrameCanvas::W - FrameCanvas::width(Fonts::Label, "Scanning...")) / 2, 8, kScan[dots], kText);
 
     // Dotted horizon with twinkling stars above it.
     for (int x = 0; x < FrameCanvas::W; x += 3) c.set(x, 26, kHorizon);
@@ -58,5 +59,5 @@ void BootSplash::render(FrameCanvas &c, uint32_t tMs, const char *runway)
     char label[20];
     InfoScreens::runwaySummary(runway, label, sizeof(label), true);
     if (!label[0]) snprintf(label, sizeof(label), "%s", g_airport.iata[0] ? g_airport.iata : g_airport.icao);
-    c.text((FrameCanvas::W - FrameCanvas::textWidth(label)) / 2, 50, label, kLabel);
+    c.print(Fonts::Label, (FrameCanvas::W - FrameCanvas::width(Fonts::Label, label)) / 2, 50, label, kLabel);
 }

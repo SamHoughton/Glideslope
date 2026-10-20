@@ -1,13 +1,14 @@
 #include "display/OverheadScene.h"
+#include "display/Fonts.h"
 #include <math.h>
 
 namespace
 {
 // Text with a dark shadow, so it reads over a bright sky.
-void shadowText(FrameCanvas &c, int x, int y, const char *s, Rgb col, int scale = 1, int pitch = 0)
+void shadowText(FrameCanvas &c, int x, int y, const char *s, Rgb col, const Fonts::Font &f = Fonts::Label)
 {
-    c.text(x + 1, y + 1, s, Rgb{0, 0, 0}, scale, pitch);
-    c.text(x, y, s, col, scale, pitch);
+    c.print(f, x + 1, y + 1, s, Rgb{0, 0, 0});
+    c.print(f, x, y, s, col);
 }
 
 float clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
@@ -60,10 +61,13 @@ void OverheadScene::render(FrameCanvas &c, const Info &info, uint32_t tMs, const
     else      AircraftSprites::draw(c, s, px, py, info.livery, info.rightward, !info.known);
 
     // Label chip top left, altitude top right.
-    const int lw = FrameCanvas::textWidth(info.label);
+    char label[24];
+    strlcpy(label, info.label, sizeof(label));
+    Fonts::sentenceCase(label);
+    const int lw = FrameCanvas::width(Fonts::Label, label);
     for (int y = 0; y < 9; ++y)
         for (int x = 0; x < lw + 4; ++x) c.set(x + 1, y + 1, FrameCanvas::scale(info.labelColour, 0.35f));
-    c.text(3, 2, info.label, info.labelColour);
+    c.print(Fonts::Label, 3, 2, label, info.labelColour);
     if (!isnan(info.altFt))
     {
         char a[16], digits[12];
@@ -76,16 +80,16 @@ void OverheadScene::render(FrameCanvas &c, const Info &info, uint32_t tMs, const
             if (i && (n - i) % 3 == 0) a[o++] = ',';
             a[o++] = digits[i];
         }
-        strcpy(a + o, " FT");
-        shadowText(c, FrameCanvas::W - 2 - FrameCanvas::textWidth(a), 2, a, Rgb{235, 240, 245});
+        strcpy(a + o, " ft");
+        shadowText(c, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, a), 2, a, Rgb{235, 240, 245});
     }
 
     // Bottom: the flight in its colour (double size when it fits), then where
     // it's going, the type on the right.
-    const bool big2 = FrameCanvas::textWidth(info.ident, 2, 11) <= 60;
-    if (big2) shadowText(c, 2, 41, info.ident, info.accent, 2, 11);
-    else      shadowText(c, 2, 47, info.ident, info.accent);
-    if (info.where[0]) shadowText(c, 2, 56, info.where, Rgb{235, 240, 245});
+    const bool big2 = FrameCanvas::width(Fonts::Large, info.ident) <= 70;
+    if (big2) shadowText(c, 2, 40, info.ident, info.accent, Fonts::Large);
+    else      shadowText(c, 2, 44, info.ident, info.accent, Fonts::Medium);
+    if (info.where[0]) shadowText(c, 2, 55, info.where, Rgb{235, 240, 245});
     if (info.type[0])
-        shadowText(c, FrameCanvas::W - 2 - FrameCanvas::textWidth(info.type), 56, info.type, Rgb{150, 200, 235});
+        shadowText(c, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, info.type), 55, info.type, Rgb{150, 200, 235});
 }

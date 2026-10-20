@@ -71,4 +71,22 @@ inline void titleCase(char *s)
         start = *p == ' ' || *p == '-' || *p == '/';
     }
 }
+
+// Labels made in capitals ("APPROACH 27L", "RARE SPOT") in sentence case,
+// in place, leaving words with digits (27L, 20:15, A380) alone.
+inline void sentenceCase(char *s)
+{
+    bool first = true;
+    for (char *w = s; *w; )
+    {
+        char *e = w;
+        bool digit = false;
+        while (*e && *e != ' ') { digit |= (*e >= '0' && *e <= '9'); ++e; }
+        if (!digit)
+            for (char *p = w + (first ? 1 : 0); p < e; ++p)
+                if (*p >= 'A' && *p <= 'Z') *p = (char)(*p + 32);
+        first = false;
+        w = *e ? e + 1 : e;
+    }
+}
 }
