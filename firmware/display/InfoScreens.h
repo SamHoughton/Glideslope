@@ -40,6 +40,12 @@ namespace InfoScreens
     };
     static constexpr int kMaxDepartures = 4;
     void renderDepartures(FrameCanvas &c, const Departure *rows, int n, const char *runways, uint32_t shownMs);
+    // Where the recent departures are heading (8.0): a compass round the
+    // airport, a ray along each one's course to its destination (newest
+    // brightest), the flights and destinations beside it. How many have a
+    // destination it can place; under two, nothing is drawn.
+    int departureHeadings(const Departure *rows, int n);
+    void renderHeadings(FrameCanvas &c, const Departure *rows, int n, uint32_t shownMs);
 
     // Up to four arrivals soonest first, plus the weather line at the bottom.
     // shownMs: how long the board has been up (its letters flip into place).
@@ -67,6 +73,13 @@ namespace InfoScreens
     // the countdown kept top right. etaSec < 0: no countdown.
     void renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent, float etaSec, const char *runway,
                         uint32_t shownMs);
+    // On final (8.0): where it came from. The sky there now (its own sun,
+    // its weather) with the temperature, its local time and weather in
+    // words, roughly how long it has been flying and how far. wx: the
+    // origin's weather if known (else nullptr). False if the origin is
+    // unknown or too close to be worth a page.
+    bool renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar *wx, float etaSec, const char *runway,
+                      uint32_t shownMs);
     // Second and third stats pages: the busiest airlines and aircraft types.
     void renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);
     void renderTopTypes(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);

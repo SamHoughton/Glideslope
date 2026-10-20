@@ -1,5 +1,6 @@
 #include "config/Airports.h"
 #include "config/AirportDb.h"
+#include "config/AirportTz.h"
 
 namespace Airports
 {
@@ -14,7 +15,36 @@ void fill(const AirportDb::Entry &e, Place &out)
     out.lat  = e.lat100 / 100.0f;
     out.lon  = e.lon100 / 100.0f;
     out.city = AirportDb::kCities + 2 * (size_t)e.city;
+    out.index = (uint16_t)(&e - AirportDb::kTable);
 }
+
+// Days since 1970-01-01 for a civil date (Howard Hinnant's algorithm).
+long daysFromCivil(int y, int m, int d)
+{
+    y -= m <= 2;
+    const long era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = (unsigned)(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + (long)doe - 719468;
+}
+
+// The day of the month of the n-th Sunday (n = -1: the last) of year y, month m.
+int sunday(int y, int m, int n)
+{
+    if (n > 0)
+    {
+        const int wd = (int)((daysFromCivil(y, m, 1) + 4) % 7);   // 0 = Sunday (1970-01-01 was a Thursday)
+        return 1 + (7 - wd) % 7 + 7 * (n - 1);
+    }
+    static const int kDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    const int last = kDays[m - 1] + (m == 2 && ((y % 4 == 0 && y % 100) || y % 400 == 0));
+    const int wd = (int)((daysFromCivil(y, m, last) + 4) % 7);
+    return last - wd;
+}
+
+// Unix time of hh:00 UTC on that day.
+time_t utcAt(int y, int m, int d, int hh) { return (time_t)(daysFromCivil(y, m, d) * 86400L + hh * 3600L); }
 
 // Codes compare as fixed-width, case-insensitive (the table is upper case).
 int cmp(const char *key, const char *code, int n)
@@ -75,6 +105,36 @@ const char *city(const char *code)
     if (!code) return nullptr;
     const size_t n = strlen(code);
     return (n == 4 ? byIcao(code, p) : n == 3 && byIata(code, p)) ? p.city : nullptr;
+}
+
+int utcOffsetMinutes(const Place &p, time_t t)
+{
+    if (p.index >= AirportDb::kCount) return 0;
+    const int std = ((int)AirportTz::kOffset[p.index] - 64) * 15;
+    const char region = AirportTz::kRegion[p.index];
+    if (region == 'N' || t < 1600000000) return std;
+    const int y = (int)(1970 + (t / 86400L) / 365.2425);   // close enough: the boundaries are months away
+    const int sh = std / 60;                               // standard hours, for "02:00 local"
+    bool dst = false;
+    switch (region)
+    {
+        case 'E':   // last Sunday of March to last Sunday of October, 01:00 UTC
+            dst = t >= utcAt(y, 3, sunday(y, 3, -1), 1) && t < utcAt(y, 10, sunday(y, 10, -1), 1);
+            break;
+        case 'A':   // second Sunday of March to first Sunday of November, 02:00 local
+            dst = t >= utcAt(y, 3, sunday(y, 3, 2), 2 - sh) && t < utcAt(y, 11, sunday(y, 11, 1), 1 - sh);
+            break;
+        case 'O':   // southern: first Sunday of October to first Sunday of April
+            dst = t >= utcAt(y, 10, sunday(y, 10, 1), 2 - sh) || t < utcAt(y, 4, sunday(y, 4, 1), 2 - sh);
+            break;
+        case 'Z':   // last Sunday of September to first Sunday of April
+            dst = t >= utcAt(y, 9, sunday(y, 9, -1), 2 - sh) || t < utcAt(y, 4, sunday(y, 4, 1), 2 - sh);
+            break;
+        case 'S':   // Chile and Paraguay: early September to early April
+            dst = t >= utcAt(y, 9, sunday(y, 9, 1), 4 - sh) || t < utcAt(y, 4, sunday(y, 4, 1), 3 - sh);
+            break;
+    }
+    return std + (dst ? 60 : 0);
 }
 
 bool shortCity(const char *code, size_t maxChars, char *out, size_t len)

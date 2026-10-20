@@ -15,6 +15,7 @@ String flightNumberFromCallsign(const String &callsign);
 
 struct CachedFlightEntry
 {
+    String           key;            // call sign; "" = a free slot
     FlightInfo       info;
     unsigned long    expiryMs = 0;
 };
@@ -40,9 +41,19 @@ private:
     BaseLogoStore          *_logoStore;
 
     // Keyed by trimmed callsign; stores enriched static data between fetch cycles
-    std::map<String, CachedFlightEntry> _flightCache;
+    // A fixed table, made once with the fetcher (8.0): a map allocated a
+    // ~350-byte node for every new route and freed it later, scattering
+    // holes through the heap until a TLS handshake no longer fitted.
+    // Reusing slots keeps the Strings' buffers too.
+    CachedFlightEntry _flightCache[8];
+    CachedFlightEntry *cacheFind(const String &callsign);
     static constexpr size_t kMaxCachedFlights = 8;   // ~1 KB each; with "nearest only" few are re-shown
 
 public:
-    size_t cachedFlights() const { return _flightCache.size(); }
+    size_t cachedFlights() const
+    {
+        size_t n = 0;
+        for (const CachedFlightEntry &e : _flightCache) n += e.key.length() > 0;
+        return n;
+    }
 };

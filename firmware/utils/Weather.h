@@ -23,12 +23,15 @@ struct Metar
     char  visText[8] = "";    // visibility as the panel shows it: "10KM+", "7KM", "800M", "10SM", "1.5SM"
     char  wx[8]   = "";       // present weather, e.g. "RA", "+TSRA" (first group only)
     char  raw[112] = "";
+    char  station[5] = "";    // ICAO, e.g. "EGLL"
 };
 
 namespace Weather
 {
-    // Fetch and parse EGLL's METAR; false on a network or parse failure.
-    bool fetch(Metar &out);
+    // Fetch and parse the airport's METAR; false on a network or parse
+    // failure. others: more ICAO codes for the same request ("OMDB,KJFK"),
+    // each report handed to onOther (8.0: the weather where arrivals came from).
+    bool fetch(Metar &out, const char *others = nullptr, void (*onOther)(const Metar &) = nullptr);
     bool parse(const char *raw, Metar &out);
     // Panel line, at most maxChars characters (drops detail to fit).
     void line(const Metar &m, char *out, size_t len, int maxChars = 21);

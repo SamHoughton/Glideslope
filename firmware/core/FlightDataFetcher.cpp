@@ -114,8 +114,8 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
 
     // Evict stale cache entries so RAM doesn't accumulate across long uptimes
     const unsigned long nowMs = millis();
-    for (auto it = _flightCache.begin(); it != _flightCache.end(); )
-        it = (nowMs >= it->second.expiryMs) ? _flightCache.erase(it) : std::next(it);
+    for (CachedFlightEntry &e : _flightCache)
+        if (e.key.length() && nowMs >= e.expiryMs) e.key = "";   // free the slot, keep its buffers
 
     const unsigned long cacheTtlMs =
         (unsigned long)g_config.aeroapi_cache_ttl_seconds * 1000UL;
@@ -161,12 +161,12 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
 
         FlightInfo info;
 
-        auto it = _flightCache.find(s.callsign);
-        if (it != _flightCache.end() && nowMs < it->second.expiryMs)
+        CachedFlightEntry *hit = cacheFind(s.callsign);
+        if (hit && nowMs < hit->expiryMs)
         {
             // Cache hit — reuse static enrichment data (logos are NOT cached,
             // see below — they are reloaded from LittleFS on every cycle)
-            info = it->second.info;
+            info = hit->info;
             Log.printf("FlightDataFetcher: [%u/%u] cache hit for %s\n",
                        stateIdx, totalStates, s.callsign.c_str());
         }
@@ -204,20 +204,23 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                 const unsigned long ttlMs = hasRoute
                     ? cacheTtlMs
                     : (unsigned long)g_config.aeroapi_fail_cache_ttl_seconds * 1000UL;
-                CachedFlightEntry entry;
-                entry.info     = info;       // airline_logo_rgb565 is empty here — good
-                entry.expiryMs = nowMs + ttlMs;
-                // Bounded: each entry is ~1 KB of heap (twenty-odd Strings), and
-                // over a busy half hour an unbounded cache ate the headroom TLS
-                // handshakes need. Full: drop the entry closest to expiry.
-                if (_flightCache.size() >= kMaxCachedFlights && !_flightCache.count(s.callsign))
+                // The same call sign's slot, else a free one, else the one
+                // closest to expiry.
+                CachedFlightEntry *slot = cacheFind(s.callsign);
+                for (CachedFlightEntry &e : _flightCache)
                 {
-                    auto oldest = _flightCache.begin();
-                    for (auto c = _flightCache.begin(); c != _flightCache.end(); ++c)
-                        if (c->second.expiryMs < oldest->second.expiryMs) oldest = c;
-                    _flightCache.erase(oldest);
+                    if (slot) break;
+                    if (!e.key.length()) slot = &e;
                 }
-                _flightCache[s.callsign] = entry;
+                if (!slot)
+                {
+                    slot = &_flightCache[0];
+                    for (CachedFlightEntry &e : _flightCache)
+                        if (e.expiryMs < slot->expiryMs) slot = &e;
+                }
+                slot->key      = s.callsign;
+                slot->info     = info;       // airline_logo_rgb565 is empty here — good
+                slot->expiryMs = nowMs + ttlMs;
             }
             else
             {
@@ -309,4 +312,11 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         outFlights.resize(1);
 
     return outFlights.size();
+}
+
+CachedFlightEntry *FlightDataFetcher::cacheFind(const String &callsign)
+{
+    for (CachedFlightEntry &e : _flightCache)
+        if (e.key.length() && e.key == callsign) return &e;
+    return nullptr;
 }

@@ -22,6 +22,7 @@
 #include "utils/Weather.h"
 #include "display/MapRenderer.h"
 #include "display/Traffic.h"
+#include "display/LineupScreen.h"
 #include "adapters/ReadsbParser.h"
 #include "config/AirlineCodes.h"
 #include <fstream>
@@ -276,6 +277,19 @@ int main(int argc, char **argv)
             o.animMs = 1200;
             CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{120, 60, 200}, o);   save(c, "card_max_freighter");
         }
+        {
+            // 8.0: where it came from. Dubai, at night there; New York, an afternoon of showers.
+            FlightInfo g = f;
+            g.origin.code_iata = "DXB"; g.origin.code_icao = "OMDB";
+            g.ident_iata = "EK1"; g.ident = "UAE1";
+            Metar wx;
+            Weather::parse("METAR OMDB 181900Z 33008KT CAVOK 27/14 Q1010", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 95, "27L", 3000);                       save(c, "origin_dubai");
+            g.origin.code_iata = "JFK"; g.origin.code_icao = "KJFK";
+            Weather::parse("METAR KJFK 181851Z 21014KT 8SM -SHRA BKN035 OVC060 18/12 A2998", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 140, "27L", 3000);                      save(c, "origin_jfk");
+            InfoScreens::renderOrigin(c, g, nullptr, 140, "27L", 3000);                  save(c, "origin_no_weather");
+        }
         o.landed = true; o.landedAt = 1792350600; o.animMs = 1200;
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_landed");
     }
@@ -304,19 +318,31 @@ int main(int argc, char **argv)
         g_config.route_cities = false;
         InfoScreens::Departure dep[3];
         const char *dids[] = {"BA283", "AA81", "U2 8061"}, *dd[] = {"LAX", "DFW", "NCE"};
+        const char *dac[] = {"BA", "AA", "U2"};
         for (int i = 0; i < 3; ++i)
         {
+            dep[i].accent = AircraftSprites::airlineColour(dac[i]);
             strcpy(dep[i].ident, dids[i]); strcpy(dep[i].dest, dd[i]); strcpy(dep[i].type, "A320");
             dep[i].at = 1792350900 - i * 120;
         }
         InfoScreens::renderDepartures(c, dep, 3, "27R", 5000);                                save(c, "board_departures");
         g_config.route_cities = true;
         InfoScreens::renderDepartures(c, dep, 3, "27R", 5000);                                save(c, "board_departures_cities");
+        InfoScreens::renderHeadings(c, dep, 3, 5000);                                        save(c, "headings_cities");
         g_config.route_cities = false;
         InfoScreens::renderWeather(c, m, "27L", 2000, Sky::at(m, 1792350900));               save(c, "weather_evening_rain");
         HoldTracker::Row rows[] = {{"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7}};
         InfoScreens::renderHolding(c, rows, 4, 2000);                                         save(c, "holding");
         InfoScreens::renderClock(c, 2000, wxLine);                              save(c, "clock_night");
+        {
+            LineupScreen::Plane lp[LineupScreen::kMax];
+            int n = LineupScreen::demo(lp);
+            LineupScreen::render(c, lp, n, 5000, Sky::preview("day"));                 save(c, "lineup_busy");
+            LineupScreen::render(c, lp, 3, 5000, Sky::preview("golden"));              save(c, "lineup_quiet_golden");
+            n = LineupScreen::demo(lp);
+            lp[1].km = 5.6f; lp[1].altFt = 5.6f * 172;   // a tight one: under a minute behind
+            LineupScreen::render(c, lp, 2, 5000, Sky::preview("night"));               save(c, "lineup_tight_night");
+        }
         InfoScreens::renderNightScene(c, 2000, wxLine, Sky::preview("night"));          save(c, "night_scene");
         InfoScreens::renderNightScene(c, 110000, wxLine, Sky::preview("night"));        save(c, "night_scene_sunrise");   // a plane far off, sunrise line
         InfoScreens::renderNightScene(c, 12000, wxLine, Sky::preview("night+christmas")); save(c, "night_scene_weather");

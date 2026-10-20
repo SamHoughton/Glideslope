@@ -101,7 +101,7 @@ struct RuntimeConfig
     // 16 holding, 32 departures page, 64 route globe, 128 pages on final).
     uint32_t card_lead_seconds;
     uint32_t interlude_seconds;
-    uint8_t  screens;
+    uint16_t screens;   // bits: 1 map .. 64 globe, 128 pages on final, 256 line-up (8.0)
     uint32_t aeroapi_cache_ttl_seconds;
     uint32_t aeroapi_fail_cache_ttl_seconds;
 };

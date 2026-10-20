@@ -7,6 +7,32 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 8.0.0 (20 Oct 2026)
+
+The line-up: everyone coming in, where they came from, where they're going.
+
+**New**
+- **Approach line-up**: the glide path seen side on, the threshold on
+  the left and 27 km out on the right, every aircraft on final at its
+  real distance and height in its airline's colour, and the time to the
+  one ahead under it (red under a minute). In the rotation when two or
+  more are coming in, and a page on final.
+- **Where it came from**, a page on final: the sky at the origin as it is
+  now (its own sun, weather and moon) with its temperature, its local time
+  and weather in words, and roughly how long the flight has been flying
+  and how far. The 10-minute weather request asks for the next arrivals'
+  origins too, so it costs no extra connection.
+- **Departure headings**, a third page of the board when departures are
+  on: a compass round the airport with a ray along each recent
+  departure's course to its destination.
+
+**Fixes**
+- Over a busy hour or so the free memory became too fragmented for a
+  secure connection and the board restarted itself (7.x too, more
+  slowly). The route and airline-colour caches are fixed tables now, and
+  airport codes come from the offline table, so the largest free block
+  holds steady.
+
 ## 7.1.0 (20 Oct 2026)
 
 The day and the sky.

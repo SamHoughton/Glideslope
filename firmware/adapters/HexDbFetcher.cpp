@@ -8,6 +8,7 @@ Returns true when at least one HTTP call succeeded so FlightDataFetcher knows
 to cache the result (with the appropriate success or fail-TTL).
 */
 #include "adapters/HexDbFetcher.h"
+#include "config/Airports.h"
 #include "config/TimingConfiguration.h"
 #include "utils/TelnetLogger.h"
 #include "utils/HeapWatch.h"
@@ -94,6 +95,11 @@ bool HexDbFetcher::resolveIata(const String &icao, String &outIata)
     if (icao.length() == 0)
         return false;
 
+    // The offline airport table knows nearly all of them (8.0): no request,
+    // and nothing kept.
+    char offline[4];
+    if (Airports::icaoToIata(icao.c_str(), offline)) { outIata = offline; return true; }
+
     // Cache hit — return immediately (even for known-empty entries)
     auto it = _iataCache.find(icao);
     if (it != _iataCache.end())
@@ -107,6 +113,7 @@ bool HexDbFetcher::resolveIata(const String &icao, String &outIata)
     String payload;
     if (!httpGet(String(kBase) + "/airport/icao/" + icao, payload))
     {
+        if (_iataCache.size() >= 24) _iataCache.clear();
         _iataCache[icao] = "";   // cache the miss so we never retry this airport
         return false;
     }
@@ -116,6 +123,7 @@ bool HexDbFetcher::resolveIata(const String &icao, String &outIata)
     if (!deserializeJson(doc, payload) && doc["iata"].is<const char*>())
         iata = doc["iata"].as<const char*>();
 
+    if (_iataCache.size() >= 24) _iataCache.clear();   // bounded: the rare ones the table lacks
     _iataCache[icao] = iata;     // cache hit OR known-empty
     Log.printf("HexDbFetcher: airport %s → IATA %s\n",
                icao.c_str(), iata.length() ? iata.c_str() : "(none)");

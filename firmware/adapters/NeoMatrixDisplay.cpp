@@ -408,6 +408,52 @@ void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const c
     _stats.noteSpot(DailyStats::Emergency, ident, code);
 }
 
+void NeoMatrixDisplay::setOriginWeather(const Metar &m)
+{
+    if (!m.valid || !m.station[0]) return;
+    Lock l(_lock);
+    int slot = 0;
+    for (int i = 0; i < 6; ++i)
+    {
+        if (strcmp(_origins[i].icao, m.station) == 0) { slot = i; break; }
+        if (_origins[i].atMs < _origins[slot].atMs) slot = i;   // else the oldest
+    }
+    OriginWx &o = _origins[slot];
+    strlcpy(o.icao, m.station, sizeof(o.icao));
+    o.tempC = (int8_t)(m.tempC == -99 ? -128 : max(-100, min(60, m.tempC)));
+    o.cloud = strstr(m.raw, " OVC") || strstr(m.raw, " VV") ? 3 : strstr(m.raw, " BKN") ? 2
+            : (strstr(m.raw, " SCT") || strstr(m.raw, " FEW")) ? 1 : 0;
+    strlcpy(o.wx, m.wx, sizeof(o.wx));
+    o.visM = (int16_t)min(9999, m.visM);
+    o.atMs = millis() | 1;
+}
+
+bool NeoMatrixDisplay::hasOriginWeather(const char *icao)
+{
+    Lock l(_lock);
+    Metar m;
+    return originMetar(icao, m);
+}
+
+bool NeoMatrixDisplay::originMetar(const char *icao, Metar &out) const
+{
+    for (const OriginWx &o : _origins)
+        if (o.atMs && strcmp(o.icao, icao) == 0 && millis() - o.atMs < 3UL * 3600 * 1000)
+        {
+            out = Metar();
+            out.valid = true;
+            strlcpy(out.station, o.icao, sizeof(out.station));
+            out.tempC = o.tempC == -128 ? -99 : o.tempC;
+            strlcpy(out.wx, o.wx, sizeof(out.wx));
+            out.visM = o.visM;
+            out.cavok = o.cloud == 0 && !o.wx[0];
+            static const char *const kCloud[] = {"", " SCT", " BKN", " OVC"};   // what the sky reads
+            strlcpy(out.raw, kCloud[o.cloud & 3], sizeof(out.raw));
+            return true;
+        }
+    return false;
+}
+
 void NeoMatrixDisplay::todayJson(String &out)
 {
     // Copied under the lock, written out after it: a web client can be slow.

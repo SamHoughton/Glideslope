@@ -118,6 +118,9 @@ public:
     // Today for the web page (7.1): movements, the runway rhythm and the
     // spotter log, as JSON.
     void todayJson(String &out);
+    // The weather where an arrival came from (8.0), from the weather fetch.
+    void setOriginWeather(const Metar &m);
+    bool hasOriginWeather(const char *icao);
 
     // Today's stats from every aircraft in range (call once per fetch), and
     // their persistence: snapshot under the lock, write the file outside it.
@@ -214,7 +217,8 @@ private:
     enum class Mode : uint8_t { Auto, Map, Arrivals, Stats, Weather };
     // Rotation screens; bit n of g_config.screens enables Screen n. Bit 5
     // is the departures page of the arrivals board, not a screen of its own.
-    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Departures, Globe, Count };
+    // The index is the bit in g_config.screens (FinalPages is bit 7, a setting, not a screen).
+    enum class Screen : uint8_t { Map, Arrivals, Stats, Weather, Holding, Departures, Globe, FinalPages, Lineup, Count };
     // Overhead / watchlist scene (display task; _spotPending set under the lock).
     OverheadScene::Info  _spot;
     bool                 _spotPending = false, _spotActive = false;
@@ -224,6 +228,10 @@ private:
     void                 noteGlobe(const Entry &e);
     void                 refreshGlobe(unsigned long now);
     int                  statsPages() const;
+    // Origins' weather, compact: the last few airports asked about.
+    struct OriginWx { char icao[5]; int8_t tempC; uint8_t cloud; char wx[8]; int16_t visM; uint32_t atMs; };
+    OriginWx             _origins[6] = {};
+    bool                 originMetar(const char *icao, Metar &out) const;   // under the lock
     int                  statsPageList(uint8_t *out) const;   // out: room for 5
     // On final: the card alternates with the route globe and the aircraft
     // page, back to the card for good 40 s out (renderLanding comes first
