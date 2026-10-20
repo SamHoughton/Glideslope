@@ -7,6 +7,27 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 7.1.0 (in progress)
+
+The day and the sky.
+
+**New**
+- **Runway rhythm**, a stats page: a landing every 1:45 (from the last
+  eight gaps), today's average and tightest gap with the aircraft, and
+  each runway's share of the arrivals.
+- **Spotter log**: today's interesting sightings (rare spots, first
+  visits, watchlist and overhead passes, go-arounds, emergencies) as a
+  stats page, and on the web page in a new **Today** card with the
+  movements and the rhythm. The last 16 are kept, saved with the stats.
+- **Bedtime summary**: overnight, for 15 s a minute, the day in one card
+  (movements, busiest hour, tightest gap, the best spot).
+- **Night scene** instead of the plain clock: the skyline under the real
+  sky (stars, the moon in its phase, lit windows, the season), distant
+  runway lights, the time above, the date in turn with the next sunrise
+  and the weather, and now and then an aircraft's lights far off.
+- **Sunrise and sunset** on the weather screen (`Sunset in 24 min` inside
+  the hour).
+
 ## 7.0.0 (in progress)
 
 The look: new type, one design across the screens, better aircraft.

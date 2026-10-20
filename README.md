@@ -156,6 +156,13 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   weather in words along the bottom (`11°  light rain  250/14G26`).
   Optionally, recent departures (time, and the destination when the route
   is known) as a second page.
+- **Runway rhythm**: how often they are landing (`a landing every 1:45`,
+  from the last few gaps), today's average and tightest gap, and each
+  runway's share of the arrivals, as a page of the stats.
+- **Spotter log**: today's interesting sightings, with the time: rare
+  spots, first visits, watchlist and overhead passes, go-arounds and
+  emergencies. A page of the stats, and on the web page's **Today** card
+  with the day's movements and rhythm.
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
@@ -174,8 +181,8 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   movement.
 - **Weather**: a little live scene on the left (the sky as it is now, sun
   or moon, cloud, rain or snow falling, a windsock blowing in the real wind
-  and the temperature, large) and on the right the weather in words, the
-  wind and gusts, the runway in
+  and the temperature, large) and on the right the weather in words (in
+  turn with the next sunrise or sunset), the wind and gusts, the runway in
   use seen from above with the wind crossing it, crosswind and head- or
   tailwind, visibility and pressure.
 - **Runways in use**, worked out from the traffic itself: every aircraft on
@@ -230,9 +237,15 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   on Bonfire Night and New Year's Eve.
 
   ![Fireworks over the London skyline](docs/fireworks.png)
-- **Quiet hours**: a dim clock (with the weather and tonight's moon in its
-  real phase) overnight when there's no traffic. Night dimming can follow
-  the sun instead of fixed times, easing down through dusk and up at dawn.
+- **Night scene**: overnight the panel shows the skyline under the real
+  sky (stars, the moon in its phase, lit windows), distant runway lights
+  and the time, with the date, the next sunrise and the weather in turn;
+  now and then an aircraft's lights cross far off. For 15 seconds a minute
+  the day's summary takes its place: the movements, the busiest hour, the
+  tightest gap and the best spot.
+- **Quiet hours**: the night scene, dimmed, overnight when there's no
+  traffic. Night dimming can follow the sun instead of fixed times, easing
+  down through dusk and up at dawn.
 - **Evening round-up** on your phone at 22:30 (optional): the day's
   movements, busiest hour, top airline, rarest type.
 - **Board button** cycles Auto / Map / Arrivals / Stats / Weather.
