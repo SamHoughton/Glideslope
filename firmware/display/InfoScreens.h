@@ -20,6 +20,7 @@ namespace InfoScreens
     {
         char  ident[10] = "";
         char  type[6]   = "";
+        char  from[5]   = "";     // origin IATA (or ICAO) code if the route is known
         Rgb   accent{90, 170, 255};
         float etaSec    = NAN;    // at dataMs
         bool  estimate  = false;  // not yet on final: a rough guess

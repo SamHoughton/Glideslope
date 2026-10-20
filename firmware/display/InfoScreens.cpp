@@ -1,4 +1,5 @@
 #include "display/InfoScreens.h"
+#include "display/Fonts.h"
 #include <math.h>
 #include <time.h>
 #include "config/Airport.h"
@@ -390,66 +391,130 @@ void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weath
 
 namespace
 {
-    // Split-flap text, like an old station board: each letter flips through
-    // others before landing, left to right, starting at delayMs.
-    void flapText(FrameCanvas &c, int x, int y, const char *text, Rgb col, uint32_t shownMs, uint32_t delayMs)
+    // ── The split-flap board (7.0) ──────────────────────────────────────────
+    // Yellow capitals on their own flaps, like the boards in a terminal:
+    // each flap is 5 x 10 with a 1 px gap and the split across its middle.
+    // When the board comes up the flaps run through other letters and land
+    // left to right, row by row.
+    const Rgb kFlapYellow{255, 205, 40};
+    const Rgb kFlapFace{30, 30, 33}, kFlapFaceLow{22, 22, 25};
+    constexpr int kFlapPitch = 6, kFlapH = 10;
+
+    void flap(FrameCanvas &c, int x, int y, char ch, Rgb ink, uint32_t shownMs, uint32_t settleMs, uint32_t seed)
     {
-        static const char kFlaps[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        for (int i = 0; text[i]; ++i)
+        for (int yy = 0; yy < kFlapH; ++yy)
+            for (int xx = 0; xx < 5; ++xx) c.set(x + xx, y + yy, yy < kFlapH / 2 ? kFlapFace : kFlapFaceLow);
+        bool flipping = false;
+        if (shownMs < settleMs)
         {
-            const int cx = x + i * 6;
-            const uint32_t settle = delayMs + 160 + i * 45;
-            char ch[2] = {text[i], 0};
-            if (shownMs >= settle || text[i] == ' ')
+            if (shownMs + 360 < settleMs) ch = ' ';   // not started: a blank flap
+            else
             {
-                c.text(cx, y, ch, col);
-                continue;
+                static const char kFlaps[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+                uint32_t h = (shownMs / 55) * 2654435761u + seed * 40503u;
+                h ^= h >> 13;
+                ch = kFlaps[h % (sizeof(kFlaps) - 1)];
+                flipping = true;
             }
-            if (shownMs + 200 < settle - 160) continue;   // not started: blank
-            uint32_t h = (shownMs / 55) * 2654435761u + i * 40503u + y * 131u;
-            h ^= h >> 13;
-            ch[0] = kFlaps[h % (sizeof(kFlaps) - 1)];
-            c.text(cx, y, ch, FrameCanvas::scale(col, 0.55f));
-            for (int dx = 0; dx < 5; ++dx) c.set(cx + dx, y + 3, Rgb{0, 0, 0});   // the split
         }
+        if (ch != ' ')
+        {
+            const char s[2] = {(char)toupper((unsigned char)ch), 0};
+            const int w = FrameCanvas::width(Fonts::Label, s);
+            c.print(Fonts::Label, x + (5 - w) / 2, y + 1, s, flipping ? FrameCanvas::scale(ink, 0.55f) : ink);
+            // A falling flap: the top half dark for a moment.
+            if (flipping && (shownMs / 55) % 2)
+                for (int yy = 0; yy < kFlapH / 2; ++yy)
+                    for (int xx = 0; xx < 5; ++xx) c.set(x + xx, y + yy, kFlapFaceLow);
+        }
+        for (int xx = 0; xx < 5; ++xx)   // the split
+            c.set(x + xx, y + kFlapH / 2, FrameCanvas::scale(FrameCanvas::unpack(c.get(x + xx, y + kFlapH / 2)), 0.3f));
     }
+
+    // A word on `cells` flaps (blank flaps after it).
+    void flapWord(FrameCanvas &c, int x, int y, const char *s, int cells, Rgb ink, uint32_t shownMs, uint32_t delayMs)
+    {
+        const size_t n = strlen(s);
+        for (int i = 0; i < cells; ++i)
+            flap(c, x + i * kFlapPitch, y, i < (int)n ? s[i] : ' ', ink, shownMs, delayMs + 160 + i * 45, (uint32_t)(i * 7 + y * 131));
+    }
+
+    // The board's header: the title in yellow, the runway and the time right.
+    void boardHeader(FrameCanvas &c, const char *title, const char *runway)
+    {
+        c.print(Fonts::Label, 1, 1, title, kFlapYellow);
+        char right[24] = "";
+        const time_t now = time(nullptr);
+        if (now > 1600000000)
+        {
+            struct tm lt;
+            localtime_r(&now, &lt);
+            snprintf(right, sizeof(right), "%s%s%02d:%02d", runway ? runway : "", runway && runway[0] ? "  " : "", lt.tm_hour, lt.tm_min);
+        }
+        else if (runway) snprintf(right, sizeof(right), "%s", runway);
+        c.print(Fonts::Label, 127 - FrameCanvas::width(Fonts::Label, right), 1, right, Rgb{150, 160, 180});
+    }
+
+    // The middle column: the city when the setting is on and it fits on
+    // eight flaps, without its spaces if that makes it fit; otherwise the
+    // airport code (LAX reads better than LOS ANGE).
+    void placeFor(const char *code, char *out, size_t len)
+    {
+        out[0] = 0;
+        if (!code || !code[0]) return;
+        const char *full = g_config.route_cities ? Airports::city(code) : nullptr;
+        size_t letters = 0;
+        if (full) for (const char *p = full; *p; ++p) letters += *p != ' ';
+        if (!full || letters > 8 || !Airports::shortCity(code, 8, out, len)) snprintf(out, len, "%s", code);
+    }
+
+    constexpr int kRowY0 = 11, kRowPitch = 11;
+    constexpr int kIdentX = 2, kPlaceX = 46, kTimeX = 97;
 }
 
 void InfoScreens::renderArrivals(FrameCanvas &c, const Arrival *rows, int n, const char *runway,
                                  const char *weather, unsigned long nowMs, uint32_t shownMs)
 {
     c.clear();
-    char title[24];
-    if (runway && runway[0]) snprintf(title, sizeof(title), "ARRIVALS %s", runway);
-    else                     snprintf(title, sizeof(title), "ARRIVALS");
-    centred(c, 2, title, kTitle);
-    for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 11, kDim);
-
-    if (n == 0) centred(c, 28, "NONE INBOUND", kDim);
+    boardHeader(c, "Arrivals", runway);
+    if (n == 0)
+    {
+        const char *none = "Nothing inbound";
+        c.print(Fonts::Label, (128 - FrameCanvas::width(Fonts::Label, none)) / 2, 28, none, Rgb{90, 96, 110});
+    }
+    const time_t now = time(nullptr);
     for (int i = 0; i < n && i < kMaxArrivals; ++i)
     {
         const Arrival &a = rows[i];
-        const int y = 14 + i * 10;
-        c.fillRect(2, y, 2, 7, a.accent);                       // airline colour tab
-        flapText(c, 6, y, a.ident, Rgb{235, 240, 245}, shownMs, i * 110);
-        flapText(c, 54, y, a.type, kLabel, shownMs, i * 110 + 200);
+        const int y = kRowY0 + i * kRowPitch;
+        c.fillRect(0, y, 1, kFlapH, a.accent);   // airline colour tab
+        flapWord(c, kIdentX, y, a.ident, 7, kFlapYellow, shownMs, i * 110);
+        char place[12];
+        placeFor(a.from, place, sizeof(place));
+        flapWord(c, kPlaceX, y, place[0] ? place : a.type, 8, place[0] ? kFlapYellow : Rgb{200, 175, 90}, shownMs, i * 110 + 200);
 
-        // Count down between fetches.
-        char eta[12];
-        float left = a.etaSec - (nowMs - a.dataMs) / 1000.0f;
+        // Expected: the clock time it should land (counting down between
+        // fetches), LAND in white inside a minute and a half; a rough guess
+        // for aircraft not yet on final is dimmer. Without the clock, minutes.
+        char eta[8];
+        Rgb col = kFlapYellow;
+        const float left = a.etaSec - (nowMs - a.dataMs) / 1000.0f;
         if (isnan(left)) snprintf(eta, sizeof(eta), "-");
-        else if (left < 60) snprintf(eta, sizeof(eta), a.estimate ? "~1 MIN" : "<1 MIN");
-        else snprintf(eta, sizeof(eta), "%s%d MIN", a.estimate ? "~" : "", (int)lroundf(left / 60.0f));
-        flapText(c, FrameCanvas::W - 3 - FrameCanvas::textWidth(eta), y, eta,
-                 !a.estimate && left < 120 ? kValue : Rgb{200, 205, 215}, shownMs, i * 110 + 350);
+        else if (!a.estimate && left < 90) { snprintf(eta, sizeof(eta), "LAND"); col = Rgb{255, 255, 255}; }
+        else if (now > 1600000000)
+        {
+            const time_t at = now + (time_t)lroundf(max(0.0f, left));
+            struct tm lt;
+            localtime_r(&at, &lt);
+            snprintf(eta, sizeof(eta), "%02d:%02d", lt.tm_hour, lt.tm_min);
+        }
+        else snprintf(eta, sizeof(eta), "%dMIN", max(1, (int)lroundf(left / 60.0f)));
+        if (a.estimate) col = FrameCanvas::scale(col, 0.7f);
+        flapWord(c, kTimeX, y, eta, 5, col, shownMs, i * 110 + 350);
     }
 
     // Weather along the bottom: what the arrivals are landing into.
-    if (weather && weather[0])
-    {
-        for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 54, kDim);
-        centred(c, 56, weather, Rgb{120, 160, 190});
-    }
+    if (weather && weather[0]) c.print(Fonts::Label, 1, 56, weather, Rgb{90, 100, 120});
 }
 
 namespace
@@ -520,25 +585,22 @@ namespace
 void InfoScreens::renderDepartures(FrameCanvas &c, const Departure *rows, int n, const char *runways, uint32_t shownMs)
 {
     c.clear();
-    char title[24];
-    if (runways && runways[0]) snprintf(title, sizeof(title), "DEPARTED %s", runways);
-    else                       snprintf(title, sizeof(title), "DEPARTED");
-    centred(c, 2, title, kTitle);
-    for (int x = 8; x < FrameCanvas::W - 8; x += 2) c.set(x, 11, kDim);
-    if (n == 0) { centred(c, 28, "NONE RECENTLY", kDim); return; }
+    boardHeader(c, "Departed", runways);
+    if (n == 0)
+    {
+        const char *none = "None recently";
+        c.print(Fonts::Label, (128 - FrameCanvas::width(Fonts::Label, none)) / 2, 28, none, Rgb{90, 96, 110});
+        return;
+    }
     for (int i = 0; i < n && i < kMaxDepartures; ++i)
     {
         const Departure &d = rows[i];
-        const int y = 14 + i * 10;
-        c.fillRect(2, y, 2, 7, d.accent);
-        flapText(c, 6, y, d.ident, Rgb{235, 240, 245}, shownMs, i * 110);
-        char city[8];
-        // The city when it fits in six letters (seven ran into the time),
-        // else the code: LAX reads better than LOS AN.
-        const char *full = g_config.route_cities ? Airports::city(d.dest) : nullptr;
-        const char *dest = full && strlen(full) <= 6 && Airports::shortCity(d.dest, 6, city, sizeof(city)) ? city : d.dest;
-        if (d.dest[0]) flapText(c, 54, y, dest, kValue, shownMs, i * 110 + 200);
-        else           flapText(c, 54, y, d.type, kLabel, shownMs, i * 110 + 200);
+        const int y = kRowY0 + i * kRowPitch;
+        c.fillRect(0, y, 1, kFlapH, d.accent);
+        flapWord(c, kIdentX, y, d.ident, 7, kFlapYellow, shownMs, i * 110);
+        char place[12];
+        placeFor(d.dest, place, sizeof(place));
+        flapWord(c, kPlaceX, y, place[0] ? place : d.type, 8, place[0] ? kFlapYellow : Rgb{200, 175, 90}, shownMs, i * 110 + 200);
         char when[8] = "";
         if (d.at)
         {
@@ -546,7 +608,7 @@ void InfoScreens::renderDepartures(FrameCanvas &c, const Departure *rows, int n,
             localtime_r(&d.at, &lt);
             snprintf(when, sizeof(when), "%02d:%02d", lt.tm_hour, lt.tm_min);
         }
-        flapText(c, FrameCanvas::W - 3 - FrameCanvas::textWidth(when), y, when, Rgb{200, 205, 215}, shownMs, i * 110 + 350);
+        flapWord(c, kTimeX, y, when, 5, kFlapYellow, shownMs, i * 110 + 350);
     }
 }
 

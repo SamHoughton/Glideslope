@@ -401,6 +401,8 @@ static void updateArrivals(const std::vector<StateVector> &states, const std::ve
         strlcpy(a.ident, id.c_str(), sizeof(a.ident));
         const String &type = known && known->aircraft_code.length() ? known->aircraft_code : s.aircraft_type;
         strlcpy(a.type, type.c_str(), sizeof(a.type));
+        if (known)
+            strlcpy(a.from, (known->origin.code_iata.length() ? known->origin.code_iata : known->origin.code_icao).c_str(), sizeof(a.from));
         a.accent = airlineColour(s.callsign);
         a.dataMs = millis();
         if (onFinal)

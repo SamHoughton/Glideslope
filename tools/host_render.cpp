@@ -245,11 +245,17 @@ int main(int argc, char **argv)
         for (int i = 0; i < 4; ++i)
         {
             strcpy(arr[i].ident, ids[i]); strcpy(arr[i].type, types[i]);
+            static const char *const froms[] = {"JFK", "MCO", "DUB", ""};
+            strcpy(arr[i].from, froms[i]);
             arr[i].etaSec = 40 + i * 95; arr[i].estimate = i == 3; arr[i].dataMs = 0;
             arr[i].accent = AircraftSprites::airlineColour(ids[i][0] == 'Q' ? "QR" : ids[i][0] == 'V' ? "VS" : ids[i][0] == 'E' ? "EI" : "BA");
         }
         g_fakeMillis = 0;
         InfoScreens::renderArrivals(c, arr, 4, "27L", "250/14G26 10KM RA 11C", 0, 5000);   save(c, "board_arrivals");
+        g_config.route_cities = true;
+        InfoScreens::renderArrivals(c, arr, 4, "27L", "250/14G26 10KM RA 11C", 0, 5000);   save(c, "board_arrivals_cities");
+        InfoScreens::renderArrivals(c, arr, 4, "27L", "250/14G26 10KM RA 11C", 0, 700);    save(c, "board_arrivals_flipping");
+        g_config.route_cities = false;
         InfoScreens::Departure dep[3];
         const char *dids[] = {"BA283", "AA81", "U2 8061"}, *dd[] = {"LAX", "DFW", "NCE"};
         for (int i = 0; i < 3; ++i)
