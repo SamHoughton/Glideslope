@@ -376,7 +376,10 @@ uint32_t NeoMatrixDisplay::renderRhythm(unsigned long now)
         if (startBreak) _current.breakTaken = true;
         _interludeUntilMs = startBreak ? now + (unsigned long)g_config.interlude_seconds * 1000UL : now;
         nextScreen();
-        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather", "holding", "-", "globe"};
+        // One name for every screen (8.0's line-up was missing: an index past the end crashed the display).
+        static const char *const kScreenNames[] = {"map", "arrivals", "stats", "weather", "holding", "-", "globe",
+                                                   "-", "line-up"};
+        static_assert(sizeof(kScreenNames) / sizeof(kScreenNames[0]) == (size_t)Screen::Count, "a name for every screen");
         if (!preview && _mode == Mode::Auto)
             Log.printf("Display: %s, %s\n", _interludeUntilMs != now ? "break after landing" : "screens",
                        kScreenNames[(int)_screen]);
