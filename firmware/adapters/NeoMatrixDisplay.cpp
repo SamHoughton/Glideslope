@@ -391,6 +391,9 @@ void NeoMatrixDisplay::showSpot(const OverheadScene::Info &info)
     Lock l(_lock);
     _spot = info;
     _spotPending = true;
+    _stats.noteSpot(strncmp(info.label, "WATCH", 5) == 0 || strncmp(info.label, "Watch", 5) == 0
+                        ? DailyStats::Watchlist : DailyStats::Overhead,
+                    info.ident, info.type);
 }
 
 void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const char *ident, const char *detail)
@@ -402,6 +405,64 @@ void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const c
     strlcpy(_alertDetail, detail, sizeof(_alertDetail));
     _alertStartMs = millis();
     _alertActive  = true;
+    _stats.noteSpot(DailyStats::Emergency, ident, code);
+}
+
+void NeoMatrixDisplay::todayJson(String &out)
+{
+    // Copied under the lock, written out after it: a web client can be slow.
+    DailyStats::Spot spots[DailyStats::kMaxSpots];
+    DailyStats::RunwayCount rw[4];
+    int nSpots, nRw, arr, dep, recent, avg, tight, tightMin, peakH, peakN, spotsToday;
+    char tightId[8];
+    {
+        Lock l(_lock);
+        nSpots = _stats.spotCount();
+        for (int i = 0; i < nSpots; ++i) spots[i] = _stats.spot(i);
+        nRw = _stats.runways(rw, 4);
+        arr = _stats.arrivals(); dep = _stats.departures();
+        recent = _stats.recentGapSec(); avg = _stats.averageGapSec();
+        tight = _stats.tightestGapSec(); tightMin = _stats.tightestAtMinute();
+        strlcpy(tightId, _stats.tightestIdent(), sizeof(tightId));
+        peakH = _stats.busiestHour(peakN);
+        spotsToday = _stats.spotsToday();
+    }
+    // Idents and types are letters, digits and dashes; anything else is dropped.
+    auto clean = [](const char *s, char *o, size_t len) {
+        size_t n = 0;
+        for (; *s && n + 1 < len; ++s)
+            if (isalnum((unsigned char)*s) || *s == '-' || *s == ' ') o[n++] = *s;
+        o[n] = '\0';
+    };
+    static const char *const kKinds[] = {"rare", "first", "watch", "overhead", "goaround", "emergency"};
+    out = "";
+    out.reserve(160 + nSpots * 64 + nRw * 24);
+    char buf[96], a[12], b[12];
+    snprintf(buf, sizeof(buf), "{\"arrivals\":%d,\"departures\":%d,\"every\":%d,\"average\":%d,\"tightest\":%d,",
+             arr, dep, recent, avg, tight);
+    out += buf;
+    clean(tightId, a, sizeof(a));
+    snprintf(buf, sizeof(buf), "\"tightest_ident\":\"%s\",\"tightest_at\":%d,\"busiest_hour\":%d,\"busiest_n\":%d,",
+             a, tightMin, peakH, peakN);
+    out += buf;
+    snprintf(buf, sizeof(buf), "\"spotted\":%d,\"runways\":[", spotsToday);
+    out += buf;
+    for (int i = 0; i < nRw; ++i)
+    {
+        clean(rw[i].name, a, sizeof(a));
+        snprintf(buf, sizeof(buf), "%s{\"name\":\"%s\",\"n\":%u}", i ? "," : "", a, (unsigned)rw[i].n);
+        out += buf;
+    }
+    out += "],\"spots\":[";
+    for (int i = 0; i < nSpots; ++i)
+    {
+        clean(spots[i].ident, a, sizeof(a));
+        clean(spots[i].what, b, sizeof(b));
+        snprintf(buf, sizeof(buf), "%s{\"at\":%u,\"kind\":\"%s\",\"ident\":\"%s\",\"what\":\"%s\"}", i ? "," : "",
+                 (unsigned)spots[i].minute, spots[i].kind < 6 ? kKinds[spots[i].kind] : "other", a, b);
+        out += buf;
+    }
+    out += "]}";
 }
 
 bool NeoMatrixDisplay::currentFlight(FlightInfo &out)

@@ -6,6 +6,7 @@
 #include "config/Airports.h"
 #include "config/RuntimeConfig.h"
 #include "display/AircraftSprites.h"
+#include "display/LandingScene.h"
 
 namespace
 {
@@ -370,6 +371,183 @@ void InfoScreens::renderTopTypes(FrameCanvas &c, const DailyStats &stats, uint32
     }
 }
 
+namespace
+{
+    // "1:45" from seconds.
+    void minSec(int sec, char *out, size_t len) { snprintf(out, len, "%d:%02d", sec / 60, sec % 60); }
+    void hhmm(int minute, char *out, size_t len) { snprintf(out, len, "%02d:%02d", minute / 60, minute % 60); }
+
+    // The spotter log's kinds: a short tag and its colour.
+    const char *spotTag(uint8_t kind, Rgb &col)
+    {
+        switch (kind)
+        {
+            case DailyStats::Rare:       col = Rgb{255, 200, 60};  return "Rare";
+            case DailyStats::FirstVisit: col = Rgb{90, 200, 255};  return "New";
+            case DailyStats::Watchlist:  col = Rgb{255, 215, 80};  return "Watch";
+            case DailyStats::Overhead:   col = Rgb{120, 220, 150}; return "Over";
+            case DailyStats::GoAround:   col = Rgb{255, 110, 90};  return "G/A";
+            default:                     col = Rgb{255, 60, 50};   return "Sqk";
+        }
+    }
+}
+
+// Runway rhythm: a landing every 1:45 (the last few gaps), today's average
+// and tightest gap, and each runway's share of the arrivals.
+void InfoScreens::renderRhythm(FrameCanvas &c, const DailyStats &stats, const char *runway, uint32_t shownMs)
+{
+    c.clear();
+    titleBand(c, "Runway rhythm", runway && runway[0] ? runway : "");
+    const Rgb soft{150, 160, 180}, faint{80, 88, 106};
+    char v[16];
+    const int recent = stats.recentGapSec();
+    if (recent)
+    {
+        minSec(recent, v, sizeof(v));
+        const int w = c.print(Fonts::Huge, 2, 13, v, kArr);
+        c.print(Fonts::Label, w + 6, 14, "a landing", soft);
+        c.print(Fonts::Label, w + 6, 23, "every", soft);
+    }
+    else
+    {
+        c.print(Fonts::Medium, 2, 16, "Quiet", Rgb{120, 130, 150});
+        c.print(Fonts::Label, 40, 18, "no recent landings", faint);
+    }
+
+    // Today: the average and the tightest pair.
+    int x = 2;
+    if (stats.averageGapSec())
+    {
+        x += c.print(Fonts::Label, x, 34, "avg", faint) + 2;
+        minSec(stats.averageGapSec(), v, sizeof(v));
+        x += c.print(Fonts::Label, x, 34, v, kTitle) + 6;
+    }
+    if (stats.tightestGapSec())
+    {
+        x += c.print(Fonts::Label, x, 34, "tightest", faint) + 2;
+        minSec(stats.tightestGapSec(), v, sizeof(v));
+        x += c.print(Fonts::Label, x, 34, v, kGold) + 3;
+        c.setClip(0, FrameCanvas::W - 1);
+        c.print(Fonts::Label, x, 34, stats.tightestIdent(), soft);
+        c.resetClip();
+    }
+
+    // Each runway's arrivals, as bars growing in.
+    DailyStats::RunwayCount rw[2];
+    const int n = stats.runways(rw, 2);
+    const int most = n ? max(1, (int)rw[0].n) : 1;
+    for (int i = 0; i < n; ++i)
+    {
+        const int y = 44 + i * 10;
+        c.print(Fonts::Label, 2, y, rw[i].name, kLabel);
+        const float grow = easeOut((shownMs - i * 150.0f) / 600.0f);
+        const int w = max(2, (int)lroundf(rw[i].n * 80.0f / most * grow));
+        hbar(c, 24, y + 1, w, 5, i == 0 ? kArr : FrameCanvas::scale(kArr, 0.6f));
+        snprintf(v, sizeof(v), "%d", (int)lroundf(rw[i].n * grow));
+        c.print(Fonts::Label, 24 + w + 3, y, v, kTitle);
+    }
+}
+
+// Today's spotter log, newest first, four at a time.
+void InfoScreens::renderSpots(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs)
+{
+    c.clear();
+    char extra[16];
+    snprintf(extra, sizeof(extra), "%d today", stats.spotsToday());
+    titleBand(c, "Spotted today", extra, Rgb{255, 200, 60});
+    const int n = stats.spotCount();
+    if (!n)
+    {
+        centred(c, 30, "Nothing yet", kDim);
+        return;
+    }
+    const int pages = (n + 3) / 4;
+    const int page = (int)((shownMs / 4000) % pages);
+    for (int k = 0; k < 4; ++k)
+    {
+        const int i = page * 4 + k;
+        if (i >= n) break;
+        const DailyStats::Spot &sp = stats.spot(i);
+        const int y = 12 + k * 13;
+        const float in = easeOut((shownMs % 4000 - k * 90.0f) / 350.0f);   // rows slide in
+        const int dx = (int)lroundf((1 - in) * 20);
+        char t[8];
+        hhmm(sp.minute, t, sizeof(t));
+        c.print(Fonts::Label, 2 + dx, y, t, Rgb{90, 98, 116});
+        Rgb col;
+        const char *tag = spotTag(sp.kind, col);
+        tile(c, 30 + dx, y - 1, 25, 9, FrameCanvas::scale(col, 0.28f));
+        c.print(Fonts::Label, 30 + dx + (25 - FrameCanvas::width(Fonts::Label, tag)) / 2, y, tag, col);
+        c.print(Fonts::Label, 59 + dx, y, sp.ident, kTitle);
+        c.print(Fonts::Label, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, sp.what) + dx, y, sp.what,
+                Rgb{150, 200, 235});
+    }
+    if (pages > 1)   // which page: small dots bottom right
+        for (int p2 = 0; p2 < pages; ++p2)
+            c.set(FrameCanvas::W - 2 - (pages - 1 - p2) * 3, 63, p2 == page ? kTitle : kDim);
+}
+
+// The day in one card, dim like the clock it takes turns with: the movements,
+// the busiest hour, the tightest gap and what was spotted. After midnight,
+// yesterday (only its hours are kept).
+void InfoScreens::renderDaySummary(FrameCanvas &c, const DailyStats &stats, uint32_t animMs)
+{
+    c.clear();
+    const Rgb tone{150, 162, 195}, dim{90, 98, 120}, faint{60, 66, 84};
+    struct tm lt;
+    const bool haveTime = localNow(lt);
+    const bool yesterday = haveTime && lt.tm_hour < 6 && stats.hasYesterday();
+    int total = 0, peakH = -1, peakN = 0;
+    if (yesterday)
+        for (int h = 0; h < 24; ++h)
+        {
+            total += stats.yesterdayInHour(h);
+            if (stats.yesterdayInHour(h) > peakN) { peakN = stats.yesterdayInHour(h); peakH = h; }
+        }
+    else
+    {
+        total = stats.arrivals() + stats.departures();
+        peakH = stats.busiestHour(peakN);
+    }
+    char line[40];
+    char name[24];
+    strlcpy(name, g_airport.name, sizeof(name));
+    Fonts::titleCase(name);
+    snprintf(line, sizeof(line), "%s at %s", yesterday ? "Yesterday" : "Today", name);
+    centredL(c, 2, line, dim);
+    snprintf(line, sizeof(line), "%d", total);
+    const float in = easeOut(animMs / 900.0f);
+    char shown[12];
+    snprintf(shown, sizeof(shown), "%d", (int)lroundf(total * in));
+    c.print(Fonts::Huge, (FrameCanvas::W - FrameCanvas::width(Fonts::Huge, line)) / 2, 13, shown, tone);
+    centredL(c, 32, "movements", dim);
+    for (int x = 40; x < 88; ++x) c.set(x, 42, Rgb{26, 30, 42});
+    if (peakH >= 0)
+    {
+        if (!yesterday && stats.tightestGapSec())
+        {
+            char g[8];
+            minSec(stats.tightestGapSec(), g, sizeof(g));
+            snprintf(line, sizeof(line), "Busiest %02d:00  tightest %s", peakH, g);
+        }
+        else
+            snprintf(line, sizeof(line), "Busiest hour %02d:00 (%d)", peakH, peakN);
+        centredL(c, 45, line, faint);
+    }
+    if (!yesterday && stats.spotCount())
+    {
+        // The rarest thing seen: a rare spot first, else the latest sighting.
+        int pick = 0;
+        for (int i = 0; i < stats.spotCount(); ++i)
+            if (stats.spot(i).kind == DailyStats::Rare) { pick = i; break; }
+        const DailyStats::Spot &sp = stats.spot(pick);
+        Rgb col;
+        const char *tag = spotTag(sp.kind, col);
+        snprintf(line, sizeof(line), "%d spotted  %s %s", stats.spotsToday(), tag, sp.what[0] ? sp.what : sp.ident);
+        centredL(c, 55, line, FrameCanvas::scale(col, 0.55f));
+    }
+}
+
 void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weather)
 {
     c.clear();
@@ -403,6 +581,80 @@ void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weath
         for (int x = 40; x < 88; ++x) c.set(x, 49, Rgb{26, 30, 42});
         centredL(c, 53, weather, Rgb{60, 68, 86});
     }
+}
+
+void InfoScreens::renderNightScene(FrameCanvas &c, uint32_t animMs, const char *weather, const Sky::Look &sky)
+{
+    struct tm lt;
+    if (!sky.known || !localNow(lt)) { renderClock(c, animMs, weather); return; }
+    LandingScene::drawBackdrop(c, animMs, sky, false);
+    const int horizon = LandingScene::kHorizonY;
+
+    // Below the skyline: dark ground and a runway's edge lights, far off.
+    for (int y = horizon + 1; y < FrameCanvas::H; ++y)
+        for (int x = 0; x < FrameCanvas::W; ++x) c.set(x, y, Rgb{6, 8, 12});
+    const float lights = sky.lightsOn ? 1.0f : 0.25f;
+    for (int x = 3; x < FrameCanvas::W; x += 5) c.set(x, horizon + 3, FrameCanvas::scale(Rgb{200, 160, 80}, 0.55f * lights));
+    for (int x = 1; x < FrameCanvas::W; x += 9) c.set(x, horizon + 5, FrameCanvas::scale(Rgb{60, 200, 120}, 0.35f * lights));
+
+    // Now and then an aircraft far off: its lights crossing above the
+    // skyline, slowly coming down (one every 100 s, 30 s across).
+    const uint32_t cyc = animMs % 100000;
+    if (cyc < 30000)
+    {
+        const float u = cyc / 30000.0f;
+        const uint32_t n = animMs / 100000;
+        const bool leftward = n % 2 == 0;
+        const int x = leftward ? (int)lroundf(132 - u * 140) : (int)lroundf(-6 + u * 140);
+        const int y = 33 + (int)((n * 7) % 3) + (int)lroundf(u * 4);   // under the text, over the roofs
+        c.set(x, y, Rgb{255, 250, 225});                                       // landing light
+        c.set(x + (leftward ? 2 : -2), y, Rgb{90, 90, 100});                   // the airframe, just
+        if (animMs % 1000 < 100) c.set(x + (leftward ? 1 : -1), y - 1, Rgb{255, 40, 30});   // beacon
+        const uint32_t st = (animMs + 400) % 1300;
+        if (st < 45 || (st >= 140 && st < 185)) c.set(x + (leftward ? 3 : -3), y, Rgb{255, 255, 255});   // strobe
+    }
+
+    // The time above the skyline, the colon breathing with the seconds.
+    const Rgb digits = sky.night > 0.5f ? Rgb{170, 182, 215} : Rgb{235, 240, 250};
+    char hh[3], mm[3];
+    snprintf(hh, sizeof(hh), "%02d", lt.tm_hour);
+    snprintf(mm, sizeof(mm), "%02d", lt.tm_min);
+    const int wh = FrameCanvas::width(Fonts::Huge, hh), wc = FrameCanvas::width(Fonts::Huge, ":"), wm = FrameCanvas::width(Fonts::Huge, mm);
+    const int x0 = (FrameCanvas::W - (wh + wc + wm + 2)) / 2, y0 = 3;
+    const float pulse = 0.35f + 0.65f * (0.5f + 0.5f * cosf((animMs % 2000) * (float)M_PI / 1000.0f));
+    const Rgb shadow{0, 0, 0};
+    c.print(Fonts::Huge, x0 + 1, y0 + 1, hh, shadow);
+    c.print(Fonts::Huge, x0 + wh + wc + 3, y0 + 1, mm, shadow);
+    c.print(Fonts::Huge, x0, y0, hh, digits);
+    c.print(Fonts::Huge, x0 + wh + 1, y0, ":", FrameCanvas::scale(digits, pulse));
+    c.print(Fonts::Huge, x0 + wh + wc + 2, y0, mm, digits);
+
+    // Under it, in turn: the date, the next sunrise (or sunset), the weather.
+    char line[40] = "";
+    const int phase = (int)((animMs / 5000) % 3);
+    if (phase == 1)
+    {
+        bool rise = false;
+        const time_t ev = Sky::nextSunEvent(time(nullptr), rise);
+        if (ev)
+        {
+            struct tm e;
+            localtime_r(&ev, &e);
+            snprintf(line, sizeof(line), "%s %02d:%02d", rise ? "Sunrise" : "Sunset", e.tm_hour, e.tm_min);
+        }
+    }
+    else if (phase == 2 && weather && weather[0])
+        strlcpy(line, weather, sizeof(line));
+    if (!line[0])
+    {
+        static const char *const kDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+        static const char *const kMonths[] = {"January", "February", "March", "April", "May", "June", "July",
+                                              "August", "September", "October", "November", "December"};
+        snprintf(line, sizeof(line), "%s %d %s", kDays[lt.tm_wday], lt.tm_mday, kMonths[lt.tm_mon]);
+    }
+    const int lx = (FrameCanvas::W - FrameCanvas::width(Fonts::Label, line)) / 2;
+    c.print(Fonts::Label, lx + 1, 24, line, shadow);
+    c.print(Fonts::Label, lx, 23, line, FrameCanvas::scale(digits, 0.6f));
 }
 
 namespace
@@ -672,11 +924,25 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     char words[24];
     Weather::describe(m.wx, words, sizeof(words));
     if (!words[0] && m.cavok) snprintf(words, sizeof(words), "clear");
-    if (words[0])
+    // In turn with the next sunrise or sunset ("Sunset in 24 min" inside the hour).
+    char sun[24] = "";
     {
-        words[0] = (char)toupper((unsigned char)words[0]);
-        c.print(Fonts::Label, kX, 10, words, soft);
+        bool rise = false;
+        const time_t now = time(nullptr);
+        const time_t ev = Sky::nextSunEvent(now, rise);
+        if (ev)
+        {
+            const long mins = (long)((ev - now + 59) / 60);
+            struct tm e;
+            localtime_r(&ev, &e);
+            if (mins <= 60) snprintf(sun, sizeof(sun), "%s in %ld min", rise ? "Sunrise" : "Sunset", mins);
+            else            snprintf(sun, sizeof(sun), "%s %02d:%02d", rise ? "Sunrise" : "Sunset", e.tm_hour, e.tm_min);
+        }
     }
+    if (words[0]) words[0] = (char)toupper((unsigned char)words[0]);
+    const bool showSun = sun[0] && (!words[0] || (nowMs / 4000) % 2 == 1);
+    if (showSun)        c.print(Fonts::Label, kX, 10, sun, Rgb{255, 190, 110});
+    else if (words[0])  c.print(Fonts::Label, kX, 10, words, soft);
 
     // Wind: direction and speed large, gusts in red after them.
     int x = kX;

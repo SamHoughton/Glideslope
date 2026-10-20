@@ -78,6 +78,19 @@ details[open]>summary{margin-bottom:10px}
 
 /* Fields */
 .f{margin-bottom:14px}
+.tdy{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;color:var(--muted);margin-bottom:10px}
+.tdy b{color:var(--text);font-size:20px;font-weight:600;margin-right:4px}
+.tdy .ev b{color:var(--amber)}
+.rwb{display:grid;grid-template-columns:36px 1fr 36px;gap:8px;align-items:center;font-size:13px;margin:4px 0}
+.rwb i{display:block;height:6px;border-radius:3px;background:linear-gradient(90deg,#7a5414,var(--amber))}
+.rwb span:last-child{text-align:right;color:var(--muted)}
+.spots{list-style:none;margin:12px 0 0;padding:0;font-size:14px}
+.spots li{display:grid;grid-template-columns:44px 84px 1fr auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.spots .t{color:var(--faint);font-variant-numeric:tabular-nums}
+.spots .k{font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:6px;text-align:center}
+.spots .w{color:#96c8eb}
+.k.rare{background:#4a3a10;color:#ffc83c}.k.first{background:#123a4c;color:#5ac8ff}.k.watch{background:#4a4210;color:#ffd750}
+.k.overhead{background:#16402a;color:#78dc96}.k.goaround{background:#4c1e18;color:#ff6e5a}.k.emergency{background:#5a1210;color:#ff3c32}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:480px){.row{grid-template-columns:1fr}}
 label{display:block;font-size:13px;color:var(--text);margin-bottom:5px;font-weight:500}
@@ -130,6 +143,12 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
     <div class="bezel"><canvas id="dmp" width="768" height="384"></canvas></div>
     <div class="now" id="now"><span class="idle">&nbsp;</span></div>
   </div>
+  <div class="card" id="today">
+    <h2>Today</h2>
+    <div class="tdy" id="tdyhead"><span class="idle">&nbsp;</span></div>
+    <div id="tdyrw"></div>
+    <ul class="spots" id="spots"></ul>
+  </div>
   <div class="card demo">
     <h2>Animations</h2>
     <div class="btns">
@@ -149,6 +168,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="weather">Weather</button>
         <button data-demo="holding">Holding stacks</button>
         <button data-demo="clock">Night clock</button>
+        <button data-demo="summary">Bedtime summary</button>
         <button data-demo="splash">Scanning</button>
         <button data-demo="rare">Rare spot</button>
         <button data-demo="squawk">Emergency squawk</button>
@@ -195,7 +215,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <label class="sw"><input type="checkbox" data-scr="1"><span>Map<small>Everything in range around the airport</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="2"><span>Arrivals board<small>The next four landings, with countdowns</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="32"><span>Departures on the board<small>Recent take-offs as a second page of the arrivals board</small></span></label>
-      <label class="sw"><input type="checkbox" data-scr="4"><span>Today's stats<small>Movements and the hourly chart, then the top airlines and aircraft types</small></span></label>
+      <label class="sw"><input type="checkbox" data-scr="4"><span>Today's stats<small>Movements and the hourly chart, then the runway rhythm, the top airlines and aircraft types and what was spotted</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="128"><span>More on final<small>While a plane is on final, its card takes turns with its route on the globe and a page about the aircraft; always back on the card 40 s before touchdown</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="64"><span>Route globe<small>The last flight's route on a globe: where it has been and how far to go</small></span></label>
       <label class="sw"><input type="checkbox" data-scr="8"><span>Weather<small>Live sky, windsock and the wind on the runway</small></span></label>
@@ -511,6 +531,30 @@ function poll(){if(document.hidden){setTimeout(poll,3000);return;}
   }).catch(function(){}).finally(function(){setTimeout(poll,1500);});}
 
 load();pollStatus();pollNow();pollFrame();poll();
+
+// Today (7.1): the runway rhythm and the spotter log.
+(function(){
+  var KIND={rare:'Rare',first:'New',watch:'Watch',overhead:'Over',goaround:'Go-around',emergency:'Squawk'};
+  function ms(s){return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
+  function hm(m){return ('0'+Math.floor(m/60)).slice(-2)+':'+('0'+m%60).slice(-2);}
+  function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function load(){
+    fetch('/api/today').then(function(r){return r.json();}).then(function(d){
+      var h='<span><b>'+(d.arrivals+d.departures)+'</b>movements</span>';
+      if(d.every)h+='<span class="ev"><b>'+ms(d.every)+'</b>a landing every</span>';
+      if(d.tightest)h+='<span><b>'+ms(d.tightest)+'</b>tightest ('+esc(d.tightest_ident)+', '+hm(d.tightest_at)+')</span>';
+      if(d.busiest_hour>=0)h+='<span><b>'+('0'+d.busiest_hour).slice(-2)+':00</b>busiest ('+d.busiest_n+')</span>';
+      document.getElementById('tdyhead').innerHTML=h;
+      var most=1;d.runways.forEach(function(r){most=Math.max(most,r.n);});
+      document.getElementById('tdyrw').innerHTML=d.runways.map(function(r){
+        return '<div class="rwb"><span>'+esc(r.name)+'</span><i style="width:'+Math.max(2,r.n*100/most)+'%"></i><span>'+r.n+'</span></div>';}).join('');
+      document.getElementById('spots').innerHTML=d.spots.length?d.spots.map(function(s){
+        return '<li><span class="t">'+hm(s.at)+'</span><span class="k '+s.kind+'">'+(KIND[s.kind]||s.kind)+'</span><span>'+esc(s.ident)+'</span><span class="w">'+esc(s.what)+'</span></li>';}).join('')
+        :'<li><span class="t"></span><span></span><span class="t">Nothing spotted yet today</span><span></span></li>';
+    }).catch(function(){});
+  }
+  load();setInterval(load,30000);
+})();
 </script>
 </body>
 </html>

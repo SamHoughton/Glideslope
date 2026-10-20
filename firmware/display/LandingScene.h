@@ -24,6 +24,11 @@ namespace LandingScene
 
     enum Kind : uint8_t { Landing, GoAround, Takeoff };
 
+    // The scenes' backdrop on its own: sky, skyline (pre-mirrored when the
+    // frame will be mirrored) and the season, down to the horizon at y 57.
+    void drawBackdrop(FrameCanvas &c, uint32_t tMs, const Sky::Look &sky, bool mirrored = false);
+    constexpr int kHorizonY = 57;
+
     // caption2: the second caption line (call sign, or "BA117 TO JFK").
     void render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::Sprite &sprite,
                 Rgb accent, bool greySprite, bool rightward,

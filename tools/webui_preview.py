@@ -131,6 +131,7 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/api/status':     self.send(STATUS)
         elif p == '/api/logos':      self.send({'count': 177, 'missing': [{'code': 'CTN', 'seen': 9}, {'code': 'LZB', 'seen': 4}, {'code': 'RBA', 'seen': 2}]})
         elif p == '/api/display':    self.send(DISPLAY)
+        elif p == '/api/today':      self.send(TODAY)
         elif p == '/api/frame':      self.send(rle(self.frame) if 'z=1' in self.path else self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
         elif p.startswith('/packs/') and (ROOT / p.lstrip('/')).is_file():
@@ -151,6 +152,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.send({'ok': False, 'error': 'header is not JSON'})
             return
         self.send({'ok': True})
+
+
+# Today (7.1): the runway rhythm and the spotter log, a busy day.
+TODAY = {'arrivals': 612, 'departures': 598, 'every': 105, 'average': 128, 'tightest': 72,
+         'tightest_ident': 'BAW117', 'tightest_at': 492, 'busiest_hour': 7, 'busiest_n': 88, 'spotted': 7,
+         'runways': [{'name': '27L', 'n': 402}, {'name': '27R', 'n': 210}],
+         'spots': [{'at': 1196, 'kind': 'first', 'ident': 'SQ322', 'what': '9V-SMF'},
+                   {'at': 1180, 'kind': 'overhead', 'ident': 'EI158', 'what': 'A20N'},
+                   {'at': 1142, 'kind': 'watch', 'ident': 'G-CIVA', 'what': 'B744'},
+                   {'at': 1068, 'kind': 'goaround', 'ident': 'BA117', 'what': '27L'},
+                   {'at': 862, 'kind': 'overhead', 'ident': 'LH915', 'what': 'A20N'},
+                   {'at': 665, 'kind': 'first', 'ident': 'VS3', 'what': 'G-VJAZ'},
+                   {'at': 581, 'kind': 'rare', 'ident': 'QR7', 'what': 'A388'}]}
 
 
 def browser():
@@ -187,6 +201,10 @@ def main():
     shoot(url + '#alerts', str(ROOT / 'docs' / 'webui-alerts.png'), 1280, 820, 1)
     shoot(url + '#spotter', str(ROOT / 'docs' / 'webui-spotter.png'), 1280, 820, 1)
     shoot(url + 'logos', str(ROOT / 'docs' / 'webui-logos.png'), 1280, 820, 1)
+    today = ROOT / 'docs' / 'webui-today.png'
+    shoot(url, str(today), 1280, 1240, 1)
+    from PIL import Image
+    Image.open(today).crop((16, 526, 624, 982)).save(today)
     phone = ROOT / 'docs' / 'webui-phone.png'
     shoot(url + 'phone', str(phone), 600, 1100, 2)
     from PIL import Image

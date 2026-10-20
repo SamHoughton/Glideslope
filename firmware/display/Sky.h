@@ -43,6 +43,9 @@ namespace Sky
 
     // Sun elevation (degrees) at lat/lon at a Unix time.
     float sunElevation(double lat, double lon, time_t t);
+    // The next sunrise or sunset at the airport after t (to the minute; 0
+    // if none within a day, as near the poles). Cached: cheap every frame.
+    time_t nextSunEvent(time_t t, bool &isSunrise);
 
     // The look at the airport now (or at time t) with this weather.
     Look at(const Metar &m, time_t t);
