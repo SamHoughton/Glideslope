@@ -6,6 +6,7 @@
 #include "config/Airports.h"
 #include "config/RuntimeConfig.h"
 #include "display/AircraftSprites.h"
+#include "display/LandingScene.h"
 
 namespace
 {
@@ -582,6 +583,80 @@ void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weath
     }
 }
 
+void InfoScreens::renderNightScene(FrameCanvas &c, uint32_t animMs, const char *weather, const Sky::Look &sky)
+{
+    struct tm lt;
+    if (!sky.known || !localNow(lt)) { renderClock(c, animMs, weather); return; }
+    LandingScene::drawBackdrop(c, animMs, sky, false);
+    const int horizon = LandingScene::kHorizonY;
+
+    // Below the skyline: dark ground and a runway's edge lights, far off.
+    for (int y = horizon + 1; y < FrameCanvas::H; ++y)
+        for (int x = 0; x < FrameCanvas::W; ++x) c.set(x, y, Rgb{6, 8, 12});
+    const float lights = sky.lightsOn ? 1.0f : 0.25f;
+    for (int x = 3; x < FrameCanvas::W; x += 5) c.set(x, horizon + 3, FrameCanvas::scale(Rgb{200, 160, 80}, 0.55f * lights));
+    for (int x = 1; x < FrameCanvas::W; x += 9) c.set(x, horizon + 5, FrameCanvas::scale(Rgb{60, 200, 120}, 0.35f * lights));
+
+    // Now and then an aircraft far off: its lights crossing above the
+    // skyline, slowly coming down (one every 100 s, 30 s across).
+    const uint32_t cyc = animMs % 100000;
+    if (cyc < 30000)
+    {
+        const float u = cyc / 30000.0f;
+        const uint32_t n = animMs / 100000;
+        const bool leftward = n % 2 == 0;
+        const int x = leftward ? (int)lroundf(132 - u * 140) : (int)lroundf(-6 + u * 140);
+        const int y = 33 + (int)((n * 7) % 3) + (int)lroundf(u * 4);   // under the text, over the roofs
+        c.set(x, y, Rgb{255, 250, 225});                                       // landing light
+        c.set(x + (leftward ? 2 : -2), y, Rgb{90, 90, 100});                   // the airframe, just
+        if (animMs % 1000 < 100) c.set(x + (leftward ? 1 : -1), y - 1, Rgb{255, 40, 30});   // beacon
+        const uint32_t st = (animMs + 400) % 1300;
+        if (st < 45 || (st >= 140 && st < 185)) c.set(x + (leftward ? 3 : -3), y, Rgb{255, 255, 255});   // strobe
+    }
+
+    // The time above the skyline, the colon breathing with the seconds.
+    const Rgb digits = sky.night > 0.5f ? Rgb{170, 182, 215} : Rgb{235, 240, 250};
+    char hh[3], mm[3];
+    snprintf(hh, sizeof(hh), "%02d", lt.tm_hour);
+    snprintf(mm, sizeof(mm), "%02d", lt.tm_min);
+    const int wh = FrameCanvas::width(Fonts::Huge, hh), wc = FrameCanvas::width(Fonts::Huge, ":"), wm = FrameCanvas::width(Fonts::Huge, mm);
+    const int x0 = (FrameCanvas::W - (wh + wc + wm + 2)) / 2, y0 = 3;
+    const float pulse = 0.35f + 0.65f * (0.5f + 0.5f * cosf((animMs % 2000) * (float)M_PI / 1000.0f));
+    const Rgb shadow{0, 0, 0};
+    c.print(Fonts::Huge, x0 + 1, y0 + 1, hh, shadow);
+    c.print(Fonts::Huge, x0 + wh + wc + 3, y0 + 1, mm, shadow);
+    c.print(Fonts::Huge, x0, y0, hh, digits);
+    c.print(Fonts::Huge, x0 + wh + 1, y0, ":", FrameCanvas::scale(digits, pulse));
+    c.print(Fonts::Huge, x0 + wh + wc + 2, y0, mm, digits);
+
+    // Under it, in turn: the date, the next sunrise (or sunset), the weather.
+    char line[40] = "";
+    const int phase = (int)((animMs / 5000) % 3);
+    if (phase == 1)
+    {
+        bool rise = false;
+        const time_t ev = Sky::nextSunEvent(time(nullptr), rise);
+        if (ev)
+        {
+            struct tm e;
+            localtime_r(&ev, &e);
+            snprintf(line, sizeof(line), "%s %02d:%02d", rise ? "Sunrise" : "Sunset", e.tm_hour, e.tm_min);
+        }
+    }
+    else if (phase == 2 && weather && weather[0])
+        strlcpy(line, weather, sizeof(line));
+    if (!line[0])
+    {
+        static const char *const kDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+        static const char *const kMonths[] = {"January", "February", "March", "April", "May", "June", "July",
+                                              "August", "September", "October", "November", "December"};
+        snprintf(line, sizeof(line), "%s %d %s", kDays[lt.tm_wday], lt.tm_mday, kMonths[lt.tm_mon]);
+    }
+    const int lx = (FrameCanvas::W - FrameCanvas::width(Fonts::Label, line)) / 2;
+    c.print(Fonts::Label, lx + 1, 24, line, shadow);
+    c.print(Fonts::Label, lx, 23, line, FrameCanvas::scale(digits, 0.6f));
+}
+
 namespace
 {
     // ── The split-flap board (7.0) ──────────────────────────────────────────
@@ -849,11 +924,25 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     char words[24];
     Weather::describe(m.wx, words, sizeof(words));
     if (!words[0] && m.cavok) snprintf(words, sizeof(words), "clear");
-    if (words[0])
+    // In turn with the next sunrise or sunset ("Sunset in 24 min" inside the hour).
+    char sun[24] = "";
     {
-        words[0] = (char)toupper((unsigned char)words[0]);
-        c.print(Fonts::Label, kX, 10, words, soft);
+        bool rise = false;
+        const time_t now = time(nullptr);
+        const time_t ev = Sky::nextSunEvent(now, rise);
+        if (ev)
+        {
+            const long mins = (long)((ev - now + 59) / 60);
+            struct tm e;
+            localtime_r(&ev, &e);
+            if (mins <= 60) snprintf(sun, sizeof(sun), "%s in %ld min", rise ? "Sunrise" : "Sunset", mins);
+            else            snprintf(sun, sizeof(sun), "%s %02d:%02d", rise ? "Sunrise" : "Sunset", e.tm_hour, e.tm_min);
+        }
     }
+    if (words[0]) words[0] = (char)toupper((unsigned char)words[0]);
+    const bool showSun = sun[0] && (!words[0] || (nowMs / 4000) % 2 == 1);
+    if (showSun)        c.print(Fonts::Label, kX, 10, sun, Rgb{255, 190, 110});
+    else if (words[0])  c.print(Fonts::Label, kX, 10, words, soft);
 
     // Wind: direction and speed large, gusts in red after them.
     int x = kX;

@@ -317,6 +317,9 @@ int main(int argc, char **argv)
         HoldTracker::Row rows[] = {{"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7}};
         InfoScreens::renderHolding(c, rows, 4, 2000);                                         save(c, "holding");
         InfoScreens::renderClock(c, 2000, wxLine);                              save(c, "clock_night");
+        InfoScreens::renderNightScene(c, 2000, wxLine, Sky::preview("night"));          save(c, "night_scene");
+        InfoScreens::renderNightScene(c, 110000, wxLine, Sky::preview("night"));        save(c, "night_scene_sunrise");   // a plane far off, sunrise line
+        InfoScreens::renderNightScene(c, 12000, wxLine, Sky::preview("night+christmas")); save(c, "night_scene_weather");
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");
         InfoScreens::renderRareBanner(c, "RARE SPOT", "A380", 900);                           save(c, "banner_rare");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 600);                                save(c, "runway_change_a");

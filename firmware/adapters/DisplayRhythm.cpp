@@ -564,7 +564,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     // Web previews, then the button-selected mode, then the rotation.
     Screen s = _screen;
     if      (s_screenPreview == 1) s = Screen::Stats;
-    else if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now, _weather); return; }
+    else if (s_screenPreview == 2) { InfoScreens::renderNightScene(g_workFrame, now, _weather, s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky); return; }
     else if (s_screenPreview == 7) { InfoScreens::renderDaySummary(g_workFrame, _stats, shownFor(Screen::Map, now)); return; }
     else if (s_screenPreview == 3) s = Screen::Arrivals;
     else if (s_screenPreview == 4) s = Screen::Weather;
@@ -585,7 +585,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
             const bool summary = (now / 1000) % 60 >= 45 &&
                                  (_stats.arrivals() + _stats.departures() >= 10 || _stats.hasYesterday());
             if (summary) InfoScreens::renderDaySummary(g_workFrame, _stats, ((now / 1000) % 60 - 45) * 1000 + now % 1000);
-            else         InfoScreens::renderClock(g_workFrame, now, _weather);
+            else         InfoScreens::renderNightScene(g_workFrame, now, _weather, _sky);
         }
         else                 BootSplash::render(g_workFrame, now, _runwayInUse);
         return;

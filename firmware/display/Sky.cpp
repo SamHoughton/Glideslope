@@ -343,3 +343,42 @@ float Sky::mapLight(const Look &l)
 {
     return l.known ? 1.0f - 0.45f * l.night : 1.0f;
 }
+
+// The next time the sun's centre crosses -0.83 degrees (refraction and its
+// radius: the moment the top edge meets the horizon), searched in 10-minute
+// steps and refined to the minute; worked out again only when the cached
+// event has passed or the airport has changed.
+time_t Sky::nextSunEvent(time_t t, bool &isSunrise)
+{
+    static time_t s_at = 0, s_from = 0;
+    static bool s_rise = false;
+    static double s_lat = 0, s_lon = 0;
+    if (t < 1600000000) return 0;
+    if (s_at && t < s_at && t >= s_from && s_lat == g_airport.lat && s_lon == g_airport.lon)
+    {
+        isSunrise = s_rise;
+        return s_at;
+    }
+    constexpr float kHorizon = -0.83f;
+    s_from = t; s_lat = g_airport.lat; s_lon = g_airport.lon; s_at = 0;
+    float prev = sunElevation(s_lat, s_lon, t) - kHorizon;
+    for (time_t u = t + 600; u <= t + 86400 + 600; u += 600)
+    {
+        const float now = sunElevation(s_lat, s_lon, u) - kHorizon;
+        if ((prev < 0) != (now < 0))
+        {
+            time_t lo = u - 600, hi = u;   // refine to the minute
+            while (hi - lo > 60)
+            {
+                const time_t mid = lo + (hi - lo) / 2;
+                if ((sunElevation(s_lat, s_lon, mid) - kHorizon < 0) == (prev < 0)) lo = mid; else hi = mid;
+            }
+            s_at = hi;
+            s_rise = now >= 0;
+            break;
+        }
+        prev = now;
+    }
+    isSunrise = s_rise;
+    return s_at;
+}

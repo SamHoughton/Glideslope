@@ -201,12 +201,11 @@ namespace
     }
 }
 
-void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::Sprite &sp,
-                          Rgb accent, bool greySprite, bool rightward,
-                          const char *ident, const char *runway, Kind kind, const Sky::Look &sky,
-                          const AircraftSprites::Livery *livery)
+// The sky, the skyline in the same light and the time of year along it
+// (snow on the roofs, Christmas lights, fireworks); the horizon is the
+// runway's edge line (y 57). Shared with the night scene.
+void LandingScene::drawBackdrop(FrameCanvas &c, uint32_t tMs, const Sky::Look &sky, bool mirrored)
 {
-    const bool goAround = kind == GoAround, takeoff = kind == Takeoff;
     c.clear();
     Sky::drawSky(c, sky, tMs, kSurfaceY - 1);
     kSilhouette = Sky::shade(sky, kSilhouetteNight);
@@ -216,8 +215,8 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     s_windows   = !sky.known || sky.lightsOn;
     s_shadow    = sky.known && sky.night < 0.6f;
     memset(s_top, 255, sizeof(s_top));
-    if (g_airport.londonSkyline) drawSkyline(c, tMs, rightward);
-    else                         drawGenericSkyline(c, tMs, rightward);
+    if (g_airport.londonSkyline) drawSkyline(c, tMs, mirrored);
+    else                         drawGenericSkyline(c, tMs, mirrored);
     // Sunset and twilight: light along the tops of the buildings.
     float rimK;
     const Rgb rimCol = Sky::rim(sky, rimK);
@@ -292,6 +291,16 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
             }
         }
     }
+
+}
+
+void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::Sprite &sp,
+                          Rgb accent, bool greySprite, bool rightward,
+                          const char *ident, const char *runway, Kind kind, const Sky::Look &sky,
+                          const AircraftSprites::Livery *livery)
+{
+    const bool goAround = kind == GoAround, takeoff = kind == Takeoff;
+    drawBackdrop(c, tMs, sky, rightward);
 
     // Runway: surface, dotted edge line, dashed centreline, piano keys.
     for (int y = kSurfaceY; y <= kSurfaceY + 3; ++y)
