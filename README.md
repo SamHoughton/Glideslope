@@ -65,6 +65,10 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![The night scene: the skyline under the stars, the time and the next sunrise](docs/night.png) | ![The bedtime summary: movements, the busiest hour, the tightest gap and the best spot](docs/summary.png) |
 
+| Approach line-up | Where it came from |
+| --- | --- |
+| ![The approach line-up: five aircraft on the glide path into 27L with the minutes between them](docs/lineup.png) | ![Where it came from: the sky over Dubai at night, 27 degrees, 23:15 there, about seven hours flying](docs/origin.png) |
+
 | Top airlines | Aircraft types |
 | --- | --- |
 | ![Today's busiest airlines in their colours](docs/stats-airlines.png) | ![Today's commonest aircraft types](docs/stats-types.png) |
@@ -115,10 +119,19 @@ what was spotted.
   departures boards are the exception, kept deliberately old-fashioned as
   yellow split-flap tiles.
 - **More on final**: while an arrival is on final its card takes turns
-  with the flight's route on the globe and a page about the aircraft (its
-  type, registration, which visit this is, the airline and where it has come
-  from), with the countdown kept on screen; the last 40 seconds are always
-  the card, and the landing always plays.
+  with the flight's route on the globe, the approach line-up, where it came
+  from and a page about the aircraft (its type, registration, which visit
+  this is, the airline), with the countdown kept on screen; the last 40
+  seconds are always the card, and the landing always plays.
+- **Approach line-up**: everyone on final on the glide path, side on: the
+  threshold on the left, 27 km out on the right, each aircraft at its real
+  distance and height in its airline's colour, and the time to the one
+  ahead beneath it (red under a minute). In the rotation whenever two or
+  more are coming in.
+- **Where it came from**: the sky at the origin as it is right now (its own
+  sun or moon and weather) with the temperature there, its local time and
+  weather in words (`23:15 there`, `Clear night`), roughly how long the
+  flight has been flying and how far it has come.
 - **Fly-across**: when a new aircraft arrives, its sprite crosses the panel in
   the direction it is really flying, climbing or descending with its real
   vertical rate. The old card stays ahead of it and the new one is revealed
@@ -168,7 +181,8 @@ what was spotted.
   while still a rough guess, before it joins final), with Heathrow's
   weather in words along the bottom (`11°  light rain  250/14G26`).
   Optionally, recent departures (time, and the destination when the route
-  is known) as a second page.
+  is known) as a second page, and a third showing where they are heading:
+  a compass round the airport with a ray along each one's course.
 - **Runway rhythm**: how often they are landing (`a landing every 1:45`,
   from the last few gaps), today's average and tightest gap, and each
   runway's share of the arrivals, as a page of the stats.
@@ -495,14 +509,17 @@ Aircraft positions, first to answer wins:
 - [hexdb.io](https://hexdb.io/) (HTTPS) for routes adsb.im doesn't know,
   then OpenSky and AeroAPI if configured.
 - [aviationweather.gov](https://aviationweather.gov/) (NOAA) for Heathrow's
-  METAR, every 10 minutes.
+  METAR every 10 minutes, and in the same request the reports from where the
+  next arrivals came from.
 - FlightAware AeroAPI, optional and paid.
 - [ntfy.sh](https://ntfy.sh/) for phone alerts, if a topic is set.
 - Built into the firmware: the airport table for city names and the globe
   from [OurAirports](https://ourairports.com/data/) (public domain,
   `tools/gen_airports.py`), and the globe's land from
   [Natural Earth](https://www.naturalearthdata.com/) 1:110m (public domain,
-  `tools/gen_landmask.py`).
+  `tools/gen_landmask.py`), and each airport's time zone from
+  [OpenFlights](https://openflights.org/data) (Open Database License,
+  `tools/gen_timezones.py`).
 
 ## Credits and licence
 

@@ -21,3 +21,7 @@ The large type (firmware/display/Fonts.cpp) is rendered from Barlow Semi
 Condensed Bold, Copyright 2017 The Barlow Project Authors
 (https://github.com/jpt/barlow), licensed under the SIL Open Font License,
 Version 1.1; the licence is in firmware/display/Fonts-OFL.txt.
+
+Airport time zones (firmware/config/AirportTz.h) are derived from the
+OpenFlights airport database (https://openflights.org/data), made available
+under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/).
