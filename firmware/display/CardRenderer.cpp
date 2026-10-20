@@ -38,7 +38,7 @@ namespace
     constexpr int kRightX   = 125;                       // last usable column
     constexpr int kTopW     = kRightX + 1 - kTopX;       // 88 px
     // Bottom band.
-    constexpr int kBandY    = 55;
+    constexpr int kBandY    = 56;
 
     constexpr uint32_t kRouteShowMs = 5000;   // route, before switching to the airline name
     constexpr uint32_t kNameShowMs  = 3000;   // airline name
@@ -360,8 +360,8 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
 
     // Flight number: large, or medium when it is too long for the line.
     const char *ident = firstNonEmpty(f.ident_iata, f.ident);
-    if (FrameCanvas::width(Fonts::Large, ident) <= kTopW) c.print(Fonts::Large, kTopX, 2, ident, kInk);
-    else                                                  c.print(Fonts::Medium, kTopX, 4, ident, kInk);
+    if (FrameCanvas::width(Fonts::Large, ident) <= kTopW) c.print(Fonts::Large, kTopX, 1, ident, kInk);
+    else                                                  c.print(Fonts::Medium, kTopX, 3, ident, kInk);
 
     // Route line, cross-fading with the shortened airline name (in the
     // accent) and the registration's history. The type row below stays.
@@ -387,7 +387,7 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
         snprintf(last, sizeof(last), "Last here %d %s", lt.tm_mday, kMon[lt.tm_mon]);
     }
 
-    constexpr int kRouteY = 19, kTypeY = 28;
+    constexpr int kRouteY = 16, kTypeY = 25;
     if (hasRoute && hasAirline)
     {
         const uint32_t seenMs = seen[0] ? kSeenShowMs : 0, lastMs = last[0] ? kSeenShowMs : 0;
@@ -418,7 +418,7 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
     // time), with a climb/descent arrow when there is room. The altitude
     // comes in already smoothed (opt.altFt); without it, dead-reckon from the
     // vertical rate.
-    constexpr int kReadY = 37;
+    constexpr int kReadY = 35;
     if (opt.landed)
     {
         int x = kTextX;

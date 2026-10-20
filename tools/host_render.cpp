@@ -232,6 +232,14 @@ int main(int argc, char **argv)
         o.animMs = 9500;   // the registration history phase of the route line
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_history");
         g_config.route_cities = false;
+        {
+            // Short final: the status reads "Landing 27L" (descender in the g).
+            FlightInfo g = f;
+            g.lon = -0.4340 + 0.7 / (111.32 * cos(51.4649 * M_PI / 180.0));
+            g.baro_altitude = 160; g.vertical_rate = -700; g.distance_km = 1;
+            o.animMs = 361;   // the status at full brightness
+            CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{255, 185, 60}, o);   save(c, "card_landing");
+        }
         o.landed = true; o.landedAt = 1792350600; o.animMs = 1200;
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_landed");
     }

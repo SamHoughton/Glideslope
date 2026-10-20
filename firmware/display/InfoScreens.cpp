@@ -888,12 +888,12 @@ void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const cha
     // Below: the change in words.
     char line1[24];
     snprintf(line1, sizeof(line1), "Now landing %s", to);
-    centred(c, 44, line1, flipped ? kTitle : FrameCanvas::scale(kTitle, 0.4f + 0.6f * e));
+    centred(c, 41, line1, flipped ? kTitle : FrameCanvas::scale(kTitle, 0.4f + 0.6f * e));
     if (from && from[0])
     {
         char was[12];
         snprintf(was, sizeof(was), "was %s", from);
-        centred(c, 54, was, Rgb{140, 146, 160});
+        centred(c, 53, was, Rgb{140, 146, 160});
     }
 }
 
