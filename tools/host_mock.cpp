@@ -282,6 +282,181 @@ static void specimen(FrameCanvas &c)
     c.print(Fonts::Label, 1, 52, "jumpy fog: 0123456789", Ds::green);
 }
 
+
+// ── 8.0: the approach line-up ──────────────────────────────────────────────
+// The glide path side on: the threshold on the left, 25 km out on the right,
+// every aircraft on final at its real distance and height, the gap to the
+// one ahead between them.
+#include "display/Font3x5.h"
+namespace Lineup
+{
+    struct Plane { const char *id; AircraftSprites::Kind kind; Rgb fin; float km; int kt; };
+
+    constexpr int kThrX = 8, kGroundY = 55, kTopY = 26;
+    constexpr float kMaxKm = 27.0f;
+    int xFor(float km) { return kThrX + (int)lroundf(km / kMaxKm * (126 - kThrX)); }
+    // 3 degrees: about 172 ft a km; the view tops out at 4,300 ft.
+    int yFor(float km) { return kGroundY - 1 - (int)lroundf(km * 172.0f / 4300.0f * (kGroundY - 1 - kTopY)); }
+}
+
+static void lineup(FrameCanvas &c, int variant)
+{
+    using namespace Ds;
+    using namespace Lineup;
+    c.clear();
+    // Sky: a faint gradient, so the planes sit in something.
+    for (int y = 10; y < kGroundY; ++y)
+        for (int x = 0; x < 128; ++x)
+            c.set(x, y, Rgb{(uint8_t)(6 + y / 8), (uint8_t)(9 + y / 7), (uint8_t)(18 + y / 4)});
+    const Plane five[] = {
+        {"BA117", AircraftSprites::A350, Rgb{40, 70, 160}, 2.4f, 142},
+        {"VS4", AircraftSprites::A330, Rgb{220, 30, 50}, 8.1f, 150},
+        {"EI158", AircraftSprites::A320neo, Rgb{20, 160, 130}, 13.3f, 158},
+        {"QR7", AircraftSprites::A380, Rgb{120, 30, 70}, 18.9f, 165},
+        {"BA286", AircraftSprites::B777, Rgb{40, 70, 160}, 24.2f, 172},
+    };
+    const int n = variant == 0 ? 5 : 3;
+    char right[16];
+    snprintf(right, sizeof(right), "%d coming", n);
+    title(c, "On final 27L", right, amber);
+
+    // The glide path, dotted, and the distance marks under it.
+    for (float km = 0; km <= kMaxKm; km += 0.25f)
+    {
+        const int x = xFor(km), y = yFor(km);
+        if (((int)(km * 4)) % 3 == 0) c.set(x, y, faint);
+    }
+    for (int km = 5; km <= 20; km += 5) c.set(xFor((float)km), kGroundY + 1, Rgb{60, 66, 84});   // every 5 km
+    // The runway: surface, piano keys, approach lights out to 900 m.
+    for (int x = 0; x <= kThrX; ++x) c.set(x, kGroundY, Rgb{90, 94, 104});
+    for (int x = 0; x <= kThrX; x += 2) c.set(x, kGroundY - 1, Rgb{215, 215, 220});
+    for (int x = kThrX + 2; x <= xFor(0.9f); x += 2) c.set(x, kGroundY, Rgb{255, 190, 80});
+    for (int x = xFor(0.9f) + 1; x < 128; ++x) c.set(x, kGroundY, Rgb{24, 30, 26});
+
+    // The aircraft, half size, nose at their distance on the path; the
+    // flight number above in the airline's colour.
+    for (int i = 0; i < n; ++i)
+    {
+        const Plane &p = five[i];
+        const AircraftSprites::Sprite &sp = AircraftSprites::get(p.kind);
+        const int nx = xFor(p.km), ny = yFor(p.km);
+        const int w = (sp.w + 1) / 2, h = (sp.h + 1) / 2;
+        AircraftSprites::drawHalf(c, sp, nx, ny - h + 2, AircraftSprites::Livery(p.fin));
+        // Labels above, or below for every other one, so neighbours don't collide.
+        const int ly = (i % 2 == 0 || ny + 4 >= kGroundY - 6) ? ny - h - 5 : ny + 5;
+        Font3x5::text(c, nx + w / 2 - Font3x5::width(p.id) / 2, ly, p.id, p.fin, true);
+        (void)w;
+    }
+    // The gaps: the time to the one ahead, on the ground between them.
+    for (int i = 1; i < n; ++i)
+    {
+        const Plane &a = five[i - 1], &b = five[i];
+        const float sec = (b.km - a.km) / (b.kt * 1.852f) * 3600.0f;
+        char t[8];
+        snprintf(t, sizeof(t), "%d:%02d", (int)sec / 60, (int)sec % 60);
+        const int x0 = xFor(a.km) + 2, x1 = xFor(b.km) - 1;
+        const int mid = (x0 + x1) / 2;
+        const bool tight = sec < 60;
+        const Rgb col = tight ? Rgb{255, 120, 90} : soft;
+        const int tw = FrameCanvas::width(Fonts::Label, t);
+        // Under the ground line, with a bracket from one aircraft to the next.
+        for (int x = x0 + 1; x < x1; ++x) c.set(x, kGroundY + 2, Rgb{40, 46, 60});
+        c.set(x0, kGroundY + 1, faint); c.set(x1, kGroundY + 1, faint);
+        c.print(Fonts::Label, mid - tw / 2, kGroundY + 2, t, col);
+        (void)x0; (void)x1;
+    }
+
+}
+
+// ── 8.0: where it came from ────────────────────────────────────────────────
+static void origin(FrameCanvas &c, bool night)
+{
+    using namespace Ds;
+    c.clear();
+    // Left: the sky over the origin right now, its temperature on it.
+    for (int y = 0; y < 64; ++y)
+        for (int x = 0; x < 52; ++x)
+            c.set(x, y, night ? Rgb{(uint8_t)(6 + y / 5), (uint8_t)(8 + y / 5), (uint8_t)(26 + y / 3)}
+                              : Rgb{(uint8_t)(70 + y), (uint8_t)(130 + y), (uint8_t)(230 - y / 3)});
+    if (night)
+    {
+        static const int st[][2] = {{6, 6}, {18, 12}, {33, 4}, {44, 15}, {9, 22}, {40, 27}, {25, 19}};
+        for (auto &p : st) c.set(p[0], p[1], Rgb{200, 205, 220});
+        for (int dy = -3; dy <= 3; ++dy) for (int dx = -3; dx <= 3; ++dx)
+            if (dx * dx + dy * dy <= 9 && (dx + 1) * (dx + 1) + dy * dy > 6) c.set(40 + dx, 9 + dy, Rgb{235, 230, 200});
+    }
+    else
+        for (int dy = -4; dy <= 4; ++dy) for (int dx = -4; dx <= 4; ++dx)
+            if (dx * dx + dy * dy <= 14) c.set(40 + dx, 10 + dy, Rgb{255, 240, 170});
+    c.fillRect(0, 56, 52, 8, night ? Rgb{14, 16, 22} : Rgb{150, 120, 70});   // sand / dark ground
+    c.print(Fonts::Huge, 5, 33, night ? "27\xC2\xB0" : "31\xC2\xB0", Rgb{0, 0, 0});
+    c.print(Fonts::Huge, 4, 32, night ? "27\xC2\xB0" : "31\xC2\xB0", ink);
+    for (int y = 0; y < 64; ++y) c.set(52, y, Rgb{0, 0, 0});
+
+    // Right: the place, its time and weather, the journey.
+    const int x = 56;
+    c.print(Fonts::Label, x, 1, "From", faint);
+    c.print(Fonts::Medium, x, 10, "Dubai", ink);
+    c.print(Fonts::Label, x, 23, night ? "23:42 there" : "15:42 there", soft);
+    c.print(Fonts::Label, x, 32, night ? "Clear night" : "Hazy sun", soft);
+    for (int xx = x; xx < 126; xx += 2) c.set(xx, 42, Rgb{40, 46, 60});
+    int xx = x;
+    xx += c.print(Fonts::Medium, xx, 45, "6:52", amber) + 4;
+    c.print(Fonts::Label, xx, 47, "in the air", faint);
+    xx = x;
+    xx += c.print(Fonts::Label, xx, 56, "5,470 km", ink) + 3;
+    c.print(Fonts::Label, xx, 56, "EK1", Rgb{230, 60, 60});
+}
+
+// ── 8.0: where the departures are heading ──────────────────────────────────
+static void headings(FrameCanvas &c)
+{
+    using namespace Ds;
+    c.clear();
+    title(c, "Departures", "where to", cyan);
+    // A compass round the airport; each recent departure a ray along its
+    // course to its destination, newest brightest.
+    const int cx = 30, cy = 38, r = 22;
+    for (int a = 0; a < 360; a += 10)
+    {
+        const float t = a * (float)M_PI / 180;
+        c.set(cx + (int)lroundf(sinf(t) * r), cy - (int)lroundf(cosf(t) * r), a % 90 == 0 ? soft : Rgb{36, 42, 56});
+    }
+    c.print(Fonts::Label, cx - 2, cy - r - 9 + 11, "", faint);
+    Font3x5::text(c, cx - 1, cy - r - 6, "N", soft, false);
+    // The runway in the middle.
+    for (int i = -4; i <= 4; ++i) c.set(cx + i, cy, Rgb{150, 150, 160});
+    struct Dep { const char *id, *to, *code; int brg; Rgb col; };
+    const Dep d[] = {
+        {"BA283", "Los Angeles", "LAX", 302, Rgb{80, 130, 255}},
+        {"EK2", "Dubai", "DXB", 104, Rgb{230, 60, 60}},
+        {"AA81", "Dallas", "DFW", 286, Rgb{170, 180, 200}},
+        {"U28061", "Nice", "NCE", 152, Rgb{255, 120, 20}},
+    };
+    for (int k = 3; k >= 0; --k)
+    {
+        const float t = d[k].brg * (float)M_PI / 180;
+        const float bright = 1.0f - k * 0.18f;
+        for (int i = 5; i <= r - 2; ++i)
+            c.set(cx + (int)lroundf(sinf(t) * i), cy - (int)lroundf(cosf(t) * i),
+                  FrameCanvas::scale(d[k].col, bright * (0.35f + 0.65f * i / r)));
+        const int ex = cx + (int)lroundf(sinf(t) * (r - 1)), ey = cy - (int)lroundf(cosf(t) * (r - 1));
+        c.set(ex, ey, Rgb{255, 255, 255});
+    }
+    // The list beside it.
+    for (int k = 0; k < 4; ++k)
+    {
+        const int y = 13 + k * 12;
+        c.fillRect(60, y, 1, 9, d[k].col);
+        c.print(Fonts::Label, 63, y, d[k].id, ink);
+        c.print(Fonts::Label, 127 - FrameCanvas::width(Fonts::Label, d[k].code), y, d[k].code, Rgb{150, 200, 235});
+        c.setClip(63, 127);
+        c.print(Fonts::Label, 63, y + 0, "", soft);
+        c.resetClip();
+        (void)d[k].to;
+    }
+}
+
 int main(int argc, char **argv)
 {
     g_out = argc > 1 ? argv[1] : ".";
@@ -294,5 +469,10 @@ int main(int argc, char **argv)
     board(c, true);    save(c, "mock_board_dep");
     weather(c);        save(c, "mock_weather");
     clock(c);          save(c, "mock_clock");
+    lineup(c, 0);      save(c, "mock8_lineup");
+    lineup(c, 1);      save(c, "mock8_lineup_quiet");
+    origin(c, true);   save(c, "mock8_origin_night");
+    origin(c, false);  save(c, "mock8_origin_day");
+    headings(c);       save(c, "mock8_headings");
     return 0;
 }
