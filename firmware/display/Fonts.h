@@ -32,7 +32,8 @@ struct Font
 extern const Font Label, Medium, Large, Huge;
 
 // Next character of a UTF-8 string as a glyph code: accented Latin letters
-// fold to the plain letter (case kept), the degree sign to 127; returns the
+// fold to the plain letter (case kept), the degree sign to 127, the arrow
+// "→" to '~' (which the Label font draws as an arrow); returns the
 // bytes used (0 at the end).
 inline int next(const char *s, uint8_t &out)
 {
@@ -40,6 +41,7 @@ inline int next(const char *s, uint8_t &out)
     if (!b) return 0;
     if (b < 0x80) { out = b; return 1; }
     if (b == 0xC2 && (uint8_t)s[1] == 0xB0) { out = 127; return 2; }
+    if (b == 0xE2 && (uint8_t)s[1] == 0x86 && (uint8_t)s[2] == 0x92) { out = '~'; return 3; }   // the arrow
     if (b == 0xC3 && s[1])
     {
         const uint8_t raw = (uint8_t)s[1], c = raw & 0xDF;
