@@ -40,6 +40,12 @@ namespace InfoScreens
     };
     static constexpr int kMaxDepartures = 4;
     void renderDepartures(FrameCanvas &c, const Departure *rows, int n, const char *runways, uint32_t shownMs);
+    // Where the recent departures are heading (8.0): a compass round the
+    // airport, a ray along each one's course to its destination (newest
+    // brightest), the flights and destinations beside it. How many have a
+    // destination it can place; under two, nothing is drawn.
+    int departureHeadings(const Departure *rows, int n);
+    void renderHeadings(FrameCanvas &c, const Departure *rows, int n, uint32_t shownMs);
 
     // Up to four arrivals soonest first, plus the weather line at the bottom.
     // shownMs: how long the board has been up (its letters flip into place).

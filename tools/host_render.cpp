@@ -318,14 +318,17 @@ int main(int argc, char **argv)
         g_config.route_cities = false;
         InfoScreens::Departure dep[3];
         const char *dids[] = {"BA283", "AA81", "U2 8061"}, *dd[] = {"LAX", "DFW", "NCE"};
+        const char *dac[] = {"BA", "AA", "U2"};
         for (int i = 0; i < 3; ++i)
         {
+            dep[i].accent = AircraftSprites::airlineColour(dac[i]);
             strcpy(dep[i].ident, dids[i]); strcpy(dep[i].dest, dd[i]); strcpy(dep[i].type, "A320");
             dep[i].at = 1792350900 - i * 120;
         }
         InfoScreens::renderDepartures(c, dep, 3, "27R", 5000);                                save(c, "board_departures");
         g_config.route_cities = true;
         InfoScreens::renderDepartures(c, dep, 3, "27R", 5000);                                save(c, "board_departures_cities");
+        InfoScreens::renderHeadings(c, dep, 3, 5000);                                        save(c, "headings_cities");
         g_config.route_cities = false;
         InfoScreens::renderWeather(c, m, "27L", 2000, Sky::at(m, 1792350900));               save(c, "weather_evening_rain");
         HoldTracker::Row rows[] = {{"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7}};

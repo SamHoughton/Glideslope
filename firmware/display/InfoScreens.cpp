@@ -1,5 +1,6 @@
 #include "display/InfoScreens.h"
 #include "display/Fonts.h"
+#include "display/Font3x5.h"
 #include <math.h>
 #include <time.h>
 #include "config/Airport.h"
@@ -1004,6 +1005,78 @@ void InfoScreens::renderDepartures(FrameCanvas &c, const Departure *rows, int n,
         }
         flapWord(c, kTimeX, y, when, 5, kFlapYellow, shownMs, i * 110 + 350);
     }
+}
+
+namespace
+{
+    // The initial course from the airport to an airport code (IATA or
+    // ICAO), degrees true; false when the code isn't in the table.
+    bool courseTo(const char *code, float &deg)
+    {
+        Airports::Place p;
+        const size_t n = code ? strlen(code) : 0;
+        if (!((n == 3 && Airports::byIata(code, p)) || (n == 4 && Airports::byIcao(code, p)))) return false;
+        const double r = M_PI / 180.0;
+        const double la1 = g_airport.lat * r, la2 = p.lat * r, dlo = (p.lon - g_airport.lon) * r;
+        const double y = sin(dlo) * cos(la2), x = cos(la1) * sin(la2) - sin(la1) * cos(la2) * cos(dlo);
+        deg = (float)fmod(atan2(y, x) / r + 360.0, 360.0);
+        return true;
+    }
+}
+
+int InfoScreens::departureHeadings(const Departure *rows, int n)
+{
+    int k = 0;
+    float d;
+    for (int i = 0; i < n; ++i) k += courseTo(rows[i].dest, d);
+    return k;
+}
+
+void InfoScreens::renderHeadings(FrameCanvas &c, const Departure *rows, int n, uint32_t shownMs)
+{
+    c.clear();
+    titleBand(c, "Departures", "heading for", kDep);
+    const Rgb soft{150, 160, 180}, faint{80, 88, 106};
+    const int cx = 30, cy = 38, r = 22;
+    for (int a = 0; a < 360; a += 10)
+    {
+        const float t = a * (float)M_PI / 180;
+        c.set(cx + (int)lroundf(sinf(t) * r), cy - (int)lroundf(cosf(t) * r), a % 90 == 0 ? soft : Rgb{36, 42, 56});
+    }
+    Font3x5::text(c, cx - 1, cy - r - 6, "N", soft, false);
+    for (int i = -3; i <= 3; ++i) c.set(cx + i, cy, Rgb{150, 150, 160});   // the airport
+
+    // The rays, oldest first so the newest is on top, each drawing outwards.
+    int row = 0;
+    for (int k = min(n, kMaxDepartures) - 1; k >= 0; --k)
+    {
+        float deg;
+        if (!courseTo(rows[k].dest, deg)) continue;
+        const float t = deg * (float)M_PI / 180;
+        const float bright = 1.0f - k * 0.18f;
+        const float grow = min(1.0f, max(0.0f, (shownMs - (min(n, kMaxDepartures) - 1 - k) * 200.0f) / 700.0f));
+        const int len = (int)lroundf((r - 2) * grow);
+        for (int i = 4; i <= len; ++i)
+            c.set(cx + (int)lroundf(sinf(t) * i), cy - (int)lroundf(cosf(t) * i),
+                  FrameCanvas::scale(rows[k].accent, bright * (0.35f + 0.65f * i / r)));
+        if (grow >= 1) c.set(cx + (int)lroundf(sinf(t) * (r - 1)), cy - (int)lroundf(cosf(t) * (r - 1)), Rgb{255, 255, 255});
+    }
+    // Beside it, newest first: the flight and where it is going.
+    for (int k = 0; k < min(n, kMaxDepartures) && row < 4; ++k)
+    {
+        float deg;
+        if (!courseTo(rows[k].dest, deg)) continue;
+        const int y = 13 + row++ * 12;
+        c.fillRect(60, y, 1, 9, rows[k].accent);
+        c.print(Fonts::Label, 63, y, rows[k].ident, kTitle);
+        char place[12];
+        placeFor(rows[k].dest, place, sizeof(place));
+        if (strcmp(place, rows[k].dest) != 0) Fonts::titleCase(place);   // a city, not a code
+        const int w = FrameCanvas::width(Fonts::Label, place);
+        const char *show = w <= 30 ? place : rows[k].dest;
+        c.print(Fonts::Label, FrameCanvas::W - 1 - FrameCanvas::width(Fonts::Label, show), y, show, Rgb{150, 200, 235});
+    }
+    (void)faint;
 }
 
 void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runway, unsigned long nowMs,

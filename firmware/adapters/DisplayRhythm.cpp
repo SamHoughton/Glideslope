@@ -577,8 +577,12 @@ void NeoMatrixDisplay::nextScreen()
 
 unsigned long NeoMatrixDisplay::screenDwellMs(Screen s) const
 {
-    if (s == Screen::Arrivals && departuresPage() && _arrivalCount > 0)
-        return 2 * kScreenDwellMs - 2000;   // arrivals page, then departures
+    if (s == Screen::Arrivals && departuresPage())
+    {
+        // Arrivals, then departures, then where they are heading.
+        const int pages = (_arrivalCount > 0) + 1 + (InfoScreens::departureHeadings(_departures, _departureCount) >= 2);
+        return pages * (kScreenDwellMs - 1000);
+    }
     if (s == Screen::Stats) return kScreenDwellMs + (statsPages() - 1) * kStatsPageMs;
     return s == Screen::Map ? kMapDwellMs : kScreenDwellMs;
 }
@@ -646,6 +650,12 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
             const uint32_t shown = shownFor(s, now);
             const uint32_t half = kScreenDwellMs - 1000;
             const bool dep = departuresPage() && (_arrivalCount == 0 || shown >= half);
+            const uint32_t depStart = _arrivalCount ? half : 0;
+            if (dep && shown >= depStart + half && InfoScreens::departureHeadings(_departures, _departureCount) >= 2)
+            {
+                InfoScreens::renderHeadings(g_workFrame, _departures, _departureCount, shown - depStart - half);
+                return;
+            }
             if (dep)
             {
                 char rw[12];
