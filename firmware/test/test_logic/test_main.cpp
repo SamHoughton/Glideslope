@@ -89,6 +89,7 @@ void test_metar_uk()
     TEST_ASSERT_EQUAL(9999, m.visM);
     TEST_ASSERT_EQUAL(17, m.tempC);
     TEST_ASSERT_EQUAL(1019, m.qnh);
+    TEST_ASSERT_EQUAL_STRING("EGLL", m.station);   // which airport the report is from (8.0)
     TEST_ASSERT_EQUAL_STRING("-RA", m.wx);
     char line[40];
     Weather::friendly(m, line, sizeof(line));
@@ -397,6 +398,27 @@ void test_fuzz_parsers()
 }
 
 // The offline airport table: lookups both ways, cities, short forms.
+void test_airport_time_zones()
+{
+    struct Case { const char *code; time_t t; int minutes; };
+    const time_t oct = 1792350900;   // 18 Oct 2026, 19:15 UTC
+    const time_t jan = 1798761600;   // 1 Jan 2027, 00:00 UTC
+    const Case cases[] = {
+        {"LHR", oct, 60},   {"LHR", jan, 0},     // BST until 25 Oct
+        {"DXB", oct, 240},  {"DXB", jan, 240},   // no daylight saving
+        {"JFK", oct, -240}, {"JFK", jan, -300},  // EDT until 1 Nov
+        {"SYD", oct, 660},  {"SYD", jan, 660},   // AEDT from 4 Oct
+        {"AKL", oct, 780},  {"AKL", jan, 780},   // NZDT from 27 Sep
+        {"GRU", oct, -180}, {"DEL", oct, 330},   // Brazil no longer changes; India +5:30
+    };
+    for (const Case &k : cases)
+    {
+        Airports::Place p;
+        TEST_ASSERT_TRUE_MESSAGE(Airports::byIata(k.code, p), k.code);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(k.minutes, Airports::utcOffsetMinutes(p, k.t), k.code);
+    }
+}
+
 void test_airport_cities()
 {
     Airports::Place p;
@@ -611,6 +633,7 @@ int main(int, char **)
     RUN_TEST(test_overhead_skips_arrivals);
     RUN_TEST(test_seen_log);
     RUN_TEST(test_spotter_log);
+    RUN_TEST(test_airport_time_zones);
     RUN_TEST(test_http_request);
     return UNITY_END();
 }

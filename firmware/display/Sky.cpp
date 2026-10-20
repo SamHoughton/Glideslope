@@ -121,6 +121,18 @@ float Sky::sunElevation(double lat, double lon, time_t t)
     return (float)(el / rad);
 }
 
+Sky::Look Sky::atPlace(const Metar &m, time_t t, double lat, double lon)
+{
+    Look l;
+    if (t < 1600000000) return l;
+    l.known = true;
+    l.sunElev = sunElevation(lat, lon, t);
+    readWeather(m, l);
+    l.frost = (m.valid && m.tempC != -99 && m.tempC <= 0) || l.precip == Snow;
+    finish(l);
+    return l;
+}
+
 Sky::Look Sky::at(const Metar &m, time_t t)
 {
     Look l;

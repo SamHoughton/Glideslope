@@ -85,6 +85,7 @@ static String g_wifiPass;                   // active password
 static Metar  g_metar;                      // Heathrow weather, refreshed every few minutes
 static unsigned long g_lastMetarMs = 0;
 static constexpr unsigned long kMetarEveryMs = 10UL * 60 * 1000;
+static char g_originIds[24] = "";   // where the next arrivals came from, for the weather fetch
 
 // Emergency squawks: 7500 unlawful interference, 7600 radio failure, 7700
 // general emergency. Returns the panel wording, or nullptr for any other code.
@@ -430,6 +431,21 @@ static void updateArrivals(const std::vector<StateVector> &states, const std::ve
     std::sort(rows, rows + n, [](const InfoScreens::Arrival &x, const InfoScreens::Arrival &y) {
         return x.etaSec < y.etaSec;
     });
+    // The weather fetch asks for where the next few came from as well (8.0).
+    {
+        char ids[sizeof(g_originIds)] = "";
+        int k = 0;
+        for (int i = 0; i < n && k < 4; ++i)
+        {
+            Airports::Place p;
+            const size_t len = strlen(rows[i].from);
+            if (!((len == 3 && Airports::byIata(rows[i].from, p)) || (len == 4 && Airports::byIcao(rows[i].from, p)))) continue;
+            if (strcmp(p.icao, g_airport.icao) == 0 || strstr(ids, p.icao)) continue;
+            if (k++) strlcat(ids, ",", sizeof(ids));
+            strlcat(ids, p.icao, sizeof(ids));
+        }
+        strlcpy(g_originIds, ids, sizeof(g_originIds));
+    }
     g_display.setArrivals(rows, n);
     strlcpy(g_ha.next, n ? rows[0].ident : "", sizeof(g_ha.next));
     g_ha.nextEtaSec = n ? (int)lroundf(rows[0].etaSec) : -1;
@@ -915,7 +931,8 @@ void loop()
         {
             NetBusy busy;
             StageTrace::mark(StageTrace::Main, StageTrace::MainWeather);
-            gotWeather = tlsAffordable("weather") && Weather::fetch(m);
+            gotWeather = tlsAffordable("weather") &&
+                         Weather::fetch(m, g_originIds, [](const Metar &o) { g_display.setOriginWeather(o); });
         }
         heapCheckpoint("weather fetch");
         if (gotWeather)

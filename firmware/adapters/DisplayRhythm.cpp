@@ -4,6 +4,7 @@ scenes first, then the card or the rotation), the rotation of screens, and
 the pages on final. Part of NeoMatrixDisplay (see NeoMatrixDisplay.cpp).
 */
 #include "adapters/DisplayInternal.h"
+#include "config/Airports.h"
 #include "display/LineupScreen.h"
 
 bool NeoMatrixDisplay::departuresPage() const
@@ -439,7 +440,7 @@ uint8_t NeoMatrixDisplay::storyPage(unsigned long now, uint32_t &pageMs)
     if (isnan(eta)) return 0;
     constexpr uint32_t kCard = 12000, kPage = 7000, kSlot = kCard + kPage;
     constexpr float kCutoffSec = 40;
-    uint8_t pages[3];
+    uint8_t pages[4];
     int np = 0;
     if (_globe.valid && strcmp(_globe.ident, (_current.flight.ident_iata.length() ?
                                               _current.flight.ident_iata : _current.flight.ident).c_str()) == 0)
@@ -448,6 +449,11 @@ uint8_t NeoMatrixDisplay::storyPage(unsigned long now, uint32_t &pageMs)
     {
         LineupScreen::Plane p[LineupScreen::kMax];
         if (LineupScreen::collect(_traffic, now, p) >= 2) pages[np++] = 3;
+    }
+    {
+        // Where it came from: an origin far enough away to be worth it.
+        Airports::Place from;
+        if (Airports::find(_current.flight.origin, from) && strcmp(from.icao, g_airport.icao) != 0) pages[np++] = 4;
     }
     pages[np++] = 2;
     const uint32_t t = now - _shownSinceMs;
@@ -482,6 +488,17 @@ void NeoMatrixDisplay::renderHeld(unsigned long now)
         const float eta = entryEta(_current, now);
         InfoScreens::renderAircraft(g_workFrame, _current.flight, _current.accent, isnan(eta) ? -1 : eta,
                                     _current.runway, pageMs);
+    }
+    else if (page == 4)
+    {
+        const float eta = entryEta(_current, now);
+        Metar wx;
+        const String &code = _current.flight.origin.code_icao;
+        const bool have = code.length() && originMetar(code.c_str(), wx);
+        if (!InfoScreens::renderOrigin(g_workFrame, _current.flight, have ? &wx : nullptr, isnan(eta) ? -1 : eta,
+                                       _current.runway, pageMs))
+            InfoScreens::renderAircraft(g_workFrame, _current.flight, _current.accent, isnan(eta) ? -1 : eta,
+                                        _current.runway, pageMs);
     }
     else if (page == 3)
     {

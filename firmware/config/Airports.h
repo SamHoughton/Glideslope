@@ -16,6 +16,7 @@ struct Place
     char        iata[4];
     float       lat, lon;
     const char *city;   // in flash, never null once found
+    uint16_t    index;  // in the table (for its time zone)
 };
 
 bool byIcao(const char *icao, Place &out);
@@ -28,6 +29,9 @@ const char *city(const char *code);   // IATA (3 letters) or ICAO (4)
 // The city in at most maxChars characters, for narrow columns: as it is,
 // else without spaces (NEWYORK), else cut. False when not in the table.
 bool shortCity(const char *code, size_t maxChars, char *out, size_t len);
+// The airport's offset from UTC at Unix time t, in minutes, with its
+// daylight saving (config/AirportTz.h, tools/gen_timezones.py).
+int utcOffsetMinutes(const Place &p, time_t t);
 // Fills outIata (3 characters + '\0'); false (and "") when not found.
 bool icaoToIata(const char *icao, char outIata[4]);
 }

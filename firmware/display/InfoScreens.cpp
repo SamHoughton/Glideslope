@@ -321,6 +321,132 @@ void InfoScreens::renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent
     if (from[0]) c.print(Fonts::Label, 3, 53, from, kTitle);
 }
 
+bool InfoScreens::renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar *wx, float etaSec, const char *runway,
+                               uint32_t shownMs)
+{
+    Airports::Place from;
+    if (!Airports::find(f.origin, from)) return false;
+    // The great-circle distance from there to here.
+    const double rad = M_PI / 180.0;
+    const double la1 = from.lat * rad, la2 = g_airport.lat * rad, dlo = (g_airport.lon - from.lon) * rad;
+    const double h = sin((la2 - la1) / 2) * sin((la2 - la1) / 2) + cos(la1) * cos(la2) * sin(dlo / 2) * sin(dlo / 2);
+    const float km = (float)(12742.0 * asin(sqrt(h)));
+    if (km < 150) return false;
+
+    c.clear();
+    const time_t now = time(nullptr);
+    Metar none;
+    const Metar &m = wx ? *wx : none;
+    const Sky::Look sky = Sky::atPlace(m, now, from.lat, from.lon);
+
+    // Left: the sky there, as it is now, its temperature on it.
+    constexpr int kW = 52, kGround = 56;
+    for (int y = 0; y < kGround; ++y)
+    {
+        const Rgb col = mixRgb(sky.top, sky.horizon, (float)y / kGround);
+        for (int x = 0; x < kW; ++x) c.set(x, y, col);
+    }
+    if (sky.night > 0.5f)
+    {
+        static const int8_t kStars[][2] = {{6, 6}, {18, 12}, {33, 4}, {44, 15}, {9, 22}, {40, 27}, {25, 19}, {3, 31}, {47, 37}};
+        if (sky.cloud < 2)
+            for (int i = 0; i < 9; ++i)
+            {
+                const float tw = 0.5f + 0.5f * sinf(shownMs / 400.0f + i * 1.7f);
+                c.set(kStars[i][0], kStars[i][1], FrameCanvas::scale(Rgb{210, 215, 230}, 0.4f + 0.6f * tw * sky.night));
+            }
+        Sky::drawMoon(c, 40, 9, 3.6f, Sky::moonPhase(now), Rgb{235, 230, 200});
+    }
+    else if (sky.cloud < 3)
+    {
+        const int sy = 8 + (int)lroundf((1 - min(1.0f, max(0.0f, sky.sunElev / 50.0f))) * 30);   // lower as it sets
+        const Rgb sun = sky.golden > 0.3f ? Rgb{255, 190, 110} : Rgb{255, 240, 170};
+        for (int dy = -4; dy <= 4; ++dy)
+            for (int dx = -4; dx <= 4; ++dx)
+                if (dx * dx + dy * dy <= 14) c.set(40 + dx, sy + dy, sun);
+    }
+    if (sky.cloud >= 1)
+    {
+        const Rgb cloud = FrameCanvas::scale(Rgb{205, 210, 220}, 1.0f - 0.7f * sky.night);
+        const int puffs = sky.cloud == 1 ? 1 : sky.cloud == 2 ? 2 : 4;
+        for (int p = 0; p < puffs; ++p)
+        {
+            const int cx = 8 + p * 13 + (int)((shownMs / 300 + p * 7) % 6), cy = 12 + (p % 2) * 9;
+            for (int dy = -2; dy <= 2; ++dy)
+                for (int dx = -6; dx <= 6; ++dx)
+                    if (dx * dx / 4 + dy * dy * 2 <= 9 && cx + dx < kW) c.set(cx + dx, cy + dy, cloud);
+        }
+    }
+    c.setClip(0, kW - 1);
+    Sky::drawWeather(c, sky, shownMs, 0, kW - 1);
+    c.resetClip();
+    c.fillRect(0, kGround, kW, FrameCanvas::H - kGround, Sky::shade(sky, Rgb{30, 34, 44}));
+    if (m.valid && m.tempC != -99)
+    {
+        char t[10];
+        snprintf(t, sizeof(t), "%d\xC2\xB0", m.tempC);
+        c.print(Fonts::Huge, 5, 33, t, Rgb{0, 0, 0});
+        c.print(Fonts::Huge, 4, 32, t, m.tempC <= 0 ? Rgb{150, 200, 255} : m.tempC >= 30 ? Rgb{255, 170, 90} : kTitle);
+    }
+    for (int y = 0; y < FrameCanvas::H; ++y) c.set(kW, y, Rgb{0, 0, 0});
+
+    // Right: the place, its time and weather, the journey.
+    const Rgb soft{150, 160, 180}, faint{80, 88, 106};
+    constexpr int kX = 56;
+    c.setClip(kX, FrameCanvas::W - 1);
+    c.print(Fonts::Label, kX, 1, "From", faint);
+    const Fonts::Font &big = FrameCanvas::width(Fonts::Medium, from.city) <= FrameCanvas::W - kX ? Fonts::Medium : Fonts::Label;
+    c.print(big, kX, &big == &Fonts::Medium ? 10 : 12, from.city, kTitle);
+    if (now > 1600000000)
+    {
+        const time_t there = now + Airports::utcOffsetMinutes(from, now) * 60L;
+        struct tm lt;
+        gmtime_r(&there, &lt);
+        char line[20];
+        snprintf(line, sizeof(line), "%02d:%02d there", lt.tm_hour, lt.tm_min);
+        c.print(Fonts::Label, kX, 23, line, soft);
+    }
+    {
+        char words[24] = "";
+        if (m.valid) Weather::describe(m.wx, words, sizeof(words));
+        if (!words[0] && m.valid)
+        {
+            static const char *const kCloud[] = {"Clear", "Fair", "Cloudy", "Overcast"};
+            snprintf(words, sizeof(words), "%s", kCloud[min(3, (int)sky.cloud)]);
+            if (sky.cloud == 0 && sky.night > 0.7f) strlcat(words, " night", sizeof(words));
+        }
+        if (words[0])
+        {
+            words[0] = (char)toupper((unsigned char)words[0]);
+            c.print(Fonts::Label, kX, 32, words, soft);
+        }
+    }
+    for (int x = kX; x < FrameCanvas::W - 2; x += 2) c.set(x, 42, Rgb{40, 46, 60});
+    // Roughly how long it has been flying: the distance at a typical
+    // average for the trip, plus half an hour for taxi, climb and descent.
+    const int mins = (int)lroundf(km / (km > 3000 ? 830.0f : 700.0f) * 60.0f + 30.0f);
+    char dur[12];
+    snprintf(dur, sizeof(dur), "~%d:%02d", mins / 60, (mins / 5 * 5) % 60);
+    int x = kX;
+    x += c.print(Fonts::Medium, x, 45, dur, kValue) + 4;
+    c.print(Fonts::Label, x, 47, "flying", faint);
+    char dist[16];
+    const int k = (int)lroundf(km / 10.0f) * 10;
+    if (k >= 1000) snprintf(dist, sizeof(dist), "%d,%03d km", k / 1000, k % 1000);
+    else           snprintf(dist, sizeof(dist), "%d km", k);
+    c.print(Fonts::Label, kX, 56, dist, kTitle);
+    if (etaSec >= 0)
+    {
+        char eta[16];
+        const int s2 = (int)lroundf(etaSec);
+        snprintf(eta, sizeof(eta), "%d:%02d", s2 / 60, s2 % 60);   // the countdown, kept in sight
+        c.print(Fonts::Label, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, eta), 56, eta, kValue);
+    }
+    (void)runway;
+    c.resetClip();
+    return true;
+}
+
 // The day's busiest airlines: code and a bar in the airline's colour, growing in.
 void InfoScreens::renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs)
 {

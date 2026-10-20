@@ -277,6 +277,19 @@ int main(int argc, char **argv)
             o.animMs = 1200;
             CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{120, 60, 200}, o);   save(c, "card_max_freighter");
         }
+        {
+            // 8.0: where it came from. Dubai, at night there; New York, an afternoon of showers.
+            FlightInfo g = f;
+            g.origin.code_iata = "DXB"; g.origin.code_icao = "OMDB";
+            g.ident_iata = "EK1"; g.ident = "UAE1";
+            Metar wx;
+            Weather::parse("METAR OMDB 181900Z 33008KT CAVOK 27/14 Q1010", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 95, "27L", 3000);                       save(c, "origin_dubai");
+            g.origin.code_iata = "JFK"; g.origin.code_icao = "KJFK";
+            Weather::parse("METAR KJFK 181851Z 21014KT 8SM -SHRA BKN035 OVC060 18/12 A2998", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 140, "27L", 3000);                      save(c, "origin_jfk");
+            InfoScreens::renderOrigin(c, g, nullptr, 140, "27L", 3000);                  save(c, "origin_no_weather");
+        }
         o.landed = true; o.landedAt = 1792350600; o.animMs = 1200;
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_landed");
     }

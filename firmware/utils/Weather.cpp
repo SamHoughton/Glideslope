@@ -59,6 +59,12 @@ bool Weather::parse(const char *raw, Metar &m)
     char *save = nullptr;
     for (char *t = strtok_r(buf, " \r\n", &save); t; t = strtok_r(nullptr, " \r\n", &save))
     {
+        if (!m.station[0] && !haveWind && strlen(t) == 4 && isalpha((unsigned char)t[0]) &&
+            isalpha((unsigned char)t[1]) && isalnum((unsigned char)t[2]) && isalnum((unsigned char)t[3]))
+        {
+            strlcpy(m.station, t, sizeof(m.station));
+            continue;
+        }
         if (!haveWind) { haveWind = parseWind(t, m); continue; }
         if (strcmp(t, "CAVOK") == 0) { m.cavok = true; m.visM = 9999; strlcpy(m.visText, "CAVOK", sizeof(m.visText)); continue; }
         if (m.visM < 0 && strlen(t) == 4 && allDigits(t, 4))
@@ -108,12 +114,14 @@ bool Weather::parse(const char *raw, Metar &m)
 }
 
 #ifndef NATIVE_TEST
-bool Weather::fetch(Metar &out)
+bool Weather::fetch(Metar &out, const char *others, void (*onOther)(const Metar &))
 {
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
-    const String url = String("https://aviationweather.gov/api/data/metar?ids=") + g_airport.icao + "&format=raw";
+    String url = String("https://aviationweather.gov/api/data/metar?ids=") + g_airport.icao;
+    if (others && others[0]) { url += ","; url += others; }
+    url += "&format=raw";
     if (!http.begin(client, url))
         return false;
     http.setTimeout(6000);
@@ -129,9 +137,25 @@ bool Weather::fetch(Metar &out)
     String body = http.getString();
     http.end();
     body.trim();
-    if (!parse(body.c_str(), out))
+    // One report a line: ours, and any others asked for.
+    bool ours = false;
+    int start = 0;
+    while (start < (int)body.length())
     {
-        Log.printf("Weather: could not read \"%s\"\n", body.c_str());
+        int end = body.indexOf((char)10, start);   // a newline
+        if (end < 0) end = body.length();
+        String line = body.substring(start, end);
+        line.trim();
+        start = end + 1;
+        if (!line.length()) continue;
+        Metar m;
+        if (!parse(line.c_str(), m)) continue;
+        if (!m.station[0] || strcasecmp(m.station, g_airport.icao) == 0) { out = m; ours = true; }
+        else if (onOther) onOther(m);
+    }
+    if (!ours)
+    {
+        Log.printf("Weather: could not read \"%.80s\"\n", body.c_str());
         return false;
     }
     return true;

@@ -49,6 +49,9 @@ namespace Sky
 
     // The look at the airport now (or at time t) with this weather.
     Look at(const Metar &m, time_t t);
+    // The look somewhere else (the other end of a route): its sun, its
+    // weather (m may be invalid), no seasons.
+    Look atPlace(const Metar &m, time_t t, double lat, double lon);
 
     // Forced looks for previews: "day", "golden", "twilight", "night",
     // optionally with "+rain", "+snow", "+storm", "+fog", "+overcast".
