@@ -448,8 +448,35 @@ void LandingScene::render(FrameCanvas &c, uint32_t tMs, const AircraftSprites::S
     if (goAround && tMs > kGoAroundAtMs + 600) gearHidden = min(6, (int)((tMs - kGoAroundAtMs - 600) / 120));
     const bool wet = sky.precip == Sky::Rain || sky.precip == Sky::Thunder;
     const int sx = (int)lroundf(cx - sp.w / 2.0f), sy = (int)lroundf(top);
+    // Flaps: out for the approach and landing; for take-off until the
+    // climb is under way, and on a go-around until it is climbing away.
+    bool flaps = true;
+    if (takeoff && tMs > kLiftOffMs + 1100) flaps = false;
+    if (goAround && tMs > kGoAroundAtMs + 1300) flaps = false;
+    // Heat haze behind the engines at take-off power: the air behind each
+    // exhaust wobbles what is seen through it (before the aircraft is drawn,
+    // so only the background moves).
+    const bool power = (takeoff && tMs > 150) || (goAround && tMs >= kGoAroundAtMs);
+    if (power)
+        for (int r = 0; r < sp.h; ++r)
+        {
+            const char *row = sp.rows[r];
+            int ex = -1;
+            for (int col = sp.w - 1; col > 0; --col)
+                if (row[col] == 'i' && (row[col - 1] == 'e' || row[col - 1] == 'E')) { ex = col; break; }
+            if (ex < 0) continue;
+            const int y = sy + r;
+            for (int dx = 1; dx <= 9; ++dx)
+            {
+                const int px = sx + ex + dx;
+                uint32_t h = (tMs / 70) * 2654435761u + (uint32_t)(px * 131 + y * 977);
+                h ^= h >> 15;
+                const int j = (int)(h % 3) - 1;
+                if (j && dx < 9) c.set(px, y, c.get(px + j, y + (int)((h >> 4) % 3) - 1));
+            }
+        }
     AircraftSprites::draw(c, sp, sx, sy, livery ? *livery : AircraftSprites::Livery(accent), false, greySprite,
-                          false, gearHidden);   // no halo over the sky
+                          false, gearHidden, flaps ? AircraftSprites::Flaps : 0, tMs);   // no halo over the sky
 
     if (wet)
     {

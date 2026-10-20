@@ -197,6 +197,7 @@ int main(int argc, char **argv)
                 const std::string label = iata ? std::string(iata) + (cs.c_str() + 3) : std::string(cs.c_str());
                 strncpy(tp.label, label.c_str(), sizeof(tp.label) - 1);
                 strncpy(tp.type, sv.aircraft_type.c_str(), sizeof(tp.type) - 1);
+                tp.size = AircraftSprites::sizeClass(tp.type);
                 tp.colour = AircraftSprites::airlineColour(icao);
                 pts.push_back(tp);
             }
@@ -239,6 +240,18 @@ int main(int argc, char **argv)
             g.baro_altitude = 160; g.vertical_rate = -700; g.distance_km = 1;
             o.animMs = 361;   // the status at full brightness
             CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{255, 185, 60}, o);   save(c, "card_landing");
+        }
+        {
+            // 7.0 sprites: an A320neo with its beacon lit, a 737 MAX freighter.
+            FlightInfo g = f;
+            g.aircraft_code = "A20N"; g.aircraft_display_name_short = "A320neo";
+            o.animMs = 2050;   // beacon on
+            CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{255, 185, 60}, o);   save(c, "card_neo_beacon");
+            g.aircraft_code = "B38M"; g.aircraft_display_name_short = "737 MAX 8";
+            g.ident = "FDX5"; g.ident_icao = "FDX5"; g.ident_iata = "FX5"; g.airline_display_name_full = "FedEx";
+            g.airline_logo_rgb565.clear();
+            o.animMs = 1200;
+            CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{120, 60, 200}, o);   save(c, "card_max_freighter");
         }
         o.landed = true; o.landedAt = 1792350600; o.animMs = 1200;
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_landed");

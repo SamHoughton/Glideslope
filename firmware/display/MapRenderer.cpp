@@ -60,9 +60,13 @@ namespace
         c.set(x, y, col);
     }
 
-    bool iconLit(const PlaneIcons::Icon &ic, int x, int y)
+    bool iconLit(const PlaneIcons::Icon &ic, int x, int y) { return PlaneIcons::lit(ic, x, y); }
+
+    // The icon for an aircraft: its heading, and its size from the type.
+    const PlaneIcons::Icon &iconFor(const TrafficPoint &p)
     {
-        return x >= 0 && y >= 0 && x < 7 && y < 7 && (ic.rows[y] & (0x40 >> x));
+        return PlaneIcons::forHeading(isnan(p.heading) ? 0.0f : p.heading,
+                                      (PlaneIcons::Size)(p.size <= 2 ? p.size : 1));
     }
 
     // Where an aircraft is now: its last report dead-reckoned along the track.
@@ -84,8 +88,8 @@ namespace
     // Black 1px halo around the icon, so it reads over the river and parks.
     void iconHalo(FrameCanvas &c, int ox, int oy, const PlaneIcons::Icon &ic)
     {
-        for (int y = -1; y <= 7; ++y)
-            for (int x = -1; x <= 7; ++x)
+        for (int y = -1; y <= ic.n; ++y)
+            for (int x = -1; x <= ic.n; ++x)
             {
                 if (iconLit(ic, x, y)) continue;
                 bool near = false;
@@ -98,8 +102,8 @@ namespace
 
     void iconBody(FrameCanvas &c, int ox, int oy, const PlaneIcons::Icon &ic, Rgb col)
     {
-        for (int y = 0; y < 7; ++y)
-            for (int x = 0; x < 7; ++x)
+        for (int y = 0; y < ic.n; ++y)
+            for (int x = 0; x < ic.n; ++x)
                 if (iconLit(ic, x, y))
                     plot(c, ox + x, oy + y, (x == ic.noseX && y == ic.noseY) ? kNose : col);
     }
@@ -177,8 +181,8 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
             if (t.p.onFinal && !blinkOn) continue;
             float x, y;
             position(t, now, x, y);
-            const PlaneIcons::Icon &ic = PlaneIcons::forHeading(isnan(t.p.heading) ? 0.0f : t.p.heading);
-            const int ox = (int)lroundf(x) - 3, oy = (int)lroundf(y) - 3;
+            const PlaneIcons::Icon &ic = iconFor(t.p);
+            const int ox = (int)lroundf(x) - ic.n / 2, oy = (int)lroundf(y) - ic.n / 2;
             if (pass == 0) iconHalo(c, ox, oy, ic);
             else           iconBody(c, ox, oy, ic, t.p.colour);
         }
@@ -237,7 +241,8 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
     {
         float x, y;
         position(t, now, x, y);
-        boxes[nb++] = Box{(int16_t)(lroundf(x) - 3), (int16_t)(lroundf(y) - 3), 7, 7};
+        const int n2 = iconFor(t.p).n;
+        boxes[nb++] = Box{(int16_t)(lroundf(x) - n2 / 2), (int16_t)(lroundf(y) - n2 / 2), (uint8_t)n2, (uint8_t)n2};
     }
     for (int k = 0; k < n; ++k)
     {
@@ -247,7 +252,8 @@ void MapRenderer::render(FrameCanvas &c, const TrafficTracker &traffic, unsigned
         position(t, now, fx, fy);
         const int x = (int)lroundf(fx), y = (int)lroundf(fy);
         const int w = Font3x5::width(t.p.label);
-        const int cand[4][2] = {{x + 5, y - 2}, {x - 5 - w, y - 2}, {x - w / 2, y - 9}, {x - w / 2, y + 5}};
+        const int h = iconFor(t.p).n / 2;   // 2, 3 or 4: labels clear of the icon whatever its size
+        const int cand[4][2] = {{x + h + 2, y - 2}, {x - h - 2 - w, y - 2}, {x - w / 2, y - h - 6}, {x - w / 2, y + h + 2}};
         for (const auto &p : cand)
             if (clear(boxes, nb, p[0], p[1], w + 1, 6))
             {

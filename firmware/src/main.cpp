@@ -31,6 +31,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "core/FlightDataFetcher.h"
 #include "adapters/NeoMatrixDisplay.h"
 #include "display/CardRenderer.h"
+#include "display/AircraftSprites.h"
 #include "display/ApproachModel.h"
 #include "display/RareSpotter.h"
 #include "utils/TelnetLogger.h"
@@ -343,6 +344,7 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
             label.replace(" ", "");   // "U2 73CA" -> "U273CA": the tiny font has no room for gaps
             strlcpy(p.label, label.c_str(), sizeof(p.label));
             strlcpy(p.type, s.aircraft_type.c_str(), sizeof(p.type));
+            p.size = AircraftSprites::sizeClass(p.type);
             p.altFt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
         }
 

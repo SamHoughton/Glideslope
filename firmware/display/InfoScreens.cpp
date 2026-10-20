@@ -278,7 +278,8 @@ void InfoScreens::renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent
     const AircraftSprites::Sprite &sp = AircraftSprites::get(kind);   // card size: clear of the text
     const float in = easeOut(shownMs / 600.0f);
     const int sx = (int)lroundf(-sp.w + (2 + sp.w) * in);
-    AircraftSprites::draw(c, sp, sx, 13 + (19 - sp.h) / 2, AircraftSprites::liveryFor(f, accent), false, !known);
+    AircraftSprites::draw(c, sp, sx, 13 + (19 - sp.h) / 2, AircraftSprites::liveryFor(f, accent), false, !known, false, 0,
+                          AircraftSprites::Lights, shownMs);
 
     // Beside it: type, registration, which visit this is.
     constexpr int kX = 50;

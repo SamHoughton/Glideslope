@@ -13,6 +13,9 @@
 #   'g' wing / tailplane                'G' wing underside, flap
 #   'e' engine cowl (livery engine)     'd' engine rear, gear, dark parts
 #   'p' propeller blur
+# and three the firmware shows only when asked (7.0):
+#   'B' red beacon on top of the fuselage   'S' white strobe at the wingtip
+#   'f' flap extended below the wing (scene size only)
 import math
 import sys
 from PIL import Image, ImageDraw
@@ -24,24 +27,30 @@ from PIL import Image, ImageDraw
 # hump: 747 upper deck (fraction of length) | 0, deck2: A380 full upper deck,
 # ttail: fin-top tailplane, props: propellers on the engines.
 T = {
-    'A320':        dict(L=36, H=6, fin=6, nose='airbus',  eng=[('wing', .38, 3)]),
-    'A321':        dict(L=40, H=6, fin=6, nose='airbus',  eng=[('wing', .38, 3)]),
-    '737':         dict(L=37, H=6, fin=7, nose='boeing',  eng=[('wing', .37, 3)], flat_eng=True),
+    'A320':        dict(L=36, H=6, fin=6, nose='airbus',  eng=[('wing', .38, 3)], winglet='sharklet'),
+    'A321':        dict(L=40, H=6, fin=6, nose='airbus',  eng=[('wing', .38, 3)], winglet='sharklet'),
+    '737':         dict(L=37, H=6, fin=7, nose='boeing',  eng=[('wing', .37, 3)], flat_eng=True, winglet='blended'),
     'A220':        dict(L=32, H=5, fin=6, nose='pointed', eng=[('wing', .38, 3)]),
     'E-Jet':       dict(L=31, H=5, fin=6, nose='pointed', eng=[('wing', .38, 3)]),
     'CRJ':         dict(L=30, H=4, fin=6, nose='pointed', eng=[('rear', .74, 3)], ttail=True),
     '757':         dict(L=42, H=6, fin=7, nose='boeing',  eng=[('wing', .34, 3)]),
     '767':         dict(L=40, H=7, fin=7, nose='boeing',  eng=[('wing', .36, 4)]),
     '787':         dict(L=42, H=7, fin=8, nose='smooth',  eng=[('wing', .36, 4)]),
-    'A330':        dict(L=42, H=7, fin=8, nose='airbus',  eng=[('wing', .36, 4)]),
-    'A350':        dict(L=44, H=8, fin=8, nose='smooth',  eng=[('wing', .35, 4)], mask=True),
+    'A330':        dict(L=42, H=7, fin=8, nose='airbus',  eng=[('wing', .36, 4)], winglet='blended'),
+    'A350':        dict(L=44, H=8, fin=8, nose='smooth',  eng=[('wing', .35, 4)], mask=True, winglet='curved'),
     '777':         dict(L=44, H=8, fin=8, nose='boeing',  eng=[('wing', .35, 5)], blade=True),
-    'A340':        dict(L=44, H=7, fin=8, nose='airbus',  eng=[('wing', .30, 3), ('wing', .45, 3)]),
+    'A340':        dict(L=44, H=7, fin=8, nose='airbus',  eng=[('wing', .30, 3), ('wing', .45, 3)], winglet='blended'),
     '747':         dict(L=44, H=8, fin=8, nose='boeing',  eng=[('wing', .32, 3), ('wing', .46, 3)], hump=.38),
     'A380':        dict(L=44, H=10, fin=8, nose='airbus', eng=[('wing', .32, 3), ('wing', .46, 3)], deck2=True),
     'ATR':         dict(L=30, H=5, fin=6, nose='blunt',   eng=[('wing', .36, 3)], wing='high', props=True, ttail=True),
     'Q400':        dict(L=33, H=5, fin=7, nose='pointed', eng=[('wing', .36, 3)], wing='high', props=True, ttail=True),
     'Bizjet':      dict(L=25, H=4, fin=5, nose='pointed', eng=[('rear', .70, 3)], ttail=True),
+    # 7.0: variants told apart by their engines and wingtips.
+    'A319':        dict(L=33, H=6, fin=6, nose='airbus',  eng=[('wing', .40, 3)], winglet='sharklet'),
+    'A320neo':     dict(L=36, H=6, fin=6, nose='airbus',  eng=[('wing', .37, 4)], winglet='sharklet', big_eng=True),
+    'A321neo':     dict(L=40, H=6, fin=6, nose='airbus',  eng=[('wing', .37, 4)], winglet='sharklet', big_eng=True),
+    '737 MAX':     dict(L=38, H=6, fin=7, nose='boeing',  eng=[('wing', .36, 4)], winglet='split', big_eng=True, cone='pointed'),
+    '777X':        dict(L=44, H=8, fin=8, nose='boeing',  eng=[('wing', .34, 5)], blade=True, big_eng=True, winglet='folding'),
 }
 
 def build(t, scale=1.0, gear=False):
@@ -80,8 +89,8 @@ def build(t, scale=1.0, gear=False):
         if x > L - tl:
             u = (x - (L - tl)) / tl
             # Upswept underside to a blunt tail cone about a third of the height.
-            bot = bot0 - (H * .62) * (u ** 1.3)
-            top = top0 + (0.2 if p.get('blade') else H * .08) * u * u
+            bot = bot0 - (H * (.7 if p.get('cone') == 'pointed' else .62)) * (u ** 1.3)
+            top = top0 + (0.2 if p.get('blade') else H * (.16 if p.get('cone') == 'pointed' else .08)) * u * u
         if hump:
             hx = L * hump
             lift = 2.2 * scale
@@ -179,6 +188,33 @@ def build(t, scale=1.0, gear=False):
             if w0 + 1 <= x <= w1 - 1:
                 put(x, yb + 1, 'g' if x < (w0 + w1) // 2 else 'G')  # wing, darker aft
 
+    # Beacon: a point on top of the fuselage over the wing.
+    bx = int(L * .5)
+    btop, _ = outline(bx + .5)
+    put(bx, iy(btop) - 1, 'B', over=False)
+
+    # Winglet: the near wingtip's fin standing up in front of the belly,
+    # aft along the wing; the strobe on its tip.
+    wl = p.get('winglet')
+    if wl and p.get('wing') != 'high':
+        tx = w1 + max(1, round(scale))
+        _, bot = outline(tx + .5)
+        base = iy(bot) + 1
+        up = {'sharklet': 3, 'blended': 3, 'curved': 3, 'split': 3, 'folding': 2}[wl] + (1 if scale > 1.2 else 0)
+        for i in range(up): put(tx + (1 if (wl == 'curved' and i == up - 1) else 0), base - i, 'g' if i < up - 1 else 'G')
+        if wl == 'split': put(tx, base + 1, 'G')
+        put(tx + (1 if wl == 'curved' else 0), base - up, 'S', over=False)
+    elif p.get('wing') != 'high':
+        _, bot = outline(w1 - .5)
+        put(w1 - 1, iy(bot) + 1, 'S')   # on the wing's own row: no extra height
+
+    # Flaps (scene size): the trailing edge extended down and back.
+    if gear and p.get('wing') != 'high':
+        _, bot = outline((w0 + w1) / 2 + .5)
+        fy = iy(bot) + 2
+        for x in range((w0 + w1) // 2 + 1, w1 + 1): put(x, fy, 'f', over=False)
+        for x in range(w1 - 2, w1 + 2): put(x, fy + 1, 'f', over=False)
+
     # Engines: intake ring, cowl lit on top and shaded underneath, exhaust.
     for kind, fx, size in p['eng']:
         es = max(2, round(size * scale))
@@ -193,7 +229,7 @@ def build(t, scale=1.0, gear=False):
         elif kind == 'wing':
             _, bot = outline(ex + 2.5)
             ey = iy(bot) + 1
-            eh = max(2, round(es * .8))
+            eh = max(2, round(es * (.9 if p.get('big_eng') else .8)))
             elen = es + 2
             for i in range(elen):
                 x = ex + i
@@ -284,7 +320,8 @@ LIV = {
 ALIAS = {'SHT': 'BAW', 'CFE': 'BAW', 'EFW': 'BAW', 'EJU': 'EZY', 'EZS': 'EZY', 'RUK': 'RYR', 'LDM': 'RYR',
          'CLH': 'DLH', 'TFL': 'TOM', 'AMX': 'default'}
 FIXED = {'w': (30, 40, 58), 'c': (18, 24, 40), 'g': (128, 135, 148), 'G': (80, 86, 100),
-         'd': (50, 54, 62), 'p': (130, 135, 145), 'i': (35, 38, 46)}
+         'd': (50, 54, 62), 'p': (130, 135, 145), 'i': (35, 38, 46),
+         'B': (255, 40, 30), 'S': (255, 255, 255), 'f': (100, 106, 120)}
 
 def mixc(a, b, k):
     return tuple(int(a[i] + (b[i] - a[i]) * k) for i in range(3))
@@ -399,6 +436,7 @@ if __name__ == '__main__':
 # Kinds in firmware order (AircraftSprites::Kind), then the two hand-drawn ones.
 KINDS = ['A320', 'A321', '737', 'A220', 'E-Jet', 'CRJ', '757', '767', '787', 'A330', 'A350', '777',
          'A340', '747', 'A380', 'ATR', 'Q400', 'Bizjet']
+KINDS_7 = ['A319', 'A320neo', 'A321neo', '737 MAX', '777X']   # after Helicopter and LightAircraft
 CARD_MAX, SCENE_MAX = (44, 17), (58, 26)
 
 def fit(t, box, base, gear):
@@ -443,6 +481,10 @@ def emit_header(path):
     for nm, rows in (('Helicopter', heli), ('Light aircraft', light)):
         w, h = arr(f'kCard{c_ident(nm)}', rows)
         card.append((nm, f'kCard{c_ident(nm)}', w, h)); scene.append((nm, f'kCard{c_ident(nm)}', w, h))
+    for t in KINDS_7:
+        cw, ch = arr(f'kCard{c_ident(t)}', fit(t, CARD_MAX, 1.0, False))
+        sw, sh = arr(f'kScene{c_ident(t)}', fit(t, SCENE_MAX, 1.25, True))
+        card.append((t, f'kCard{c_ident(t)}', cw, ch)); scene.append((t, f'kScene{c_ident(t)}', sw, sh))
     out.append('')
     out.append('    struct Entry { const char *name; uint8_t w, h; const char *const *rows; };')
     out.append('    const Entry kCard[] = {')

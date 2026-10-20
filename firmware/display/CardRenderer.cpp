@@ -224,14 +224,15 @@ namespace
         c.print(font, x0 + (n - FrameCanvas::width(font, shortCode)) / 2, y0 + (n - font.cap) / 2, shortCode, kWhite);
     }
 
-    void drawSprite(FrameCanvas &c, const FlightInfo &f, Rgb accent, bool faceRight)
+    void drawSprite(FrameCanvas &c, const FlightInfo &f, Rgb accent, bool faceRight, uint32_t animMs)
     {
         bool known = false;
         const AircraftSprites::Kind kind = AircraftSprites::classify(f.aircraft_code, known);
         const AircraftSprites::Sprite &sp = AircraftSprites::get(kind);
         const int x = kLeftX + (kLeftW - sp.w) / 2;
         const int y = kSpriteY0 + (kSpriteY1 - kSpriteY0 + 1 - sp.h) / 2;
-        AircraftSprites::draw(c, sp, x, y, AircraftSprites::liveryFor(f, accent), faceRight, !known);
+        AircraftSprites::draw(c, sp, x, y, AircraftSprites::liveryFor(f, accent), faceRight, !known, false, 0,
+                              AircraftSprites::Lights, animMs);
     }
 
     // The approach along the bottom: a 3-degree glide path seen from the side,
@@ -353,7 +354,7 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
 
     // ── Left column: logo and aircraft ───────────────────────────────────────
     drawLogoTile(c, f, accent, opt.animMs);
-    drawSprite(c, f, accent, opt.spriteRight);
+    drawSprite(c, f, accent, opt.spriteRight, opt.animMs);
 
     // ── Right column ─────────────────────────────────────────────────────────
     // All text goes through fixed buffers: drawing a frame allocates nothing.

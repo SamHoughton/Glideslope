@@ -36,13 +36,14 @@ namespace
         {"MD11", K::A330, false}, {"DC10", K::A330, false},
         {"IL96", K::A340, false},
         // Narrowbodies (A318/A319 before the A31 widebody prefix catches them)
-        {"A318", K::A320, false}, {"A319", K::A320, false},
+        {"A318", K::A319, false}, {"A319", K::A319, false},
         {"A320", K::A320, false}, {"A321", K::A321, false},
-        {"A32",  K::A320, true},  {"A19N", K::A320, false},
-        {"A20N", K::A320, false}, {"A21N", K::A321, false},
-        {"B73",  K::B737, true},  {"B37M", K::B737, false},
-        {"B38M", K::B737, false}, {"B39M", K::B737, false},
-        {"B3XM", K::B737, false}, {"B75",  K::B757, true},
+        {"A32",  K::A320, true},  {"A19N", K::A319, false},
+        {"A20N", K::A320neo, false}, {"A21N", K::A321neo, false},
+        {"B73",  K::B737, true},  {"B37M", K::B737Max, false},
+        {"B38M", K::B737Max, false}, {"B39M", K::B737Max, false},
+        {"B3XM", K::B737Max, false}, {"B75",  K::B757, true},
+        {"B778", K::B777X, false}, {"B779", K::B777X, false},
         {"B712", K::CRJ, false},  {"BCS",  K::A220, true},
         {"MD8",  K::CRJ, true},   {"MD90", K::CRJ, false},
         {"C919", K::A320, false},
@@ -138,7 +139,7 @@ namespace
             case 'd': out = kGear;     return true;
             case 'p': out = kProp;     return true;
             case 'i': out = kIntake;   return true;
-            default:  return false;
+            default:  return false;   // 'B' beacon, 'S' strobe, 'f' flap: see draw()
         }
     }
 
@@ -190,6 +191,23 @@ Rgb AircraftSprites::airlineColour(const char *code)
     return kPalette[h % (sizeof(kPalette) / sizeof(kPalette[0]))];
 }
 
+namespace
+{
+    // Cargo airlines (ICAO call-sign prefixes): their aircraft fly without
+    // cabin windows.
+    bool isCargo(const char *code)
+    {
+        static const char kCargo[][4] = {
+            "FDX", "UPS", "GTI", "CLX", "BCS", "DHK", "DHX", "ABW", "CKS", "BOX", "GEC", "MPH",
+            "CAO", "ICV", "AJT", "ATN", "ABR", "TAY", "SWN", "NCA", "CKK", "SQC", "CSG", "LCO",
+            "KYE", "PAC", "QAJ", "MSX", "AHK", "TPA", "EIA", "WGN", "CVU", "BOS", "RCF", "SRR",
+        };
+        if (!code || !code[0]) return false;
+        for (const auto &k : kCargo) if (strcmp(k, code) == 0) return true;
+        return false;
+    }
+}
+
 AircraftSprites::Livery AircraftSprites::liveryFor(const FlightInfo &f, Rgb accent)
 {
     // The airline actually flying it: the call sign's ICAO prefix first.
@@ -212,17 +230,39 @@ AircraftSprites::Livery AircraftSprites::liveryFor(const FlightInfo &f, Rgb acce
                 Livery l;
                 Rgb *parts[] = {&l.body, &l.belly, &l.stripe, &l.tail, &l.accent, &l.engine};
                 for (int i = 0; i < 6; ++i) *parts[i] = Rgb{r.rgb[i][0], r.rgb[i][1], r.rgb[i][2]};
+                l.freighter = isCargo(codes[0]);
                 return l;
             }
     }
-    return Livery(accent);
+    Livery l(accent);
+    l.freighter = isCargo(codes[0]);
+    return l;
 }
 AircraftSprites::Kind AircraftSprites::classify(const String &icaoType, bool &known)
+{
+    return classify(icaoType.c_str(), known);
+}
+
+uint8_t AircraftSprites::sizeClass(const char *icaoType)
+{
+    bool known = false;
+    switch (classify(icaoType, known))
+    {
+        case B767: case B787: case A330: case A350: case B777: case B777X: case A340: case B747: case A380:
+            return 2;
+        case EJet: case CRJ: case ATR: case Q400: case Bizjet: case Helicopter: case LightAircraft:
+            return known ? 0 : 1;
+        default:
+            return 1;
+    }
+}
+
+AircraftSprites::Kind AircraftSprites::classify(const char *icaoType, bool &known)
 {
     // Trimmed, upper-cased copy in a stack buffer (called every frame).
     char code[8];
     size_t n = 0;
-    for (size_t i = 0; i < icaoType.length() && n + 1 < sizeof(code); ++i)
+    for (size_t i = 0; icaoType && icaoType[i] && n + 1 < sizeof(code); ++i)
         if (!isspace((unsigned char)icaoType[i])) code[n++] = (char)toupper((unsigned char)icaoType[i]);
     code[n] = '\0';
     // Exact matches win over prefixes, so A318/A319 aren't caught by "A31".
@@ -235,8 +275,13 @@ AircraftSprites::Kind AircraftSprites::classify(const String &icaoType, bool &kn
 }
 
 void AircraftSprites::draw(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,
-                           bool flipX, bool grey, bool outline, int gearHidden)
+                           bool flipX, bool grey, bool outline, int gearHidden, uint8_t extras, uint32_t animMs)
 {
+    // The anti-collision beacon flashes red about once a second; the
+    // wingtip strobe double-flashes white, out of step with it.
+    const bool beacon = (extras & Lights) && animMs % 1000 < 90;
+    const uint32_t st = (animMs + 500) % 1300;
+    const bool strobe = (extras & Lights) && (st < 45 || (st >= 140 && st < 185));
     auto at = [&](int r, int col) -> char {
         if (r < 0 || r >= s.h || col < 0 || col >= s.w) return '.';
         return s.rows[r][flipX ? s.w - 1 - col : col];
@@ -266,8 +311,24 @@ void AircraftSprites::draw(FrameCanvas &c, const Sprite &s, int x, int y, const 
         for (int col = 0; col < s.w; ++col)
         {
             Rgb px;
-            if (gearHidden > 0 && at(r, col) == 'd' && r >= s.h - gearHidden) continue;   // tucked up
-            if (!shade(at(r, col), grey ? greys : livery, px)) continue;
+            char ch0 = at(r, col);
+            if (gearHidden > 0 && ch0 == 'd' && r >= s.h - gearHidden) continue;   // tucked up
+            if (ch0 == 'B' || ch0 == 'S')
+            {
+                if (ch0 == 'B' ? beacon : strobe)
+                {
+                    c.set(x + col, y + r, ch0 == 'B' ? Rgb{255, 40, 30} : Rgb{255, 255, 255});
+                    if (ch0 == 'B') c.set(x + col, y + r + 1, Rgb{255, 110, 90});   // the glow on the skin
+                }
+                continue;
+            }
+            if (ch0 == 'f')
+            {
+                if (extras & Flaps) c.set(x + col, y + r, grey ? Rgb{90, 90, 96} : Rgb{100, 106, 120});
+                continue;
+            }
+            if (ch0 == 'w' && livery.freighter && !grey) ch0 = '#';   // freighters have no windows
+            if (!shade(ch0, grey ? greys : livery, px)) continue;
             if (grey)
             {
                 const uint8_t v = (uint8_t)((px.r * 3 + px.g * 4 + px.b) / 8 * 0.75f);
