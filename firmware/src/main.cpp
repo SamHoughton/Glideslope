@@ -86,6 +86,8 @@ static Metar  g_metar;                      // Heathrow weather, refreshed every
 static unsigned long g_lastMetarMs = 0;
 static constexpr unsigned long kMetarEveryMs = 10UL * 60 * 1000;
 static char g_originIds[24] = "";   // where the next arrivals came from, for the weather fetch
+static char g_cardOrigin[5] = "";   // the card's origin (ICAO), to have its weather in time
+static constexpr unsigned long kOriginEarlyMs = 4UL * 60 * 1000;   // an early fetch for it at most this often
 
 // Emergency squawks: 7500 unlawful interference, 7600 radio failure, 7700
 // general emergency. Returns the panel wording, or nullptr for any other code.
@@ -300,7 +302,11 @@ static void checkSquawks(const std::vector<StateVector> &states)
 // worked out once per airline. Unknown airlines and GA get a neutral white.
 static Rgb airlineColour(const String &callsign)
 {
-    static std::map<String, Rgb> cache;
+    // A fixed table (8.0): a map's node per new airline, all day, scattered
+    // small permanent blocks through the heap.
+    struct Slot { char icao[4]; Rgb c; };
+    static Slot cache[64];
+    static uint8_t cached = 0;
     const Rgb kNeutral{200, 205, 215};
     if (callsign.length() < 4 || !isalpha((unsigned char)callsign[0]) ||
         !isalpha((unsigned char)callsign[1]) || !isalpha((unsigned char)callsign[2]) ||
@@ -309,14 +315,14 @@ static Rgb airlineColour(const String &callsign)
     String icao = callsign.substring(0, 3);
     icao.toUpperCase();
     static uint32_t logosVersion = 0;
-    if (logosVersion != LogoBook::version()) { cache.clear(); logosVersion = LogoBook::version(); }   // a logo was added
-    auto it = cache.find(icao);
-    if (it != cache.end()) return it->second;
+    if (logosVersion != LogoBook::version()) { cached = 0; logosVersion = LogoBook::version(); }   // a logo was added
+    for (uint8_t i = 0; i < cached; ++i)
+        if (strncmp(cache[i].icao, icao.c_str(), 3) == 0) return cache[i].c;
     FlightInfo tmp;
     const bool have = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565);
     if (!have) LogoBook::noteMissing(icao);   // for the web page's Logos section
     const Rgb c = have ? CardRenderer::accentFor(tmp) : kNeutral;
-    if (cache.size() < 64) cache[icao] = c;
+    if (cached < 64) { memcpy(cache[cached].icao, icao.c_str(), 3); cache[cached].icao[3] = 0; cache[cached++].c = c; }
     return c;
 }
 
@@ -922,9 +928,23 @@ void loop()
     }
 
     // Heathrow weather for the arrivals board and the night clock.
+    // Early, at most every 4 minutes, when the card's origin has no weather
+    // yet: its card is only up for the last three minutes of the approach.
+    const bool originDue = g_cardOrigin[0] && g_lastMetarMs && millis() - g_lastMetarMs >= kOriginEarlyMs &&
+                           !g_display.hasOriginWeather(g_cardOrigin);
     if (WiFi.status() == WL_CONNECTED && millis() > 20000 && !g_display.showcaseRunning() &&
-        (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= kMetarEveryMs))
+        (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= kMetarEveryMs || originDue))
     {
+        // The card's origin first, then the next arrivals'.
+        if (g_cardOrigin[0] && !strstr(g_originIds, g_cardOrigin))
+        {
+            char ids[sizeof(g_originIds)];
+            snprintf(ids, sizeof(ids), "%s%s%s", g_cardOrigin, g_originIds[0] ? "," : "", g_originIds);
+            ids[sizeof(ids) - 1] = '\0';
+            if (char *cut = strrchr(ids, ',')) if (strlen(ids) > 19) *cut = '\0';   // whole codes only
+            strlcpy(g_originIds, ids, sizeof(g_originIds));
+        }
+        if (g_originIds[0]) Log.printf("Weather: also %s\n", g_originIds);
         g_lastMetarMs = millis();
         Metar m;
         bool gotWeather;
@@ -959,7 +979,12 @@ void loop()
             // The card can outlive the fetch list (e.g. after landing), so ask
             // the display what it is actually showing.
             static FlightInfo shown;
-            g_webConfig.setCurrentFlight(g_display.currentFlight(shown) ? &shown : nullptr);
+            const bool have = g_display.currentFlight(shown);
+            g_webConfig.setCurrentFlight(have ? &shown : nullptr);
+            // The card's origin, for its weather (8.0).
+            g_cardOrigin[0] = '\0';
+            if (have && shown.origin.code_icao.length() == 4 && shown.origin.code_icao != g_airport.icao)
+                strlcpy(g_cardOrigin, shown.origin.code_icao.c_str(), sizeof(g_cardOrigin));
         }
     }
 

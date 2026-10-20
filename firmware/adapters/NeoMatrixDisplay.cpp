@@ -428,6 +428,13 @@ void NeoMatrixDisplay::setOriginWeather(const Metar &m)
     o.atMs = millis() | 1;
 }
 
+bool NeoMatrixDisplay::hasOriginWeather(const char *icao)
+{
+    Lock l(_lock);
+    Metar m;
+    return originMetar(icao, m);
+}
+
 bool NeoMatrixDisplay::originMetar(const char *icao, Metar &out) const
 {
     for (const OriginWx &o : _origins)

@@ -120,6 +120,7 @@ public:
     void todayJson(String &out);
     // The weather where an arrival came from (8.0), from the weather fetch.
     void setOriginWeather(const Metar &m);
+    bool hasOriginWeather(const char *icao);
 
     // Today's stats from every aircraft in range (call once per fetch), and
     // their persistence: snapshot under the lock, write the file outside it.
