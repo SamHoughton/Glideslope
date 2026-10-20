@@ -54,11 +54,14 @@ public:
     void setWeather(const char *metar);
     void setRunways(const char *arrivals, const char *departures);
     void setHolding(const char *summary);
+    // /api/today: filled by the display (7.1).
+    void setTodaySource(void (*fill)(String &out)) { _today = fill; }
 
     // Requests accepted so far (heartbeat diagnostics).
     uint32_t requestsServed() const { return _requests; }
 
 private:
+    void (*_today)(String &out) = nullptr;
     WiFiServer _server{80};
     static constexpr uint32_t kMinHeapToServe = 16000;   // 22 KB turned requests away for spells once the TLS arena moved ~34 KB out of the heap
 

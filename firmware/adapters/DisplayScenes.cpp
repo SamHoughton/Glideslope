@@ -68,6 +68,16 @@ void NeoMatrixDisplay::beginNextCard(unsigned long now)
         _zoomFromMap = _zoomX >= 4 && _zoomY >= 4 && _zoomX < FrameCanvas::W - 4 && _zoomY < FrameCanvas::H - 4;
     }
     const RareSpotter::Reason why = RareSpotter::check(_current.flight);
+    {
+        // Today's spotter log: a first visit (once the registration history
+        // means something) and rare spots.
+        const FlightInfo &f = _current.flight;
+        const char *id = f.ident_iata.length() ? f.ident_iata.c_str() : f.ident.c_str();
+        const char *type = f.aircraft_code.length() ? f.aircraft_code.c_str() : "";
+        if (f.seen_days == 1)
+            _stats.noteSpot(DailyStats::FirstVisit, id, f.registration.length() ? f.registration.c_str() : type);
+        if (why != RareSpotter::None) _stats.noteSpot(DailyStats::Rare, id, type);
+    }
     if (why != RareSpotter::None)
     {
         RareSpotter::banner(why, _current.flight, _flourishLine1, sizeof(_flourishLine1),
@@ -173,6 +183,7 @@ void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, 
         e.goAroundAnimPending = true;
         e.finalMs = 0;
         _stats.noteGoAround();
+        _stats.noteSpot(DailyStats::GoAround, (f.ident_iata.length() ? f.ident_iata : f.ident).c_str(), e.runway);
         Log.printf("Display: %s GO-AROUND (%.0f ft, +%.0f fpm)\n", f.ident.c_str(),
                    f.baro_altitude, f.vertical_rate);
         Notify::post(Notify::GoAround, 4, "arrows_counterclockwise", "Go-around",

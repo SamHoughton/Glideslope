@@ -565,6 +565,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     Screen s = _screen;
     if      (s_screenPreview == 1) s = Screen::Stats;
     else if (s_screenPreview == 2) { InfoScreens::renderClock(g_workFrame, now, _weather); return; }
+    else if (s_screenPreview == 7) { InfoScreens::renderDaySummary(g_workFrame, _stats, shownFor(Screen::Map, now)); return; }
     else if (s_screenPreview == 3) s = Screen::Arrivals;
     else if (s_screenPreview == 4) s = Screen::Weather;
     else if (s_screenPreview == 5) s = Screen::Holding;
@@ -576,8 +577,16 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     else if (_mode == Mode::Weather)  s = Screen::Weather;
     else if (_traffic.empty())
     {
-        // Nothing tracked: a dim clock overnight, otherwise the scanning screen.
-        if (isNightActive()) InfoScreens::renderClock(g_workFrame, now, _weather);
+        // Nothing tracked: a dim clock overnight (for 15 s a minute the
+        // day's summary instead, once there is a day to sum up), otherwise
+        // the scanning screen.
+        if (isNightActive())
+        {
+            const bool summary = (now / 1000) % 60 >= 45 &&
+                                 (_stats.arrivals() + _stats.departures() >= 10 || _stats.hasYesterday());
+            if (summary) InfoScreens::renderDaySummary(g_workFrame, _stats, ((now / 1000) % 60 - 45) * 1000 + now % 1000);
+            else         InfoScreens::renderClock(g_workFrame, now, _weather);
+        }
         else                 BootSplash::render(g_workFrame, now, _runwayInUse);
         return;
     }
@@ -614,9 +623,16 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
                 page = 1 + min((int)((t - kScreenDwellMs) / kStatsPageMs), pages - 2);
                 t = (t - kScreenDwellMs) - (page - 1) * kStatsPageMs;
             }
-            if (page == 0) InfoScreens::renderStats(g_workFrame, _stats, now, shown);
-            else if (page == 1 && _stats.airlineCount() >= 3) InfoScreens::renderTopAirlines(g_workFrame, _stats, t);
-            else InfoScreens::renderTopTypes(g_workFrame, _stats, t);
+            uint8_t list[5];
+            statsPageList(list);
+            switch (list[page])
+            {
+                case 0: InfoScreens::renderStats(g_workFrame, _stats, now, shown); break;
+                case 1: InfoScreens::renderRhythm(g_workFrame, _stats, _runwayArr, t); break;
+                case 2: InfoScreens::renderTopAirlines(g_workFrame, _stats, t); break;
+                case 3: InfoScreens::renderTopTypes(g_workFrame, _stats, t); break;
+                default: InfoScreens::renderSpots(g_workFrame, _stats, t); break;
+            }
             return;
         }
         case Screen::Globe:
@@ -671,5 +687,19 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
 
 int NeoMatrixDisplay::statsPages() const
 {
-    return 1 + (_stats.airlineCount() >= 3) + (_stats.typeCount() >= 3);
+    uint8_t list[5];
+    return statsPageList(list);
+}
+
+// The stats pages in order, each only when it has something to show:
+// 0 today, 1 runway rhythm, 2 top airlines, 3 types, 4 spotter log.
+int NeoMatrixDisplay::statsPageList(uint8_t *out) const
+{
+    int n = 0;
+    out[n++] = 0;
+    if (_stats.recentGapSec() || _stats.tightestGapSec()) out[n++] = 1;
+    if (_stats.airlineCount() >= 3) out[n++] = 2;
+    if (_stats.typeCount() >= 3) out[n++] = 3;
+    if (_stats.spotCount()) out[n++] = 4;
+    return n;
 }

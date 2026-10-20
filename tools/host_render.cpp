@@ -70,6 +70,25 @@ static void busyDay(DailyStats &s)
     for (auto &a : airlines) s.addAirline(a.c, a.n);
     const struct { const char *t; int n; } types[] = {{"A320", 112}, {"A35K", 31}, {"B789", 29}, {"B77W", 27}, {"A388", 6}, {"B744", 1}};
     for (auto &t : types) if (auto *slot = s.typeSlot(t.t, true)) { slot->n = t.n; slot->seq = ++s._seq; }
+
+    // 7.1: the runway rhythm and the spotter log.
+    s._gapSum = 128 * 90; s._gapN = 90; s._tightSec = 72; s._tightMin = 8 * 60 + 12;
+    strcpy(s._tightId, "BAW117");
+    const uint16_t gaps[8] = {101, 98, 112, 105, 96, 120, 108, 100};
+    memcpy(s._recent, gaps, sizeof(gaps)); s._nRecent = 8;
+    s._lastArr = (uint32_t)now - 40;
+    strcpy(s._rwy[0].name, "27L"); s._rwy[0].n = 71;
+    strcpy(s._rwy[1].name, "27R"); s._rwy[1].n = 26;
+    s._nRwy = 2;
+    s.noteSpot(DailyStats::Rare, "QR7", "A388");
+    s.noteSpot(DailyStats::FirstVisit, "VS3", "G-VJAZ");
+    s.noteSpot(DailyStats::Overhead, "LH915", "A20N");
+    s.noteSpot(DailyStats::GoAround, "BA117", "27L");
+    s.noteSpot(DailyStats::Watchlist, "G-CIVA", "B744");
+    s.noteSpot(DailyStats::Overhead, "EI158", "A20N");
+    s.noteSpot(DailyStats::FirstVisit, "SQ322", "9V-SMF");
+    const uint16_t mins[7] = {9 * 60 + 41, 11 * 60 + 5, 14 * 60 + 22, 17 * 60 + 48, 19 * 60 + 2, 19 * 60 + 40, 19 * 60 + 56};
+    for (int i = 0; i < 7; ++i) s._spots[i].minute = mins[i];
 }
 
 int main(int argc, char **argv)
@@ -90,6 +109,10 @@ int main(int argc, char **argv)
     InfoScreens::renderTopAirlines(c, stats, 5000);       save(c, "stats_airlines");
     InfoScreens::renderTopTypes(c, stats, 5000);          save(c, "stats_types");
     InfoScreens::renderStats(c, stats, 1500, 300);        save(c, "stats_today_growing");
+    InfoScreens::renderRhythm(c, stats, "27L", 5000);     save(c, "stats_rhythm");
+    InfoScreens::renderSpots(c, stats, 1500);             save(c, "stats_spots");
+    InfoScreens::renderSpots(c, stats, 5500);             save(c, "stats_spots_page2");
+    InfoScreens::renderDaySummary(c, stats, 5000);        save(c, "night_summary");
 
     const time_t evening = 1792281600 + 19 * 3600 + 48 * 60;   // 18 Oct 2026, 19:48 UTC
     Globe::Route r;

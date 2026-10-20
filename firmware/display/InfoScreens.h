@@ -70,6 +70,12 @@ namespace InfoScreens
     // Second and third stats pages: the busiest airlines and aircraft types.
     void renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);
     void renderTopTypes(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);
+    // 7.1 stats pages: how often they are landing (the recent gap, today's
+    // average and tightest, each runway's share), and today's spotter log.
+    void renderRhythm(FrameCanvas &c, const DailyStats &stats, const char *runway, uint32_t shownMs);
+    void renderSpots(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);
+    // Overnight, in turn with the clock: the day in one card.
+    void renderDaySummary(FrameCanvas &c, const DailyStats &stats, uint32_t animMs);
     // weather: optional dim line under the date ("" for none).
     void renderClock(FrameCanvas &c, uint32_t animMs, const char *weather = "");
     void renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs);

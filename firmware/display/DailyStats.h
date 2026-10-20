@@ -1,7 +1,9 @@
 #pragma once
 /*
 Purpose: Today's tally for the stats screen: arrivals and departures, by
-hour, the busiest airline, the rarest type and go-arounds.
+hour, the busiest airline, the rarest type and go-arounds; the runway
+rhythm (how often they land, the tightest gap, each runway's share) and the
+spotter log (today's interesting sightings, 7.1).
 
 Counted from every tracked aircraft (not just the ones that get a card, which
 with "nearest only" is a small fraction): an arrival once it is on final for
@@ -42,6 +44,34 @@ public:
     int airlineCount() const { return _nAirlines; }
     int typeCount() const { return _nTypes; }
 
+    // ── Runway rhythm (7.1) ────────────────────────────────────────────────
+    // Arrivals are timed as they join final (12 km out), which spaces them
+    // as they land. A gap over 15 minutes is a lull, not a gap.
+    // Seconds between the recent arrivals (the last eight gaps); 0 = not enough yet.
+    int  recentGapSec() const;
+    // Average gap today, and the tightest (with the second aircraft and when).
+    int  averageGapSec() const { return _gapN ? (int)(_gapSum / _gapN) : 0; }
+    int  tightestGapSec() const { return _tightSec; }
+    const char *tightestIdent() const { return _tightId; }
+    int  tightestAtMinute() const { return _tightMin; }   // local minutes since midnight
+    // Arrivals by runway, most first (up to four runways).
+    struct RunwayCount { char name[4]; uint16_t n; };
+    int  runways(RunwayCount *out, int cap) const;
+    // The busiest hour so far (both directions), -1 if none.
+    int  busiestHour(int &movements) const;
+
+    // ── Spotter log (7.1) ──────────────────────────────────────────────────
+    enum SpotKind : uint8_t { Rare, FirstVisit, Watchlist, Overhead, GoAround, Emergency };
+    struct Spot { uint16_t minute; uint8_t kind; char ident[8]; char what[9]; };
+    static constexpr int kMaxSpots = 16;
+    // Adds a sighting (the same aircraft and kind only once a day, except
+    // go-arounds and emergencies); the oldest drops off when full.
+    void noteSpot(SpotKind kind, const char *ident, const char *what);
+    int  spotCount() const { return _nSpots; }
+    // i = 0 is the newest.
+    const Spot &spot(int i) const { return _spots[(_spotHead + kMaxSpots - 1 - i) % kMaxSpots]; }
+    int  spotsToday() const { return _spotsToday; }   // all of them, not just the 16 kept
+
     // Yesterday, for comparison: movements in each hour, and by this time of day.
     bool hasYesterday() const { return _hasYesterday; }
     int  yesterdayInHour(int h) const { return (h >= 0 && h < 24) ? _yHour[h] : 0; }
@@ -80,6 +110,24 @@ private:
     uint16_t     _seq = 0;
     void addAirline(const char *code, uint16_t n);
     TypeCount *typeSlot(const char *t, bool create);
+
+    // Runway rhythm.
+    uint32_t    _lastArr = 0;          // Unix time of the last arrival
+    uint32_t    _gapSum = 0;
+    uint16_t    _gapN = 0, _tightSec = 0, _tightMin = 0;
+    char        _tightId[8] = "";
+    uint16_t    _recent[8] = {};
+    uint8_t     _nRecent = 0, _nRwy = 0;
+    RunwayCount _rwy[4] = {};
+    void noteArrival(const StateVector &s, const char *runway);
+
+    // Spotter log: a ring, newest at _spotHead - 1.
+    Spot     _spots[kMaxSpots] = {};
+    uint8_t  _nSpots = 0, _spotHead = 0;
+    uint16_t _spotsToday = 0;
+    // What serialise() writes for the two above, magic included.
+    static constexpr size_t kExtraSize = 4 + 4 + 4 + 2 + 2 + 2 + 8 + 16 + 1 + 1 + sizeof(RunwayCount) * 4 +
+                                         sizeof(Spot) * kMaxSpots + 1 + 1 + 2;
 
     void rollDay();
     void reset();

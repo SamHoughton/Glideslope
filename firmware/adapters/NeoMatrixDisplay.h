@@ -115,6 +115,9 @@ public:
 
     // Copy of the flight on screen, without its logo; false when none (scanning screen).
     bool currentFlight(FlightInfo &out);
+    // Today for the web page (7.1): movements, the runway rhythm and the
+    // spotter log, as JSON.
+    void todayJson(String &out);
 
     // Today's stats from every aircraft in range (call once per fetch), and
     // their persistence: snapshot under the lock, write the file outside it.
@@ -221,6 +224,7 @@ private:
     void                 noteGlobe(const Entry &e);
     void                 refreshGlobe(unsigned long now);
     int                  statsPages() const;
+    int                  statsPageList(uint8_t *out) const;   // out: room for 5
     // On final: the card alternates with the route globe and the aircraft
     // page, back to the card for good 40 s out (renderLanding comes first
     // every frame, so a landing always plays).

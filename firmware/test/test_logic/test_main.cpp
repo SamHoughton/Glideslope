@@ -325,6 +325,32 @@ void test_replay_counts_arrivals()
     // Within 15% of the independent count.
     TEST_ASSERT_INT_WITHIN(expected * 15 / 100 + 1, expected, stats.arrivals());
     TEST_ASSERT_TRUE(runways.mainArrival()[0] != '\0');
+    // Every counted arrival had a runway: the runway shares add up.
+    DailyStats::RunwayCount rw[4];
+    const int nr = stats.runways(rw, 4);
+    int sum = 0;
+    for (int i = 0; i < nr; ++i) sum += rw[i].n;
+    TEST_ASSERT_TRUE(nr >= 1);
+    TEST_ASSERT_EQUAL(stats.arrivals(), sum);
+    TEST_ASSERT_TRUE(nr < 2 || rw[0].n >= rw[1].n);
+}
+
+void test_spotter_log()
+{
+    static DailyStats s;
+    s.noteSpot(DailyStats::Rare, "QR7", "A388");
+    s.noteSpot(DailyStats::Rare, "QR7", "A388");          // the same sighting again: once
+    s.noteSpot(DailyStats::FirstVisit, "QR7", "A7-APA");  // another kind: kept
+    s.noteSpot(DailyStats::GoAround, "BA117", "27L");
+    s.noteSpot(DailyStats::GoAround, "BA117", "27L");     // go-arounds always count
+    TEST_ASSERT_EQUAL(4, s.spotCount());
+    TEST_ASSERT_EQUAL_STRING("BA117", s.spot(0).ident);
+    TEST_ASSERT_EQUAL_STRING("A388", s.spot(3).what);
+    char id[8];
+    for (int i = 0; i < 30; ++i) { snprintf(id, sizeof(id), "X%d", i); s.noteSpot(DailyStats::Overhead, id, "A320"); }
+    TEST_ASSERT_EQUAL(DailyStats::kMaxSpots, s.spotCount());   // the oldest dropped off
+    TEST_ASSERT_EQUAL_STRING("X29", s.spot(0).ident);
+    TEST_ASSERT_EQUAL(34, s.spotsToday());
 }
 
 // ── Robustness: random and mangled input must never crash a parser ──────────
@@ -584,6 +610,7 @@ int main(int, char **)
     RUN_TEST(test_overhead_and_cooldown);
     RUN_TEST(test_overhead_skips_arrivals);
     RUN_TEST(test_seen_log);
+    RUN_TEST(test_spotter_log);
     RUN_TEST(test_http_request);
     return UNITY_END();
 }

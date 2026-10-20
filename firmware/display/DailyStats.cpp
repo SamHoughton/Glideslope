@@ -9,6 +9,7 @@ namespace
 {
     constexpr const char *kPath = "/stats.bin";
     constexpr uint32_t    kMagic = 0x31535347;   // "GSS1"
+    constexpr uint32_t    kExtraMagic = 0x37535347;   // "GSS7": the 7.1 additions follow
 
     bool localNow(struct tm &lt)
     {
@@ -78,6 +79,109 @@ void DailyStats::reset()
     _seenCount = 0;
     _nAirlines = _nTypes = 0;
     _seq = 0;
+    _lastArr = 0; _gapSum = 0; _gapN = 0; _tightSec = 0; _tightMin = 0; _tightId[0] = '\0';
+    _nRecent = 0; _nRwy = 0;
+    _nSpots = 0; _spotHead = 0; _spotsToday = 0;
+}
+
+// ── Runway rhythm ───────────────────────────────────────────────────────────
+
+void DailyStats::noteArrival(const StateVector &s, const char *runway)
+{
+    const time_t now = time(nullptr);
+    if (runway && runway[0])
+    {
+        int i = 0;
+        while (i < _nRwy && strncmp(_rwy[i].name, runway, 3) != 0) ++i;
+        if (i == _nRwy && _nRwy < 4) { strlcpy(_rwy[i].name, runway, sizeof(_rwy[i].name)); _rwy[i].n = 0; ++_nRwy; }
+        if (i < _nRwy) ++_rwy[i].n;
+    }
+    if (now < 1600000000) return;
+    if (_lastArr)
+    {
+        const uint32_t gap = (uint32_t)now - _lastArr;
+        if (gap >= 20 && gap <= 900)   // closer than 20 s is the same feed twice, longer is a lull
+        {
+            _gapSum += gap; ++_gapN;
+            memmove(_recent + 1, _recent, sizeof(_recent) - sizeof(_recent[0]));
+            _recent[0] = (uint16_t)gap;
+            if (_nRecent < 8) ++_nRecent;
+            if (!_tightSec || gap < _tightSec)
+            {
+                _tightSec = (uint16_t)gap;
+                struct tm lt;
+                localtime_r(&now, &lt);
+                _tightMin = (uint16_t)(lt.tm_hour * 60 + lt.tm_min);
+                String id = s.callsign;
+                id.trim();
+                strlcpy(_tightId, id.c_str(), sizeof(_tightId));
+            }
+        }
+        else if (gap > 900)
+            _nRecent = 0;   // after a lull the recent rhythm starts again
+    }
+    _lastArr = (uint32_t)now;
+}
+
+int DailyStats::recentGapSec() const
+{
+    if (_nRecent < 3) return 0;
+    // Recent only: nothing if the last arrival was a while ago.
+    const time_t now = time(nullptr);
+    if (now > 1600000000 && _lastArr && (uint32_t)now - _lastArr > 900) return 0;
+    uint32_t sum = 0;
+    for (int i = 0; i < _nRecent; ++i) sum += _recent[i];
+    return (int)(sum / _nRecent);
+}
+
+int DailyStats::runways(RunwayCount *out, int cap) const
+{
+    int n = 0;
+    for (int i = 0; i < _nRwy && i < 4; ++i)
+    {
+        int j = n < cap ? n : cap - 1;
+        if (n == cap && _rwy[i].n <= out[cap - 1].n) continue;
+        while (j > 0 && out[j - 1].n < _rwy[i].n) { out[j] = out[j - 1]; --j; }
+        out[j] = _rwy[i];
+        if (n < cap) ++n;
+    }
+    return n;
+}
+
+int DailyStats::busiestHour(int &movements) const
+{
+    int best = -1;
+    movements = 0;
+    for (int h = 0; h < 24; ++h)
+        if (_arrHour[h] + _depHour[h] > movements) { movements = _arrHour[h] + _depHour[h]; best = h; }
+    return best;
+}
+
+// ── Spotter log ─────────────────────────────────────────────────────────────
+
+void DailyStats::noteSpot(SpotKind kind, const char *ident, const char *what)
+{
+    rollDay();
+    if (!ident || !ident[0]) return;
+    if (kind != GoAround && kind != Emergency)
+        for (int i = 0; i < _nSpots; ++i)
+        {
+            const Spot &o = spot(i);
+            if (o.kind == kind && strncmp(o.ident, ident, sizeof(o.ident) - 1) == 0) return;
+        }
+    struct tm lt;
+    const time_t now = time(nullptr);
+    uint16_t minute = 0;
+    if (now > 1600000000) { localtime_r(&now, &lt); minute = (uint16_t)(lt.tm_hour * 60 + lt.tm_min); }
+    Spot &s = _spots[_spotHead];
+    s.minute = minute;
+    s.kind = kind;
+    strlcpy(s.ident, ident, sizeof(s.ident));
+    strlcpy(s.what, what ? what : "", sizeof(s.what));
+    _spotHead = (_spotHead + 1) % kMaxSpots;
+    if (_nSpots < kMaxSpots) ++_nSpots;
+    ++_spotsToday;
+    _dirty = true;
 }
 
 bool DailyStats::wasSeen(uint32_t h) const
@@ -118,7 +222,11 @@ void DailyStats::noteTraffic(const std::vector<StateVector> &states)
                              !isnan(st.distKm) && st.distKm < 12.0f;
         if (onFinal)
         {
-            if (markSeen(fnv(s.icao24, s.callsign, 'A'))) count(s, true, hour);
+            if (markSeen(fnv(s.icao24, s.callsign, 'A')))
+            {
+                count(s, true, hour);
+                noteArrival(s, st.runway);
+            }
             continue;
         }
         // Climbing out along a runway; not an arrival going around.
@@ -232,7 +340,8 @@ size_t DailyStats::serialisedSize() const
 {
     return sizeof(kMagic) + 2 * sizeof(int16_t) + 3 * sizeof(uint16_t) + sizeof(_arrHour) + sizeof(_depHour) +
            2 * sizeof(uint16_t) + sizeof(_seen) + 1 + _nAirlines * (4 + sizeof(uint16_t)) +
-           1 + _nTypes * (6 + 2 * sizeof(uint16_t)) + 1 + sizeof(_yHour);
+           1 + _nTypes * (6 + 2 * sizeof(uint16_t)) + 1 + sizeof(_yHour) +
+           kExtraSize;
 }
 
 void DailyStats::serialise(std::vector<uint8_t> &v)
@@ -263,6 +372,15 @@ void DailyStats::serialise(std::vector<uint8_t> &v)
     // Yesterday (added in 4.0: older files simply end before it).
     put(v, (uint8_t)(_hasYesterday ? 1 : 0));
     for (uint16_t n : _yHour) put(v, n);
+    // The rhythm and the spotter log (added in 7.1).
+    put(v, kExtraMagic);
+    put(v, _lastArr); put(v, _gapSum); put(v, _gapN); put(v, _tightSec); put(v, _tightMin);
+    v.insert(v.end(), _tightId, _tightId + sizeof(_tightId));
+    for (uint16_t g : _recent) put(v, g);
+    put(v, _nRecent); put(v, _nRwy);
+    v.insert(v.end(), (const uint8_t *)_rwy, (const uint8_t *)_rwy + sizeof(_rwy));
+    v.insert(v.end(), (const uint8_t *)_spots, (const uint8_t *)_spots + sizeof(_spots));
+    put(v, _nSpots); put(v, _spotHead); put(v, _spotsToday);
     _dirty = false;
 }
 
@@ -317,6 +435,24 @@ void DailyStats::load()
         {
             _hasYesterday = true;
             memcpy(_yHour, hours, sizeof(_yHour));
+        }
+        uint32_t m2 = 0;
+        if (yok && get(f, m2) && m2 == kExtraMagic)
+        {
+            bool e = get(f, _lastArr) && get(f, _gapSum) && get(f, _gapN) && get(f, _tightSec) && get(f, _tightMin) &&
+                     f.read((uint8_t *)_tightId, sizeof(_tightId)) == sizeof(_tightId);
+            for (uint16_t &g : _recent) e = e && get(f, g);
+            e = e && get(f, _nRecent) && get(f, _nRwy) &&
+                f.read((uint8_t *)_rwy, sizeof(_rwy)) == sizeof(_rwy) &&
+                f.read((uint8_t *)_spots, sizeof(_spots)) == sizeof(_spots) &&
+                get(f, _nSpots) && get(f, _spotHead) && get(f, _spotsToday);
+            _tightId[sizeof(_tightId) - 1] = '\0';
+            if (!e || _nRwy > 4 || _nSpots > kMaxSpots || _spotHead >= kMaxSpots || _nRecent > 8)
+            {
+                _lastArr = 0; _gapSum = 0; _gapN = 0; _tightSec = 0; _nRecent = 0; _nRwy = 0;
+                _nSpots = 0; _spotHead = 0; _spotsToday = 0; _tightId[0] = '\0';
+            }
+            for (Spot &sp : _spots) { sp.ident[sizeof(sp.ident) - 1] = '\0'; sp.what[sizeof(sp.what) - 1] = '\0'; }
         }
     }
     f.close();

@@ -253,6 +253,13 @@ void WebConfig::loop()
     }
     else if (r.path == "/api/demo/holding"  && r.method == "POST") { requestScreenPreview(5, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/clock"    && r.method == "POST") { requestScreenPreview(2, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/summary"  && r.method == "POST") { requestScreenPreview(7, 15000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/today"         && r.method == "GET")
+    {
+        String body = "{}";
+        if (_today) _today(body);
+        sendHttp(client, 200, "application/json", body);
+    }
     else if (r.path == "/api/demo/landing"  && r.method == "POST") { requestLandingReplay(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/rare"     && r.method == "POST") { requestRareSpotDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/goaround" && r.method == "POST") { requestGoAroundDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
