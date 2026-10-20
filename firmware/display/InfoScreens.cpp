@@ -20,6 +20,12 @@ namespace
         c.text((FrameCanvas::W - FrameCanvas::textWidth(s, scale, pitch)) / 2, y, s, col, scale, pitch);
     }
 
+    // 7.0 type, centred.
+    void centredL(FrameCanvas &c, int y, const char *s, Rgb col, const Fonts::Font &f = Fonts::Label)
+    {
+        c.print(f, (FrameCanvas::W - FrameCanvas::width(f, s)) / 2, y, s, col);
+    }
+
     bool localNow(struct tm &lt)
     {
         const time_t now = time(nullptr);
@@ -56,17 +62,19 @@ namespace
         return { (uint8_t)(a.r + (b.r - a.r) * k), (uint8_t)(a.g + (b.g - a.g) * k), (uint8_t)(a.b + (b.b - a.b) * k) };
     }
 
-    // Title band shared by the stats pages: a dark navy gradient, the title
-    // on the left and a dim extra (clock, count) on the right.
-    void titleBand(FrameCanvas &c, const char *title, const char *extra)
+    // Title band shared by the 7.0 screens: a dark band fading down, an
+    // accent tick, the title on the left and a dim extra (clock, count) on
+    // the right.
+    void titleBand(FrameCanvas &c, const char *title, const char *extra, Rgb tick = Rgb{255, 176, 50})
     {
-        for (int y = 0; y < 9; ++y)
+        for (int y = 0; y < 10; ++y)
         {
-            const Rgb col = mixRgb(Rgb{14, 22, 48}, Rgb{4, 6, 14}, y / 9.0f);
+            const Rgb col = mixRgb(Rgb{20, 26, 42}, Rgb{6, 8, 14}, y / 10.0f);
             for (int x = 0; x < FrameCanvas::W; ++x) c.set(x, y, col);
         }
-        c.text(3, 1, title, kTitle);
-        if (extra && extra[0]) c.text(FrameCanvas::W - 3 - FrameCanvas::textWidth(extra), 1, extra, kSub);
+        c.fillRect(0, 1, 2, 8, tick);
+        c.print(Fonts::Label, 5, 1, title, kTitle);
+        if (extra && extra[0]) c.print(Fonts::Label, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, extra), 1, extra, Rgb{150, 160, 180});
     }
 
     // Filled rectangle with the corners left out; edge (if any) along the top.
@@ -79,13 +87,14 @@ namespace
             for (int xx = x + 1; xx < x + w - 1; ++xx) c.set(xx, y, *edge);
     }
 
-    // A horizontal bar brightening towards its end.
+    // A horizontal bar brightening towards its end, its last column softened.
     void hbar(FrameCanvas &c, int x, int y, int w, int h, Rgb col)
     {
         for (int i = 0; i < w; ++i)
         {
-            const Rgb k = FrameCanvas::scale(col, 0.35f + 0.65f * (i + 1) / w);
-            for (int j = 0; j < h; ++j) c.set(x + i, y + j, k);
+            Rgb k = FrameCanvas::scale(col, 0.35f + 0.65f * (i + 1) / w);
+            for (int j = 0; j < h; ++j)
+                c.set(x + i, y + j, (i == w - 1 && (j == 0 || j == h - 1)) ? FrameCanvas::scale(k, 0.5f) : k);
         }
     }
 
@@ -107,57 +116,57 @@ namespace
     }
 }
 
-// Today: movements in two tiles, an hourly chart of the day (yesterday as a
-// faint line to beat, this hour capped white), and a footer cycling through
-// the busiest airline, the rarest type, go-arounds and against yesterday.
+// Today: the day's movements as two big figures, an hourly chart of the day
+// (yesterday as a faint line to beat, this hour capped white), and a footer
+// cycling through the busiest airline, the rarest type, go-arounds and
+// against yesterday.
 void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t animMs, uint32_t shownMs)
 {
     const float count = easeOut(shownMs / 900.0f);
     c.clear();
     struct tm lt;
     const bool haveTime = localNow(lt);
-    char title[20], clock[8] = "";
-    static const char *const kDays[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+    char title[24], clock[8] = "";
+    static const char *const kDays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     if (haveTime)
     {
-        snprintf(title, sizeof(title), "TODAY %s %d", kDays[lt.tm_wday], lt.tm_mday);
+        snprintf(title, sizeof(title), "Today  %s %d", kDays[lt.tm_wday], lt.tm_mday);
         snprintf(clock, sizeof(clock), "%02d:%02d", lt.tm_hour, lt.tm_min);
     }
     else
-        snprintf(title, sizeof(title), "TODAY");
+        snprintf(title, sizeof(title), "Today");
     titleBand(c, title, clock);
 
-    // Tiles: the count, its label, and the last full hour's movements.
+    // The figures: the count (counting up), what it is, and the last full
+    // hour's movements under that.
     const int nowH = haveTime ? lt.tm_hour : -1;
     for (int side = 0; side < 2; ++side)
     {
         const bool arr = side == 0;
-        const int x = arr ? 2 : 65;
+        const int x = arr ? 2 : 66;
         const Rgb col = arr ? kArr : kDep;
-        const Rgb edge = FrameCanvas::scale(col, 0.55f);
-        tile(c, x, 11, 61, 21, arr ? Rgb{44, 27, 6} : Rgb{6, 32, 40}, &edge);
         char v[12];
         const int total = arr ? stats.arrivals() : stats.departures();
         snprintf(v, sizeof(v), "%d", (int)lroundf(total * count));
-        const int pitch = total >= 100 ? 10 : 11;   // three digits a little tighter
-        c.text(x + 4, 15, v, col, 2, pitch);
-        snprintf(v, sizeof(v), "%d", total);         // its final width, so nothing moves as it counts
-        const int numRight = x + 4 + FrameCanvas::textWidth(v, 2, pitch);
-        const char *label = arr ? "ARR" : "DEP";
-        c.text(x + 59 - FrameCanvas::textWidth(label), 14, label, FrameCanvas::scale(col, 0.75f));
+        c.print(Fonts::Huge, x, 13, v, col);
+        snprintf(v, sizeof(v), "%d", total);   // its final width, so nothing moves as it counts
+        const int lx = x + FrameCanvas::width(Fonts::Huge, v) + 3;
+        c.print(Fonts::Label, lx, 14, arr ? "in" : "out", Rgb{150, 160, 180});
         const int lastH = nowH > 0 ? (arr ? stats.arrivalsInHour(nowH - 1) : stats.departuresInHour(nowH - 1)) : 0;
-        snprintf(v, sizeof(v), "%d/H", lastH);
-        const int rateX = x + 59 - FrameCanvas::textWidth(v);
-        if (lastH > 0 && rateX >= numRight + 2)   // only where it clears the number
-            c.text(rateX, 23, v, FrameCanvas::scale(col, 0.5f));
+        if (lastH > 0)
+        {
+            snprintf(v, sizeof(v), "%d/h", lastH);
+            if (lx + FrameCanvas::width(Fonts::Label, v) <= x + 62) c.print(Fonts::Label, lx, 23, v, FrameCanvas::scale(col, 0.55f));
+        }
     }
 
-    // Hourly chart: 24 bars of 4 px, departures stacked on arrivals, shaded
-    // brighter towards the top, scaled to the busiest hour (today or yesterday).
-    constexpr int kTop = 35, kBase = 53, kX0 = 4;
+    // Hourly chart: 24 columns, arrivals and departures side by side in
+    // each, brighter towards the top, scaled to the busiest hour (today or
+    // yesterday), on a baseline with the hours marked.
+    constexpr int kTop = 34, kBase = 52, kX0 = 4;
     int peak = 1;
     for (int h = 0; h < 24; ++h)
-        peak = max(peak, max(stats.arrivalsInHour(h) + stats.departuresInHour(h), stats.yesterdayInHour(h)));
+        peak = max(peak, max(max(stats.arrivalsInHour(h), stats.departuresInHour(h)), stats.yesterdayInHour(h) / 2));
     const float pulse = 0.7f + 0.3f * sinf(animMs / 250.0f);
     for (int h = 0; h < 24; ++h)
     {
@@ -168,33 +177,34 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         const int hd = (int)(((d * (kBase - kTop) + peak - 1) / peak) * grow);
         for (int i = 0; i < ha; ++i)
         {
-            const Rgb k = FrameCanvas::scale(kArr, 0.45f + 0.55f * (i + 1) / ha);
-            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, kBase - 1 - i, k);
+            const Rgb k = FrameCanvas::scale(kArr, 0.4f + 0.6f * (i + 1) / ha);
+            c.set(x, kBase - 1 - i, k); c.set(x + 1, kBase - 1 - i, FrameCanvas::scale(k, 0.7f));
         }
         for (int i = 0; i < hd; ++i)
         {
-            const Rgb k = FrameCanvas::scale(kDep, 0.45f + 0.55f * (i + 1) / hd);
-            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, kBase - 1 - ha - i, k);
+            const Rgb k = FrameCanvas::scale(kDep, 0.4f + 0.6f * (i + 1) / hd);
+            c.set(x + 2, kBase - 1 - i, k); c.set(x + 3, kBase - 1 - i, FrameCanvas::scale(k, 0.7f));
         }
-        // Yesterday's total for the hour, where the bar hasn't covered it.
+        // Yesterday (both ways, halved to the same scale) where the bars haven't covered it.
         const int yh = stats.yesterdayInHour(h);
         if (yh)
         {
-            const int y = kBase - 1 - (yh * (kBase - kTop) + peak - 1) / peak;
+            const int y = kBase - 1 - (yh / 2 * (kBase - kTop) + peak - 1) / peak;
             for (int dx = 0; dx < 4; ++dx)
                 if (c.get(x + dx, y) == 0) c.set(x + dx, y, Rgb{55, 60, 85});
         }
-        if (h == nowH && ha + hd)
-            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, kBase - 1 - ha - hd, FrameCanvas::scale(kTitle, pulse));
-        // Baseline ticks, brighter at 00, 06, 12, 18.
-        const Rgb tick = (h % 6 == 0) ? kLabel : Rgb{35, 40, 52};
-        c.set(x + 1, kBase, tick);
-        c.set(x + 2, kBase, tick);
+        if (h == nowH)
+        {
+            const int top = kBase - 1 - max(ha, hd);
+            for (int dx = 0; dx < 4; ++dx) c.set(x + dx, top, FrameCanvas::scale(kTitle, pulse));
+        }
+        if (h % 6 == 0) { c.set(x + 1, kBase, kLabel); c.set(x + 2, kBase, kLabel); }
+        else            { c.set(x + 1, kBase, Rgb{35, 40, 52}); c.set(x + 2, kBase, Rgb{35, 40, 52}); }
     }
 
     // Footer: a chip (in the fact's colour) and the fact, one at a time,
     // each for 3 s with a fade between.
-    struct Fact { char chip[5]; Rgb col; char text[17]; };
+    struct Fact { char chip[6]; Rgb col; char text[24]; };
     Fact facts[4];
     int nf = 0, n = 0;
     const String airline = stats.busiestAirline(n);
@@ -203,13 +213,13 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         Fact &f = facts[nf++];
         strlcpy(f.chip, airline.c_str(), sizeof(f.chip));
         f.col = AircraftSprites::airlineColour(airline.c_str());
-        snprintf(f.text, sizeof(f.text), "BUSIEST  %d", n);
+        snprintf(f.text, sizeof(f.text), "Busiest, %d today", n);
     }
     const String rare = stats.rarestType();
     if (rare.length())
     {
         Fact &f = facts[nf++];
-        strlcpy(f.chip, "RARE", sizeof(f.chip));
+        strlcpy(f.chip, "Rare", sizeof(f.chip));
         f.col = kGold;
         snprintf(f.text, sizeof(f.text), "%s", rare.c_str());
     }
@@ -218,7 +228,7 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         Fact &f = facts[nf++];
         strlcpy(f.chip, "GA", sizeof(f.chip));
         f.col = Rgb{255, 95, 80};
-        snprintf(f.text, sizeof(f.text), "GO-AROUNDS %d", stats.goArounds());
+        snprintf(f.text, sizeof(f.text), stats.goArounds() == 1 ? "%d go-around" : "%d go-arounds", stats.goArounds());
     }
     if (haveTime && stats.hasYesterday())
     {
@@ -230,7 +240,7 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
             Fact &f = facts[nf++];
             snprintf(f.chip, sizeof(f.chip), "%s%d%%", pct >= 0 ? "+" : "", max(-99, min(99, pct)));
             f.col = pct >= 0 ? Rgb{90, 200, 110} : Rgb{235, 100, 90};
-            snprintf(f.text, sizeof(f.text), "VS YESTERDAY");
+            snprintf(f.text, sizeof(f.text), "on yesterday");
         }
     }
     if (nf)
@@ -240,10 +250,10 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         const uint32_t t = animMs % per;
         const float fade = nf > 1 ? (t < 300 ? t / 300.0f : (t > per - 300 ? (per - t) / 300.0f : 1.0f)) : 1.0f;
         const Fact &f = facts[i];
-        tile(c, 2, 55, 124, 9, FrameCanvas::scale(Rgb{10, 22, 48}, 1));
-        tile(c, 2, 55, 26, 9, FrameCanvas::scale(mixRgb(Rgb{0, 0, 0}, f.col, 0.55f), fade));
-        c.text(2 + (26 - FrameCanvas::textWidth(f.chip)) / 2, 56, f.chip, FrameCanvas::scale(kTitle, fade));
-        c.text(32, 56, f.text, FrameCanvas::scale(mixRgb(f.col, kTitle, 0.45f), fade));
+        tile(c, 0, 55, 128, 9, Rgb{14, 18, 28});
+        tile(c, 1, 55, 26, 9, FrameCanvas::scale(mixRgb(Rgb{0, 0, 0}, f.col, 0.5f), fade));
+        c.print(Fonts::Label, 1 + (26 - FrameCanvas::width(Fonts::Label, f.chip)) / 2, 56, f.chip, FrameCanvas::scale(kTitle, fade));
+        c.print(Fonts::Label, 31, 56, f.text, FrameCanvas::scale(mixRgb(f.col, kTitle, 0.5f), fade));
     }
 }
 
@@ -253,15 +263,14 @@ void InfoScreens::renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent
     c.clear();
     // Top: the flight, and the countdown so the landing is never out of mind.
     const char *ident = f.ident_iata.length() ? f.ident_iata.c_str() : f.ident.c_str();
-    titleBand(c, ident, "");
-    c.text(3, 1, ident, accent);
+    char eta[16] = "";
     if (etaSec >= 0)
     {
-        char eta[16];
         const int s = (int)lroundf(etaSec);
-        snprintf(eta, sizeof(eta), "%s %d:%02d", runway && runway[0] ? runway : "ETA", s / 60, s % 60);
-        c.text(FrameCanvas::W - 3 - FrameCanvas::textWidth(eta), 1, eta, kValue);
+        snprintf(eta, sizeof(eta), "%s  %d:%02d", runway && runway[0] ? runway : "ETA", s / 60, s % 60);
     }
+    titleBand(c, ident, "", accent);
+    if (eta[0]) c.print(Fonts::Label, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, eta), 1, eta, kValue);
 
     // The aircraft in its livery, sliding in from the left.
     bool known = false;
@@ -274,38 +283,40 @@ void InfoScreens::renderAircraft(FrameCanvas &c, const FlightInfo &f, Rgb accent
     // Beside it: type, registration, which visit this is.
     constexpr int kX = 50;
     const char *type = f.aircraft_display_name_short.length() ? f.aircraft_display_name_short.c_str() : f.aircraft_code.c_str();
-    c.text(kX, 12, type, kTitle, 1, 0, 13);
-    if (f.registration.length()) c.text(kX, 21, f.registration.c_str(), Rgb{150, 200, 235}, 1, 0, 13);
+    c.setClip(kX, FrameCanvas::W - 2);
+    c.print(Fonts::Label, kX, 13, type, kTitle);
+    if (f.registration.length()) c.print(Fonts::Label, kX, 22, f.registration.c_str(), Rgb{150, 200, 235});
     char visit[16] = "";
-    if (f.seen_days == 1) snprintf(visit, sizeof(visit), "FIRST VISIT");
+    if (f.seen_days == 1) snprintf(visit, sizeof(visit), "First visit");
     else if (f.seen_days > 1)
     {
         const unsigned n = f.seen_days, t = n % 100;
-        const char *suf = (t >= 11 && t <= 13) ? "TH" : n % 10 == 1 ? "ST" : n % 10 == 2 ? "ND" : n % 10 == 3 ? "RD" : "TH";
-        snprintf(visit, sizeof(visit), "%u%s VISIT", n, suf);
+        const char *suf = (t >= 11 && t <= 13) ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th";
+        snprintf(visit, sizeof(visit), "%u%s visit", n, suf);
     }
-    if (visit[0]) c.text(kX, 30, visit, kGold, 1, 0, 13);
+    if (visit[0]) c.print(Fonts::Label, kX, 31, visit, kGold);
+    c.resetClip();
 
     // Below: the airline, then where it has come from.
-    for (int x = 4; x < FrameCanvas::W - 4; x += 2) c.set(x, 38, kDim);
+    for (int x = 4; x < FrameCanvas::W - 4; x += 2) c.set(x, 40, Rgb{40, 46, 60});
     if (f.airline_display_name_full.length())
     {
         // Whole words only: "British Airways Shuttle" -> "British Airways".
-        char name[24];
+        char name[32];
         strlcpy(name, f.airline_display_name_full.c_str(), sizeof(name));
-        while (strlen(name) > 20)
+        while (FrameCanvas::width(Fonts::Label, name) > FrameCanvas::W - 6)
         {
             char *sp = strrchr(name, ' ');
-            if (!sp) { name[20] = '\0'; break; }
+            if (!sp) break;
             *sp = '\0';
         }
-        c.text(3, 42, name, FrameCanvas::scale(accent, 0.85f));
+        c.print(Fonts::Label, 3, 43, name, FrameCanvas::scale(accent, 0.9f));
     }
-    char from[32] = "";
+    char from[40] = "";
     const char *city = Airports::city(f.origin);
     const String &code = f.origin.code_iata.length() ? f.origin.code_iata : f.origin.code_icao;
-    if (city || code.length()) snprintf(from, sizeof(from), "FROM %s", city ? city : code.c_str());
-    if (from[0]) c.text(3, 51, from, kTitle, 1, 0, 20);
+    if (city || code.length()) snprintf(from, sizeof(from), "From %s", city ? city : code.c_str());
+    if (from[0]) c.print(Fonts::Label, 3, 53, from, kTitle);
 }
 
 // The day's busiest airlines: code and a bar in the airline's colour, growing in.
@@ -314,21 +325,21 @@ void InfoScreens::renderTopAirlines(FrameCanvas &c, const DailyStats &stats, uin
     c.clear();
     DailyStats::Top top[5];
     const int n = stats.topAirlines(top, 5);
-    char extra[8];
-    snprintf(extra, sizeof(extra), "%d", stats.airlineCount());
-    titleBand(c, "TOP AIRLINES", extra);
+    char extra[16];
+    snprintf(extra, sizeof(extra), "%d seen", stats.airlineCount());
+    titleBand(c, "Top airlines", extra);
     const int most = n ? max(1, top[0].n) : 1;
     for (int i = 0; i < n; ++i)
     {
         const int y = 12 + i * 10;
         const Rgb col = AircraftSprites::airlineColour(top[i].code);
-        c.text(3, y, top[i].code, col);
+        c.print(Fonts::Label, 3, y + 1, top[i].code, col);
         const float grow = easeOut((shownMs - i * 120.0f) / 600.0f);
         const int w = max(2, (int)lroundf(top[i].n * 82.0f / most * grow));
-        hbar(c, 24, y, w, 7, col);
+        hbar(c, 24, y + 2, w, 5, col);
         char v[8];
         snprintf(v, sizeof(v), "%d", (int)lroundf(top[i].n * grow));
-        c.text(24 + w + 3, y, v, kTitle);
+        c.print(Fonts::Label, 24 + w + 3, y + 1, v, kTitle);
     }
 }
 
@@ -338,21 +349,23 @@ void InfoScreens::renderTopTypes(FrameCanvas &c, const DailyStats &stats, uint32
     c.clear();
     DailyStats::Top top[5];
     const int n = stats.topTypes(top, 5);
-    char extra[8];
-    snprintf(extra, sizeof(extra), "%d", stats.typeCount());
-    titleBand(c, "TYPES TODAY", extra);
+    char extra[16];
+    snprintf(extra, sizeof(extra), "%d types", stats.typeCount());
+    titleBand(c, "Aircraft today", extra);
     const int most = n ? max(1, top[0].n) : 1;
     for (int i = 0; i < n; ++i)
     {
         const int y = 12 + i * 10;
         const Rgb col = typeColour(top[i].code);
-        c.text(3, y, top[i].code, col, 1, 0, 4);
+        char code[5];
+        snprintf(code, sizeof(code), "%.4s", top[i].code);
+        c.print(Fonts::Label, 3, y + 1, code, col);
         const float grow = easeOut((shownMs - i * 120.0f) / 600.0f);
-        const int w = max(2, (int)lroundf(top[i].n * 70.0f / most * grow));
-        hbar(c, 30, y + 1, w, 5, col);
+        const int w = max(2, (int)lroundf(top[i].n * 74.0f / most * grow));
+        hbar(c, 28, y + 2, w, 5, col);
         char v[8];
         snprintf(v, sizeof(v), "%d", (int)lroundf(top[i].n * grow));
-        c.text(30 + w + 3, y, v, kTitle);
+        c.print(Fonts::Label, 28 + w + 3, y + 1, v, kTitle);
     }
 }
 
@@ -360,33 +373,35 @@ void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weath
 {
     c.clear();
     struct tm lt;
+    const Rgb digits{150, 162, 195};
     if (!localNow(lt))
     {
-        centred(c, 28, "--:--", kDim, 2);
+        centredL(c, 22, "--:--", FrameCanvas::scale(digits, 0.4f), Fonts::Huge);
         return;
     }
-    // HH:MM at triple size with a narrow colon (the font's colon is a full
-    // character wide); the colon pulses gently with the seconds.
-    const Rgb digits{120, 130, 150};
+    // HH:MM in the large soft numerals; the colon breathes with the seconds.
     char hh[3], mm[3];
     snprintf(hh, sizeof(hh), "%02d", lt.tm_hour);
     snprintf(mm, sizeof(mm), "%02d", lt.tm_min);
-    constexpr int kPitch = 17, kDigitW = 15, kGap = 4, kColonW = 3, kTop = 16;
-    const int total = 2 * (kPitch + kDigitW) + 2 * kGap + kColonW;
-    const int x0 = (FrameCanvas::W - total) / 2;
-    c.text(x0, kTop, hh, digits, 3, kPitch);
-    const int cx = x0 + kPitch + kDigitW + kGap;
+    const int wh = FrameCanvas::width(Fonts::Huge, hh), wc = FrameCanvas::width(Fonts::Huge, ":"), wm = FrameCanvas::width(Fonts::Huge, mm);
+    const int x0 = (FrameCanvas::W - (wh + wc + wm + 2)) / 2, y = 14;
+    c.print(Fonts::Huge, x0, y, hh, digits);
     const float pulse = 0.35f + 0.65f * (0.5f + 0.5f * cosf((animMs % 2000) * (float)M_PI / 1000.0f));
-    c.fillRect(cx, kTop + 5, kColonW, kColonW, FrameCanvas::scale(digits, pulse));
-    c.fillRect(cx, kTop + 13, kColonW, kColonW, FrameCanvas::scale(digits, pulse));
-    c.text(cx + kColonW + kGap, kTop, mm, digits, 3, kPitch);
+    c.print(Fonts::Huge, x0 + wh + 1, y, ":", FrameCanvas::scale(digits, pulse));
+    c.print(Fonts::Huge, x0 + wh + wc + 2, y, mm, digits);
     // Tonight's moon, top right, in its real phase.
     Sky::drawMoon(c, FrameCanvas::W - 9, 7, 4.2f, Sky::moonPhase(time(nullptr)), Rgb{150, 150, 130});
-    static const char *const kMonths[] = {"JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"};
-    char date[16];
-    snprintf(date, sizeof(date), "%d %s", lt.tm_mday, kMonths[lt.tm_mon]);
-    centred(c, 44, date, kDim);
-    if (weather && weather[0]) centred(c, 55, weather, Rgb{40, 46, 58});
+    static const char *const kDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    static const char *const kMonths[] = {"January", "February", "March", "April", "May", "June", "July",
+                                          "August", "September", "October", "November", "December"};
+    char date[32];
+    snprintf(date, sizeof(date), "%s %d %s", kDays[lt.tm_wday], lt.tm_mday, kMonths[lt.tm_mon]);
+    centredL(c, 38, date, FrameCanvas::scale(digits, 0.55f));
+    if (weather && weather[0])
+    {
+        for (int x = 40; x < 88; ++x) c.set(x, 49, Rgb{26, 30, 42});
+        centredL(c, 53, weather, Rgb{60, 68, 86});
+    }
 }
 
 namespace
@@ -637,62 +652,76 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     c.resetClip();
     if (m.tempC != -99)
     {
-        char t[8];
-        snprintf(t, sizeof(t), "%dC", m.tempC);
-        c.text(3, kGroundY + 1, t, Rgb{0, 0, 0}, 2, 11);
-        c.text(2, kGroundY, t, m.tempC <= 0 ? Rgb{150, 200, 255} : m.tempC >= 25 ? Rgb{255, 150, 80} : kTitle, 2, 11);
+        char t[10];
+        snprintf(t, sizeof(t), "%d\xC2\xB0", m.tempC);
+        const Rgb tc = m.tempC <= 0 ? Rgb{150, 200, 255} : m.tempC >= 25 ? Rgb{255, 150, 80} : kTitle;
+        c.print(Fonts::Huge, 4, 41, t, Rgb{0, 0, 0});   // a shadow, so it reads over the sky
+        c.print(Fonts::Huge, 3, 40, t, tc);
     }
     for (int y = 0; y < FrameCanvas::H; ++y) c.set(kSceneW, y, Rgb{0, 0, 0});
 
-    // Right: the numbers.
-    constexpr int kX = 65, kRW = FrameCanvas::W - kX;
-    auto rightCentred = [&](int y, const char *s, Rgb col) {
-        c.text(kX + (kRW - FrameCanvas::textWidth(s)) / 2, y, s, col);
-    };
-    rightCentred(1, FrameCanvas::textWidth(g_airport.name) <= kRW ? g_airport.name : g_airport.icao, kTitle);
-    for (int x = kX + 2; x < FrameCanvas::W - 2; x += 2) c.set(x, 10, kDim);
-
-    // Wind, and gusts in red after it. With gusts there is no room for
-    // "KT" (250/14KT G26 ran together): 250/14 G26.
-    char wind[16];
-    const bool gust = m.gustKt > 0;
-    if (m.windKt == 0)      snprintf(wind, sizeof(wind), "CALM");
-    else if (m.windDir < 0) snprintf(wind, sizeof(wind), gust ? "VRB %d" : "VRB %dKT", m.windKt);
-    else                    snprintf(wind, sizeof(wind), gust ? "%03d/%d" : "%03d/%dKT", m.windDir, m.windKt);
-    c.text(kX + 1, 13, wind, kValue);
-    if (gust)
+    // Right: the facts, in words where it helps.
+    constexpr int kX = 66;
+    const Rgb soft{150, 160, 180}, faint{80, 88, 106}, red{255, 95, 80};
+    c.setClip(kX, FrameCanvas::W - 1);
+    char name[32];
+    strlcpy(name, g_airport.name, sizeof(name));
+    Fonts::titleCase(name);
+    c.print(Fonts::Label, kX, 1, name, kTitle);
+    char words[24];
+    Weather::describe(m.wx, words, sizeof(words));
+    if (!words[0] && m.cavok) snprintf(words, sizeof(words), "clear");
+    if (words[0])
     {
-        char g[8];
-        snprintf(g, sizeof(g), "G%d", m.gustKt);
-        const int gx = max(kX + 1 + FrameCanvas::textWidth(wind) + 4, FrameCanvas::W - 2 - FrameCanvas::textWidth(g));
-        c.text(gx, 13, g, Rgb{255, 95, 80});
+        words[0] = (char)toupper((unsigned char)words[0]);
+        c.print(Fonts::Label, kX, 10, words, soft);
     }
 
-    drawRunwayWind(c, kX + 11, 32, 9, m, runway, nowMs);
+    // Wind: direction and speed large, gusts in red after them.
+    int x = kX;
+    char v[12];
+    if (m.windKt == 0) c.print(Fonts::Medium, x, 21, "Calm", kValue);
+    else
+    {
+        if (m.windDir < 0) snprintf(v, sizeof(v), "VRB");
+        else               snprintf(v, sizeof(v), "%03d\xC2\xB0", m.windDir);
+        x += c.print(Fonts::Medium, x, 21, v, kValue) + 3;
+        snprintf(v, sizeof(v), "%d", m.windKt);
+        x += c.print(Fonts::Medium, x, 21, v, kTitle) + 1;
+        if (m.gustKt)
+        {
+            snprintf(v, sizeof(v), "G%d", m.gustKt);
+            c.print(Fonts::Label, x, 23, v, red);
+        }
+        else c.print(Fonts::Label, x, 23, "kt", faint);
+    }
+    c.resetClip();
+
+    // The runway in use from above with the wind across it, and the
+    // components beside it.
+    drawRunwayWind(c, kX + 10, 42, 9, m, runway, nowMs);
     if (runway && runway[0])
     {
-        c.text(kX + 26, 21, runway, kLabel);
+        c.print(Fonts::Label, kX + 23, 33, runway, kLabel);
         if (m.windDir >= 0 && m.windKt > 0)
         {
-            const int rwyDeg = atoi(runway) * 10;   // "27L" -> 270
             int cross = 0, tail = 0;
-            Weather::components(m, rwyDeg, cross, tail);
-            char xw[10], hw[10];
-            snprintf(xw, sizeof(xw), "XW %d", cross);
-            snprintf(hw, sizeof(hw), "%s %d", tail > 0 ? "TW" : "HW", tail > 0 ? tail : -tail);
-            c.text(kX + 26, 29, xw, cross >= 20 ? Rgb{255, 95, 80} : Rgb{200, 205, 215});
-            c.text(kX + 26, 37, hw, tail >= 5 ? Rgb{255, 95, 80} : Rgb{200, 205, 215});
+            Weather::components(m, atoi(runway) * 10, cross, tail);   // "27L" -> 270
+            snprintf(v, sizeof(v), "xw %d", cross);
+            c.print(Fonts::Label, kX + 23, 41, v, cross >= 20 ? red : soft);
+            snprintf(v, sizeof(v), "%s %d", tail > 0 ? "tw" : "hw", tail > 0 ? tail : -tail);
+            c.print(Fonts::Label, kX + 23, 49, v, tail >= 5 ? red : soft);
         }
     }
 
-    char row[24], vis[8] = "-";
-    if (m.visText[0]) strlcpy(vis, m.visText, sizeof(vis));
-    snprintf(row, sizeof(row), "VIS %s", vis);
-    c.text(kX + 1, 47, row, Rgb{200, 205, 215});
+    // Bottom: visibility and pressure.
+    char vis[12] = "";
+    for (size_t i = 0; m.visText[i] && i + 1 < sizeof(vis); ++i) vis[i] = (char)tolower((unsigned char)m.visText[i]);
     char pr[10];
     Weather::pressure(m, pr, sizeof(pr));
-    snprintf(row, sizeof(row), "%s%s%s", pr, m.wx[0] ? " " : "", m.wx);
-    c.text(kX + 1, 56, row, kLabel);
+    char row[28];
+    snprintf(row, sizeof(row), "%s%s%s", vis, vis[0] && pr[0] ? "  " : "", pr);
+    c.print(Fonts::Label, kX, 57, row, faint);
 }
 
 void InfoScreens::renderAlert(FrameCanvas &c, const char *code, const char *meaning, const char *ident,

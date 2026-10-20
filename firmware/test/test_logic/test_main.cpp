@@ -90,6 +90,11 @@ void test_metar_uk()
     TEST_ASSERT_EQUAL(17, m.tempC);
     TEST_ASSERT_EQUAL(1019, m.qnh);
     TEST_ASSERT_EQUAL_STRING("-RA", m.wx);
+    char line[40];
+    Weather::friendly(m, line, sizeof(line));
+    TEST_ASSERT_EQUAL_STRING("17\xC2\xB0  light rain  210/12G25", line);
+    Weather::friendly(m, line, sizeof(line), 16);   // too narrow for the wind
+    TEST_ASSERT_EQUAL_STRING("17\xC2\xB0  light rain", line);
 }
 
 void test_metar_us()
@@ -108,6 +113,9 @@ void test_metar_calm_and_garbage()
     TEST_ASSERT_TRUE(Weather::parse("METAR EGLL 151720Z 00000KT CAVOK 12/08 Q1030", m));
     TEST_ASSERT_EQUAL(0, m.windKt);
     TEST_ASSERT_TRUE(m.cavok);
+    char line[40];
+    Weather::friendly(m, line, sizeof(line));
+    TEST_ASSERT_EQUAL_STRING("12\xC2\xB0  calm", line);
     Metar bad;
     TEST_ASSERT_FALSE(Weather::parse("", bad));
 }

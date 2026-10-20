@@ -32,6 +32,11 @@ namespace Weather
     bool parse(const char *raw, Metar &out);
     // Panel line, at most maxChars characters (drops detail to fit).
     void line(const Metar &m, char *out, size_t len, int maxChars = 21);
+    // In words for the 7.0 screens, e.g. "11°  light rain  250/14G26" (UTF-8
+    // degree sign); the wind is left off when it would pass maxChars.
+    void friendly(const Metar &m, char *out, size_t len, int maxChars = 26);
+    // The present-weather group in words ("-RA" -> "light rain"); "" if none.
+    void describe(const char *wx, char *out, size_t len);
     // Pressure as the panel shows it: "Q1012", or "A29.89" where the report uses inches.
     void pressure(const Metar &m, char *out, size_t len);
     // Wind component across / along a runway heading (kt; tail > 0 = tailwind).

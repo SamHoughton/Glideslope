@@ -519,7 +519,7 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
         else
         {
             if (s.runway[0]) snprintf(label, sizeof(label), "Runway %s", s.runway);
-            else             snprintf(label, sizeof(label), "%s", g_airport.name);
+            else           { snprintf(label, sizeof(label), "%s", g_airport.name); Fonts::titleCase(label); }
             statusCol = kCyan;
         }
     }

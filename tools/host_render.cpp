@@ -240,6 +240,8 @@ int main(int argc, char **argv)
     {
         Metar m;
         Weather::parse("METAR EGLL 181850Z 25014G26KT 9999 -RA BKN012 OVC030 11/09 Q1004", m);
+        char wxLine[40];
+        Weather::friendly(m, wxLine, sizeof(wxLine));
         InfoScreens::Arrival arr[4];
         const char *ids[] = {"BA117", "VS4", "EI158", "QR7"}, *types[] = {"A35K", "A339", "A20N", "A388"};
         for (int i = 0; i < 4; ++i)
@@ -251,10 +253,10 @@ int main(int argc, char **argv)
             arr[i].accent = AircraftSprites::airlineColour(ids[i][0] == 'Q' ? "QR" : ids[i][0] == 'V' ? "VS" : ids[i][0] == 'E' ? "EI" : "BA");
         }
         g_fakeMillis = 0;
-        InfoScreens::renderArrivals(c, arr, 4, "27L", "250/14G26 10KM RA 11C", 0, 5000);   save(c, "board_arrivals");
+        InfoScreens::renderArrivals(c, arr, 4, "27L", wxLine, 0, 5000);   save(c, "board_arrivals");
         g_config.route_cities = true;
-        InfoScreens::renderArrivals(c, arr, 4, "27L", "250/14G26 10KM RA 11C", 0, 5000);   save(c, "board_arrivals_cities");
-        InfoScreens::renderArrivals(c, arr, 4, "27L", "250/14G26 10KM RA 11C", 0, 700);    save(c, "board_arrivals_flipping");
+        InfoScreens::renderArrivals(c, arr, 4, "27L", wxLine, 0, 5000);   save(c, "board_arrivals_cities");
+        InfoScreens::renderArrivals(c, arr, 4, "27L", wxLine, 0, 700);    save(c, "board_arrivals_flipping");
         g_config.route_cities = false;
         InfoScreens::Departure dep[3];
         const char *dids[] = {"BA283", "AA81", "U2 8061"}, *dd[] = {"LAX", "DFW", "NCE"};
@@ -270,7 +272,7 @@ int main(int argc, char **argv)
         InfoScreens::renderWeather(c, m, "27L", 2000, Sky::at(m, 1792350900));               save(c, "weather_evening_rain");
         HoldTracker::Row rows[] = {{"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7}};
         InfoScreens::renderHolding(c, rows, 4, 2000);                                         save(c, "holding");
-        InfoScreens::renderClock(c, 2000, "250/14 10KM RA 11C");                              save(c, "clock_night");
+        InfoScreens::renderClock(c, 2000, wxLine);                              save(c, "clock_night");
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");
         InfoScreens::renderRareBanner(c, "RARE SPOT", "A380", 900);                           save(c, "banner_rare");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 600);                                save(c, "runway_change_a");

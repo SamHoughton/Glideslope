@@ -379,8 +379,8 @@ void NeoMatrixDisplay::loadStats()
 
 void NeoMatrixDisplay::setWeather(const Metar &m)
 {
-    char line[24];
-    Weather::line(m, line, sizeof(line));
+    char line[40];
+    Weather::friendly(m, line, sizeof(line));
     Lock l(_lock);
     _metar = m;
     strlcpy(_weather, line, sizeof(_weather));

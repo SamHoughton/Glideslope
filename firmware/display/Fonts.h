@@ -56,4 +56,19 @@ inline int next(const char *s, uint8_t &out)
     out = '?';
     return n;
 }
+
+// Names that arrive in capitals ("HEATHROW", "LOS ANGELES") in title case,
+// in place; a name already in mixed case is left alone.
+inline void titleCase(char *s)
+{
+    bool lower = false;
+    for (const char *p = s; *p; ++p) lower |= (*p >= 'a' && *p <= 'z');
+    if (lower) return;
+    bool start = true;
+    for (char *p = s; *p; ++p)
+    {
+        if (*p >= 'A' && *p <= 'Z' && !start) *p = (char)(*p + 32);
+        start = *p == ' ' || *p == '-' || *p == '/';
+    }
+}
 }
