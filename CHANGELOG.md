@@ -28,7 +28,7 @@ The day and the sky.
 - **Sunrise and sunset** on the weather screen (`Sunset in 24 min` inside
   the hour).
 
-## 7.0.0 (in progress)
+## 7.0.0 (20 Oct 2026)
 
 The look: new type, one design across the screens, better aircraft.
 
