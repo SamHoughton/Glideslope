@@ -16,3 +16,8 @@ Changes from that work include:
 - Display moved to its own task; watchdog and hang diagnostics
 - Reworked web interface, live panel mirror and status endpoint
 - Airline logos removed from the repository (bring your own)
+
+The large type (firmware/display/Fonts.cpp) is rendered from Barlow Semi
+Condensed Bold, Copyright 2017 The Barlow Project Authors
+(https://github.com/jpt/barlow), licensed under the SIL Open Font License,
+Version 1.1; the licence is in firmware/display/Fonts-OFL.txt.

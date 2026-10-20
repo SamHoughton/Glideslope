@@ -7,6 +7,33 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 7.0.0 (in progress)
+
+The look: new type, one design across the screens, better aircraft.
+
+**New**
+- **New type**: big numbers and flight numbers in Barlow with softened
+  edges, and a slim pixel font with lower case for the rest, in sentence
+  case (`Approach 27L`, `New York → London`, `Light rain`).
+- **One design**: every screen shares a title band, palette and spacing;
+  the card, stats, weather, clock, aircraft page, globe, alerts and
+  captions are redrawn in it.
+- **Split-flap boards**: arrivals and departures on yellow flaps that run
+  through the alphabet and land; arrivals show where each flight is from
+  and the time it is expected to land (`LAND` inside 90 s).
+- **Weather in words** along the boards and under the clock:
+  `11°  light rain  250/14G26`.
+- **Aircraft**: the A319, A320neo, A321neo, 737 MAX and 777X are told
+  apart (engines, winglets, tail cone); winglets and sharklets; the beacon
+  flashes on the card; flaps out on the approach and climb-out; heat haze
+  behind the engines at take-off power; freighters without windows.
+- **Map icons by size**: regional jets and props small, widebodies large.
+
+**Fixes**
+- The board restarted (watchdog) when a phone stopped reading the live
+  preview without closing it, e.g. when its screen locked; a reply now
+  gives up after 8 s.
+
 ## 6.0.0 (19 Oct 2026)
 
 Polish: the animations, alerts and logos.
