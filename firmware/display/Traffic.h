@@ -18,6 +18,7 @@ struct TrafficPoint
     bool     onFinal = false;
     char     label[8] = "";    // flight number (BA213) or call sign, for the map
     char     type[5]  = "";    // ICAO type code
+    uint8_t  size     = 1;     // map icon: 0 small, 1 narrowbody, 2 widebody (AircraftSprites::sizeClass)
     float    altFt    = NAN;
 };
 

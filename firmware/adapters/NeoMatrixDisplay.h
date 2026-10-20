@@ -255,7 +255,7 @@ private:
     InfoScreens::Departure _departures[InfoScreens::kMaxDepartures];   // guarded by _lock
     int                  _departureCount = 0;
     bool                 departuresPage() const;
-    char                 _weather[24] = "";       // guarded by _lock
+    char                 _weather[40] = "";       // guarded by _lock
     Metar                _metar;                  // guarded by _lock
     Sky::Look            _sky;                    // the light now (refreshed every 30 s)
     unsigned long        _skyMs = 0;

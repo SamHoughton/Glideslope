@@ -32,7 +32,7 @@ EXE = ".exe" if os.name == "nt" else ""
 LOGIC = ["config/Airport.cpp", "config/Airports.cpp", "display/ApproachModel.cpp", "display/RunwayTracker.cpp",
          "display/HoldTracker.cpp", "display/DailyStats.cpp", "utils/Weather.cpp", "adapters/ReadsbParser.cpp",
          "utils/Spotter.cpp", "utils/SeenLog.cpp", "utils/HttpRequest.cpp"]
-DRAW = ["display/FrameCanvas.cpp", "display/InfoScreens.cpp", "display/Globe.cpp", "display/Sky.cpp",
+DRAW = ["display/FrameCanvas.cpp", "display/Fonts.cpp", "display/InfoScreens.cpp", "display/Globe.cpp", "display/Sky.cpp",
         "display/AircraftSprites.cpp", "display/OverheadScene.cpp", "display/LandingScene.cpp",
         "display/MapRenderer.cpp", "display/Traffic.cpp", "display/CardRenderer.cpp"]
 FLAGS = ["-std=gnu++17", "-O1", "-D", "NATIVE_TEST", "-D", "_POSIX_THREAD_SAFE_FUNCTIONS", "-D", "ARDUINOJSON_ENABLE_ARDUINO_STRING=1",
@@ -61,6 +61,17 @@ def render(out):
     exe = OUT / ("render" + EXE)
     srcs = [str(FW / s) for s in LOGIC + DRAW if (FW / s).exists()]
     cxx(["-include", str(TOOLS / "host_time.h"), str(TOOLS / "host_render.cpp"), *srcs, "-o", str(exe)])
+    out.mkdir(parents=True, exist_ok=True)
+    r = subprocess.run([str(exe), str(out)], cwd=FW, capture_output=True, text=True)
+    if r.returncode:
+        sys.stderr.write(r.stdout + r.stderr)
+        sys.exit(r.returncode)
+
+
+def mock(out):
+    exe = OUT / ("mock" + EXE)
+    srcs = [str(FW / s) for s in ["display/FrameCanvas.cpp", "display/Fonts.cpp", "display/AircraftSprites.cpp"]]
+    cxx([str(TOOLS / "host_mock.cpp"), *srcs, "-o", str(exe)])
     out.mkdir(parents=True, exist_ok=True)
     r = subprocess.run([str(exe), str(out)], cwd=FW, capture_output=True, text=True)
     if r.returncode:
@@ -132,6 +143,9 @@ def main():
         cxx([str(FW / "test" / "test_logic" / "test_main.cpp"), *(str(FW / s) for s in LOGIC),
              str(OUT / "unity.o"), "-I", str(unity), "-o", str(exe)])
         sys.exit(subprocess.run([str(exe)], cwd=FW).returncode)
+    if what == "mock":
+        mock(Path(sys.argv[2]) if len(sys.argv) > 2 else OUT / "mock")
+        return
     if what == "render":
         render(Path(sys.argv[2]) if len(sys.argv) > 2 else OUT / "frames")
         return

@@ -84,16 +84,23 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
 
 ## What it shows
 
-- **Approach card**: airline logo, flight number (BA757A, mapped from the call
-  sign), route cross-fading with the airline name and how often this
-  airframe has been seen (`SEEN 14 TIMES`, `LAST ON 3 OCT`, `FIRST VISIT`),
-  aircraft type with a
-  matching side-profile sprite, smoothly counting altitude and speed,
-  `APPROACH 27L` and an ETA countdown, and along the bottom a glide path with
-  a small aircraft (its fin in the airline's colour) coming down it to the
-  runway, the approach lights running ahead of it. The border takes the airline's
-  colour. After touchdown: `LANDED 06:58` and the runway (or minutes
-  early/late with an AeroAPI key).
+- **Approach card**: airline logo, the flight number large (BA757A, mapped
+  from the call sign), the route (`JFK → LHR`) cross-fading with the airline
+  name and how often this airframe has been seen (`Seen 14 times`,
+  `Last here 3 Oct`, `First visit`), the aircraft type with a matching
+  side-profile sprite (its red beacon flashing), altitude and speed counting
+  smoothly as `1,050 ft  148 kt`, `Approach 27L`, and along the bottom the ETA
+  and a glide path with a small aircraft (its fin in the airline's colour)
+  coming down it to the runway, the approach lights running ahead of it. The
+  border takes the airline's colour. After touchdown: `Landed 06:58` and the
+  runway (or minutes early/late with an AeroAPI key).
+- **The look** (7.0): big numbers and flight numbers in
+  [Barlow](https://github.com/jpt/barlow) with softened edges, and a slim
+  pixel font with lower case for everything else, so the panel reads
+  `New York → London` and `Light rain` rather than capitals throughout. Every
+  screen shares one title band, palette and spacing; the arrivals and
+  departures boards are the exception, kept deliberately old-fashioned as
+  yellow split-flap tiles.
 - **More on final**: while an arrival is on final its card takes turns
   with the flight's route on the globe and a page about the aircraft (its
   type, registration, which visit this is, the airline and where it has come
@@ -118,10 +125,10 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   7600 (radio failure) or 7500 (hijack) takes over the panel for a few seconds
   with a flashing red alert, and shows red on the map. It must be seen in two
   fetches running, so a single garbled reply doesn't trigger it.
-- **City names** (a switch on the web page): `LONDON > NEW YORK` instead of
-  `LHR > JFK` on the cards, the departures board and the take-off caption,
-  from an offline table of about 8,000 airports. A route too long for the
-  line reads `FROM NEW YORK` when it is landing here, and scrolls otherwise.
+- **City names** (a switch on the web page): `London → New York` instead of
+  `LHR → JFK` on the cards, the boards and the take-off caption, from an
+  offline table of about 8,000 airports. A route too long for the line reads
+  `From New York` when it is landing here, and scrolls otherwise.
 - **The rhythm**: between planes the board rotates through its screens (map,
   arrivals, stats, weather, holding, globe), each switchable on the web page. A plane's card is the event: an approach flies in
   about two minutes before touchdown and stays until it has landed; a
@@ -133,24 +140,27 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
 - **Map**: the airport's surroundings at 128×64, generated from
   OpenStreetMap (around Heathrow: the Thames, the reservoirs, the M4 and
   M25), with every tracked aircraft as
-  a small plane icon pointing the way it is flying, in its airline colour,
+  a plane icon pointing the way it is flying, sized by the aircraft
+  (regional jets and props small, widebodies large), in its airline colour,
   trailing the last few minutes of its track, with its flight number in
   small type where there is room. A spotlight rings one aircraft at a time
   (those on final first) with its flight, type and height along the bottom.
   A home marker can be set in the web page. When a plane's card comes in
   while the map is up, the map closes in on its icon and the card resolves
   out of it.
-- **Arrivals board**: the next four arrivals with their type and
-  minutes to touchdown (`~` while still a rough guess, before they join
-  final), and Heathrow's weather along the bottom, e.g. `310/04 7KM RA 14C`
-  (wind, visibility, rain, temperature). The letters flip into place like
-  an old split-flap board. Optionally, recent departures (time, and the
-  destination when the route is known) as a second page.
+- **Arrivals board**: the next four arrivals on yellow split-flap tiles
+  that run through the alphabet and land left to right: the flight, where
+  it is from (when the route is known; its type otherwise) and the time it
+  is expected to land, `LAND` inside the last minute and a half (dimmer
+  while still a rough guess, before it joins final), with Heathrow's
+  weather in words along the bottom (`11°  light rain  250/14G26`).
+  Optionally, recent departures (time, and the destination when the route
+  is known) as a second page.
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
-- **Today's stats**: arrival and departure tiles, an hourly bar chart
-  of the day's movements, and the busiest airline (in its colours), rarest
+- **Today's stats**: the day's arrivals and departures as two big
+  counting figures, an hourly chart of the day's movements, and the busiest airline (in its colours), rarest
   type, go-arounds and the day against yesterday in turn, then two more
   pages: the top airlines as bars in their livery colours and the
   commonest aircraft types, coloured by family. Every aircraft in range counts (an arrival once it is
@@ -158,13 +168,14 @@ spotter, phone alerts and Home Assistant, system, log), firmware updates and a l
   ones that get a card, and the tally is saved so a restart keeps the day.
   The counters count up and the bars rise as the screen appears; a faint
   line marks yesterday's hour by hour, and the footer says how today
-  compares so far (`+12% VS YESTERDAY`).
+  compares so far (`+12% on yesterday`).
   It only sees what is in range: centre the search near the airport (or
   make the radius large enough to cover both approaches) to count every
   movement.
 - **Weather**: a little live scene on the left (the sky as it is now, sun
   or moon, cloud, rain or snow falling, a windsock blowing in the real wind
-  and the temperature) and on the right the wind and gusts, the runway in
+  and the temperature, large) and on the right the weather in words, the
+  wind and gusts, the runway in
   use seen from above with the wind crossing it, crosswind and head- or
   tailwind, visibility and pressure.
 - **Runways in use**, worked out from the traffic itself: every aircraft on
@@ -421,12 +432,21 @@ sample data, for screenshots or for working on the page without a board.
 ## Editing sprites
 
 Aircraft are generated from each type's proportions (length, nose, fin,
-engines, upper deck...) by `tools/sprite_gen.py`, which also holds the
-liveries: `python tools/sprite_gen.py sheet out.png` renders a preview sheet
+engines, winglets, upper deck...) by `tools/sprite_gen.py`, which also holds
+the liveries. Twenty-five types are told apart, down to the A320neo's
+bigger engines and sharklets against the A320's, the 737 MAX's split
+scimitar winglets and tail cone, and the 777X's folding tips; cargo
+airlines fly without cabin windows. Each sprite carries a beacon, a wingtip
+strobe and (at scene size) flaps, which the firmware shows when it wants
+them: the beacon flashes on the card, and the flaps are out on the approach
+and the climb-out. `python tools/sprite_gen.py sheet out.png` renders a
+preview sheet and `python tools/sprite_gen.py sheet out.png` renders a preview sheet
 and `python tools/sprite_gen.py emit` writes `firmware/display/SpriteData.h`.
 The helicopter and light aircraft are hand drawn in `tools/sprite_workbench.py`.
 The landing scene's London skyline is generated the same way by
-`tools/skyline_workbench.py`.
+`tools/skyline_workbench.py`, the map's plane icons (three sizes, sixteen
+headings) by `tools/icon_workbench.py`, and the type by `tools/gen_fonts.py`
+(the Barlow files it reads are fetched separately; see the script).
 
 ## Data sources
 
@@ -465,6 +485,8 @@ Glideslope builds on
 forks by biohead and [peterdaley](https://github.com/peterdaley/TheFlightWall_OSS),
 and uses [ESP32-HUB75-MatrixPanel-DMA](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA)
 and [PubSubClient](https://github.com/knolleary/pubsubclient) (Home Assistant).
+The large type is [Barlow](https://github.com/jpt/barlow) by Jeremy Tribby
+(SIL Open Font License 1.1), rendered into the firmware as bitmaps.
 See [NOTICE](NOTICE) for what changed.
 
 Not affiliated with or endorsed by TheFlightWall or any airline.

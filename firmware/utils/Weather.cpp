@@ -161,6 +161,56 @@ void Weather::line(const Metar &m, char *out, size_t len, int maxChars)
     }
 }
 
+void Weather::describe(const char *wx, char *out, size_t len)
+{
+    if (!len) return;
+    out[0] = '\0';
+    if (!wx || !wx[0]) return;
+    const char *intensity = wx[0] == '-' ? "light " : wx[0] == '+' ? "heavy " : "";
+    const char *w = (wx[0] == '-' || wx[0] == '+') ? wx + 1 : wx;
+    const char *what = nullptr;
+    if (strstr(w, "TS"))                      { what = "thunder"; intensity = ""; }
+    else if (strstr(w, "FZ") && strstr(w, "RA")) what = "freezing rain";
+    else if (strstr(w, "SH") && strstr(w, "SN")) what = "snow showers";
+    else if (strstr(w, "SH"))                 what = "showers";
+    else if (strstr(w, "SN") || strstr(w, "SG")) what = "snow";
+    else if (strstr(w, "RA"))                 what = "rain";
+    else if (strstr(w, "DZ"))                 what = "drizzle";
+    else if (strstr(w, "GR") || strstr(w, "GS") || strstr(w, "PL")) what = "hail";
+    else if (strstr(w, "FG"))                 { what = "fog"; intensity = ""; }
+    else if (strstr(w, "BR"))                 { what = "mist"; intensity = ""; }
+    else if (strstr(w, "HZ") || strstr(w, "FU")) { what = "haze"; intensity = ""; }
+    if (what) snprintf(out, len, "%s%s", intensity, what);
+}
+
+void Weather::friendly(const Metar &m, char *out, size_t len, int maxChars)
+{
+    if (!len) return;
+    out[0] = '\0';
+    if (!m.valid) return;
+    char wx[20], wind[16], temp[10] = "";
+    describe(m.wx, wx, sizeof(wx));
+    if (!wx[0] && m.visM >= 0 && m.visM < 5000) snprintf(wx, sizeof(wx), "vis %s", m.visText);
+    if (m.windKt == 0)      snprintf(wind, sizeof(wind), "calm");
+    else if (m.windDir < 0) snprintf(wind, sizeof(wind), "VRB/%d", m.windKt);
+    else                    snprintf(wind, sizeof(wind), "%03d/%d", m.windDir, m.windKt);
+    if (m.gustKt) snprintf(wind + strlen(wind), sizeof(wind) - strlen(wind), "G%d", m.gustKt);
+    if (m.tempC != -99) snprintf(temp, sizeof(temp), "%d\xC2\xB0", m.tempC);
+    for (int level = 0; level < 2; ++level)
+    {
+        size_t o = 0;
+        const char *parts[3] = {temp, wx, level == 0 ? wind : ""};
+        for (const char *p : parts)
+        {
+            if (!p[0]) continue;
+            o += snprintf(out + o, o < len ? len - o : 0, "%s%s", o ? "  " : "", p);
+            if (o >= len) break;
+        }
+        // Characters on the panel: the degree sign is two bytes but one letter.
+        if ((int)strlen(out) - (temp[0] ? 1 : 0) <= maxChars) return;
+    }
+}
+
 void Weather::pressure(const Metar &m, char *out, size_t len)
 {
     if (m.altInHg100)  snprintf(out, len, "A%d.%02d", m.altInHg100 / 100, m.altInHg100 % 100);

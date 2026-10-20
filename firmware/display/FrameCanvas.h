@@ -8,6 +8,7 @@ Memory: one frame is 16 KB; buffers are static, never on the heap.
 #include <Arduino.h>
 
 struct Rgb { uint8_t r, g, b; };
+namespace Fonts { struct Font; }
 
 class FrameCanvas
 {
@@ -62,6 +63,14 @@ public:
     {
         return textWidth(s.c_str(), scale, pitch, maxChars);
     }
+
+    // 7.0 type (display/Fonts.h): y is the top of the capitals; soft edges
+    // blend into what is already drawn. Returns the width drawn. tracking
+    // adds space between letters (negative tightens).
+    int print(const Fonts::Font &f, int x, int y, const char *s, Rgb c, int tracking = 0);
+    static int width(const Fonts::Font &f, const char *s, int tracking = 0);
+    // Blend c over the pixel at (x, y) with coverage a (0-15).
+    void blend(int x, int y, Rgb c, uint8_t a);
 
     const uint16_t *pixels() const { return _px; }
     uint16_t *pixels() { return _px; }

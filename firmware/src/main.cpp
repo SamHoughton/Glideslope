@@ -31,6 +31,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "core/FlightDataFetcher.h"
 #include "adapters/NeoMatrixDisplay.h"
 #include "display/CardRenderer.h"
+#include "display/AircraftSprites.h"
 #include "display/ApproachModel.h"
 #include "display/RareSpotter.h"
 #include "utils/TelnetLogger.h"
@@ -218,7 +219,7 @@ static void spotterCheck(const std::vector<StateVector> &states, const std::vect
         const AirportInfo &end = home ? route.origin : route.destination;
         const char *city = cfg.route_cities ? Airports::city(end) : nullptr;
         const String code = end.code_iata.length() ? end.code_iata : end.code_icao;
-        snprintf(info.where, sizeof(info.where), "%s %s", home ? "FROM" : "TO", city ? city : code.c_str());
+        snprintf(info.where, sizeof(info.where), "%s %s", home ? "From" : "To", city ? city : code.c_str());
     }
     info.altFt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
     info.kind = AircraftSprites::classify(s.aircraft_type, info.known);
@@ -343,6 +344,7 @@ static std::vector<TrafficPoint> trafficFromStates(const std::vector<StateVector
             label.replace(" ", "");   // "U2 73CA" -> "U273CA": the tiny font has no room for gaps
             strlcpy(p.label, label.c_str(), sizeof(p.label));
             strlcpy(p.type, s.aircraft_type.c_str(), sizeof(p.type));
+            p.size = AircraftSprites::sizeClass(p.type);
             p.altFt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
         }
 
@@ -401,6 +403,8 @@ static void updateArrivals(const std::vector<StateVector> &states, const std::ve
         strlcpy(a.ident, id.c_str(), sizeof(a.ident));
         const String &type = known && known->aircraft_code.length() ? known->aircraft_code : s.aircraft_type;
         strlcpy(a.type, type.c_str(), sizeof(a.type));
+        if (known)
+            strlcpy(a.from, (known->origin.code_iata.length() ? known->origin.code_iata : known->origin.code_icao).c_str(), sizeof(a.from));
         a.accent = airlineColour(s.callsign);
         a.dataMs = millis();
         if (onFinal)

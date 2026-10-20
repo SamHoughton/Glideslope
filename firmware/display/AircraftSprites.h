@@ -3,7 +3,7 @@
 Purpose: Side-profile aircraft sprites (nose left) for the 128x64 panel,
 picked by ICAO aircraft type code, painted in the airline's colours.
 
-Twenty types, each at two sizes: the card / fly-across size (up to 44x17)
+Twenty-five types, each at two sizes: the card / fly-across size (up to 44x17)
 and a larger one with the gear down for the landing and take-off scenes.
 They are generated from each type's proportions by tools/sprite_gen.py
 (display/SpriteData.h), shaded from a highlight along the top to a shadow
@@ -26,6 +26,7 @@ namespace AircraftSprites
     {
         A320, A321, B737, A220, EJet, CRJ, B757, B767, B787, A330, A350, B777,
         A340, B747, A380, ATR, Q400, Bizjet, Helicopter, LightAircraft,
+        A319, A320neo, A321neo, B737Max, B777X,   // 7.0: told apart by engines and wingtips
         KindCount
     };
 
@@ -42,6 +43,7 @@ namespace AircraftSprites
     {
         Rgb body{215, 220, 228}, belly{150, 156, 168}, stripe{215, 220, 228};
         Rgb tail{90, 170, 255}, accent{50, 100, 160}, engine{175, 180, 190};
+        bool freighter = false;   // a cargo airline: no cabin windows
         Livery() = default;
         Livery(Rgb fin) : tail(fin), accent(FrameCanvas::scale(fin, 0.6f)) {}
     };
@@ -52,6 +54,10 @@ namespace AircraftSprites
     // Classify an ICAO type designator (e.g. "A20N", "B77W", "EC35").
     // known is set false when the code is unrecognised (fallback sprite).
     Kind classify(const String &icaoType, bool &known);
+    Kind classify(const char *icaoType, bool &known);   // no String: for every frame
+    // How big it is, for the map's icons: 0 regional / light / helicopter,
+    // 1 narrowbody (and unknown), 2 widebody.
+    uint8_t sizeClass(const char *icaoType);
 
     // The airline's livery (from the call sign, logo or operator code), or
     // white with accent on the fin.
@@ -65,8 +71,12 @@ namespace AircraftSprites
     // grey draws the whole sprite in greys (the unknown-type fallback).
     // outline clears a 1px black halo first so it reads over busy backgrounds.
     // gearHidden: the landing gear's lowest rows left out (it tucks up after take-off).
+    // extras (7.0): Lights flashes the red beacon and the wingtip strobe on
+    // animMs; Flaps shows the flaps extended (scene sprites have them).
+    enum Extras : uint8_t { Lights = 1, Flaps = 2 };
     void draw(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,
-              bool flipX = false, bool grey = false, bool outline = false, int gearHidden = 0);
+              bool flipX = false, bool grey = false, bool outline = false, int gearHidden = 0,
+              uint8_t extras = 0, uint32_t animMs = 0);
     // At half size (each 2x2 block averaged; drawn where at least two of
     // the four are aircraft), for aircraft high overhead.
     void drawHalf(FrameCanvas &c, const Sprite &s, int x, int y, const Livery &livery,

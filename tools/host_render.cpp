@@ -121,15 +121,15 @@ int main(int argc, char **argv)
 
 #ifdef HAVE_OVERHEAD
     OverheadScene::Info o;
-    strcpy(o.ident, "QR8"); strcpy(o.type, "B777F"); strcpy(o.where, "TO DOHA");
+    strcpy(o.ident, "QR8"); strcpy(o.type, "B777F"); strcpy(o.where, "To Doha");
     o.altFt = 3400; o.kind = AircraftSprites::B777; o.livery = AircraftSprites::Livery(Rgb{110, 30, 70});
     o.accent = Rgb{180, 60, 120}; o.rightward = true;
     OverheadScene::render(c, o, 3200, Sky::preview("day"));        save(c, "overhead_low_day");
-    strcpy(o.ident, "VS3"); strcpy(o.type, "A350"); strcpy(o.where, "TO NEW YORK");
+    strcpy(o.ident, "VS3"); strcpy(o.type, "A350"); strcpy(o.where, "To New York");
     o.altFt = 14250; o.kind = AircraftSprites::A350; o.livery = AircraftSprites::Livery(Rgb{210, 20, 40});
     o.accent = Rgb{230, 40, 60}; o.rightward = false;
     OverheadScene::render(c, o, 3000, Sky::preview("golden"));     save(c, "overhead_mid_golden");
-    strcpy(o.ident, "UAE38"); strcpy(o.type, "A380"); strcpy(o.where, "TO DUBAI");
+    strcpy(o.ident, "UAE38"); strcpy(o.type, "A380"); strcpy(o.where, "To Dubai");
     o.altFt = 36000; o.kind = AircraftSprites::A380; o.livery = AircraftSprites::Livery(Rgb{200, 30, 40});
     o.accent = Rgb{220, 40, 50}; o.rightward = true;
     OverheadScene::render(c, o, 4200, Sky::preview("day"));        save(c, "overhead_high_contrail");
@@ -161,7 +161,7 @@ int main(int argc, char **argv)
         Globe::render(c, g, 6000, evening);               save(c, "docs_globe");
 #ifdef HAVE_OVERHEAD
         OverheadScene::Info o;
-        strcpy(o.ident, "GS202"); strcpy(o.type, "A380"); strcpy(o.where, "TO SINGAPORE");
+        strcpy(o.ident, "GS202"); strcpy(o.type, "A380"); strcpy(o.where, "To Singapore");
         o.altFt = 37000; o.kind = AircraftSprites::A380; o.livery = AircraftSprites::Livery(Rgb{255, 185, 60});
         o.accent = Rgb{255, 185, 60}; o.rightward = true;
         OverheadScene::render(c, o, 3900, Sky::preview("day"));  save(c, "docs_overhead");
@@ -197,6 +197,7 @@ int main(int argc, char **argv)
                 const std::string label = iata ? std::string(iata) + (cs.c_str() + 3) : std::string(cs.c_str());
                 strncpy(tp.label, label.c_str(), sizeof(tp.label) - 1);
                 strncpy(tp.type, sv.aircraft_type.c_str(), sizeof(tp.type) - 1);
+                tp.size = AircraftSprites::sizeClass(tp.type);
                 tp.colour = AircraftSprites::airlineColour(icao);
                 pts.push_back(tp);
             }
@@ -232,6 +233,26 @@ int main(int argc, char **argv)
         o.animMs = 9500;   // the registration history phase of the route line
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_history");
         g_config.route_cities = false;
+        {
+            // Short final: the status reads "Landing 27L" (descender in the g).
+            FlightInfo g = f;
+            g.lon = -0.4340 + 0.7 / (111.32 * cos(51.4649 * M_PI / 180.0));
+            g.baro_altitude = 160; g.vertical_rate = -700; g.distance_km = 1;
+            o.animMs = 361;   // the status at full brightness
+            CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{255, 185, 60}, o);   save(c, "card_landing");
+        }
+        {
+            // 7.0 sprites: an A320neo with its beacon lit, a 737 MAX freighter.
+            FlightInfo g = f;
+            g.aircraft_code = "A20N"; g.aircraft_display_name_short = "A320neo";
+            o.animMs = 2050;   // beacon on
+            CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{255, 185, 60}, o);   save(c, "card_neo_beacon");
+            g.aircraft_code = "B38M"; g.aircraft_display_name_short = "737 MAX 8";
+            g.ident = "FDX5"; g.ident_icao = "FDX5"; g.ident_iata = "FX5"; g.airline_display_name_full = "FedEx";
+            g.airline_logo_rgb565.clear();
+            o.animMs = 1200;
+            CardRenderer::render(c, g, ApproachModel::evaluate(g), Rgb{120, 60, 200}, o);   save(c, "card_max_freighter");
+        }
         o.landed = true; o.landedAt = 1792350600; o.animMs = 1200;
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_landed");
     }
@@ -240,16 +261,24 @@ int main(int argc, char **argv)
     {
         Metar m;
         Weather::parse("METAR EGLL 181850Z 25014G26KT 9999 -RA BKN012 OVC030 11/09 Q1004", m);
+        char wxLine[40];
+        Weather::friendly(m, wxLine, sizeof(wxLine));
         InfoScreens::Arrival arr[4];
         const char *ids[] = {"BA117", "VS4", "EI158", "QR7"}, *types[] = {"A35K", "A339", "A20N", "A388"};
         for (int i = 0; i < 4; ++i)
         {
             strcpy(arr[i].ident, ids[i]); strcpy(arr[i].type, types[i]);
+            static const char *const froms[] = {"JFK", "MCO", "DUB", ""};
+            strcpy(arr[i].from, froms[i]);
             arr[i].etaSec = 40 + i * 95; arr[i].estimate = i == 3; arr[i].dataMs = 0;
             arr[i].accent = AircraftSprites::airlineColour(ids[i][0] == 'Q' ? "QR" : ids[i][0] == 'V' ? "VS" : ids[i][0] == 'E' ? "EI" : "BA");
         }
         g_fakeMillis = 0;
-        InfoScreens::renderArrivals(c, arr, 4, "27L", "250/14G26 10KM RA 11C", 0, 5000);   save(c, "board_arrivals");
+        InfoScreens::renderArrivals(c, arr, 4, "27L", wxLine, 0, 5000);   save(c, "board_arrivals");
+        g_config.route_cities = true;
+        InfoScreens::renderArrivals(c, arr, 4, "27L", wxLine, 0, 5000);   save(c, "board_arrivals_cities");
+        InfoScreens::renderArrivals(c, arr, 4, "27L", wxLine, 0, 700);    save(c, "board_arrivals_flipping");
+        g_config.route_cities = false;
         InfoScreens::Departure dep[3];
         const char *dids[] = {"BA283", "AA81", "U2 8061"}, *dd[] = {"LAX", "DFW", "NCE"};
         for (int i = 0; i < 3; ++i)
@@ -264,7 +293,7 @@ int main(int argc, char **argv)
         InfoScreens::renderWeather(c, m, "27L", 2000, Sky::at(m, 1792350900));               save(c, "weather_evening_rain");
         HoldTracker::Row rows[] = {{"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7}};
         InfoScreens::renderHolding(c, rows, 4, 2000);                                         save(c, "holding");
-        InfoScreens::renderClock(c, 2000, "250/14 10KM RA 11C");                              save(c, "clock_night");
+        InfoScreens::renderClock(c, 2000, wxLine);                              save(c, "clock_night");
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");
         InfoScreens::renderRareBanner(c, "RARE SPOT", "A380", 900);                           save(c, "banner_rare");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 600);                                save(c, "runway_change_a");
