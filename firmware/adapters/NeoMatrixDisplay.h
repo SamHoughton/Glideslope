@@ -39,6 +39,8 @@ void requestMapPreview(uint32_t durationMs);
 
 // Preview a screen (1 = stats, 2 = clock, 3 = arrivals, 4 = weather) for durationMs. Safe from the web task.
 void requestScreenPreview(uint8_t which, uint32_t durationMs);
+// A demo from the web page: night watch stands aside for a minute so it shows.
+void noteWebDemo();
 
 // Replay the fly-across onto the current card. forceDirection: 0 = the
 // flight's real direction, +1 = left-to-right, -1 = right-to-left (testing).
@@ -228,6 +230,10 @@ private:
     void                 noteGlobe(const Entry &e);
     void                 refreshGlobe(unsigned long now);
     int                  statsPages() const;
+    // Night watch (8.1).
+    bool                 nightWatchNow(unsigned long now) const;
+    void                 renderNightWatch(unsigned long now);
+    int                  _nwBase = -1, _nwCarry = 0, _nwLastTotal = 0;   // tonight's count across midnight
     // Origins' weather, compact: the last few airports asked about.
     struct OriginWx { char icao[5]; int8_t tempC; uint8_t cloud; char wx[8]; int16_t visM; uint32_t atMs; };
     OriginWx             _origins[6] = {};

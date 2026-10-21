@@ -23,6 +23,7 @@
 #include "display/MapRenderer.h"
 #include "display/Traffic.h"
 #include "display/LineupScreen.h"
+#include "display/NightWatch.h"
 #include "adapters/ReadsbParser.h"
 #include "config/AirlineCodes.h"
 #include <fstream>
@@ -342,6 +343,26 @@ int main(int argc, char **argv)
             n = LineupScreen::demo(lp);
             lp[1].km = 5.6f; lp[1].altFt = 5.6f * 172;   // a tight one: under a minute behind
             LineupScreen::render(c, lp, 2, 5000, Sky::preview("night"));               save(c, "lineup_tight_night");
+        }
+        {
+            // Night watch: looking west from central London, three aircraft
+            // (an arrival low on final, one further out, one climbing away).
+            static TrafficTracker tr;
+            std::vector<TrafficPoint> pts(3);
+            const struct { double lat, lon; float hdg, alt, gs; uint32_t id; } k[] = {
+                {51.474, -0.36, 90, 2200, 150, 0x400001}, {51.48, -0.62, 92, 5200, 210, 0x400002},
+                {51.56, -0.42, 300, 7000, 280, 0x400003}};
+            for (int i = 0; i < 3; ++i)
+            {
+                pts[i].lat = k[i].lat; pts[i].lon = k[i].lon; pts[i].heading = k[i].hdg;
+                pts[i].altFt = k[i].alt; pts[i].gsKt = k[i].gs; pts[i].id = k[i].id;
+            }
+            tr.update(pts, 1000);
+            NightWatch::Tracker t;
+            t.tonight = 7; t.today = 512; t.last = 1792350900 - 33 * 60; t.next = 0;
+            NightWatch::render(c, 1000, Sky::preview("night"), wxLine, tr, 51.5, -0.12, 270, t);   save(c, "nightwatch");
+            t.next = 1792350900 + 300;
+            NightWatch::render(c, 7000, Sky::preview("night"), wxLine, tr, 51.5, -0.12, 270, t);   save(c, "nightwatch_next");
         }
         InfoScreens::renderNightScene(c, 2000, wxLine, Sky::preview("night"));          save(c, "night_scene");
         InfoScreens::renderNightScene(c, 110000, wxLine, Sky::preview("night"));        save(c, "night_scene_sunrise");   // a plane far off, sunrise line

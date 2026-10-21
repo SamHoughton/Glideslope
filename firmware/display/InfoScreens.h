@@ -95,7 +95,8 @@ namespace InfoScreens
     // distant runway lights, the time above, the date taking turns with the
     // next sunrise and the weather, and now and then an aircraft's lights
     // crossing far off. Falls back to the plain clock without a clock.
-    void renderNightScene(FrameCanvas &c, uint32_t animMs, const char *weather, const Sky::Look &sky);
+    void renderNightScene(FrameCanvas &c, uint32_t animMs, const char *weather, const Sky::Look &sky,
+                          bool decorativePlane = true);
     void renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs);
     void renderCaption(FrameCanvas &c, const char *text);
     // Holding stacks: one row per stack, its aircraft circling a racetrack.

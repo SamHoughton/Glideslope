@@ -241,6 +241,10 @@ void DailyStats::noteTraffic(const std::vector<StateVector> &states)
 
 void DailyStats::count(const StateVector &s, bool arrival, int hour)
 {
+    {
+        const time_t now = time(nullptr);
+        if (now > 1600000000) _lastMove = now;
+    }
     if (arrival) { ++_arrivals;   if (hour >= 0) ++_arrHour[hour]; }
     else         { ++_departures; if (hour >= 0) ++_depHour[hour]; }
     _dirty = true;

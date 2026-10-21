@@ -19,6 +19,8 @@ void requestMapPreview(uint32_t durationMs) { s_mapRequestMs = durationMs ? dura
 
 // Ambient screen previews from the web page: 1 stats, 2 clock.
 
+void noteWebDemo() { s_demoUntil = millis() + 60000; }
+
 void requestScreenPreview(uint8_t which, uint32_t durationMs)
 {
     s_screenPreviewUntil = millis() + durationMs;

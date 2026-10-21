@@ -269,6 +269,8 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <div class="f"><label for="night_end_time">Until</label><input type="time" id="night_end_time"></div>
       </div>
       <div class="f"><label for="night_brightness">Night brightness <small>(0 = off)</small></label><input type="number" min="0" max="255" id="night_brightness"></div>
+      <label class="sw"><input type="checkbox" id="night_watch"><span>Night watch<small>Through the night hours just the quiet view out of the window: the skyline, the real sky and the time, aircraft as their lights where they really are, and a dim tally of the night. No cards, scenes or banners; emergency squawks still show. Tracking and alerts carry on as usual</small></span></label>
+      <div class="btns"><button data-demo="nightwatch">Show night watch</button></div>
     </section>
 
     <section class="tab" id="t-data">
@@ -384,7 +386,7 @@ function save(){var d={};
   d.watchlist=$('watchlist').value.trim();d.mqtt_host=$('mqtt_host').value.trim();d.mqtt_user=$('mqtt_user').value;d.mqtt_port=parseInt($('mqtt_port').value)||1883;
   ['display_brightness','display_cycle_seconds','card_lead_seconds','interlude_seconds','night_brightness','fetch_interval_seconds',
    'local_fetch_interval_seconds','aeroapi_cache_ttl_seconds','aeroapi_fail_cache_ttl_seconds'].forEach(function(k){d[k]=parseInt($(k).value);});
-  ['display_nearest_only','display_border','display_flip','route_cities','night_mode_enabled','night_follow_sun','opensky_priority','use_community_feeds','overhead_all','quiet_alerts'].forEach(function(k){d[k]=$(k).checked;});
+  ['display_nearest_only','display_border','display_flip','route_cities','night_mode_enabled','night_follow_sun','night_watch','opensky_priority','use_community_feeds','overhead_all','quiet_alerts'].forEach(function(k){d[k]=$(k).checked;});
   d.screens=0;document.querySelectorAll('[data-scr]').forEach(function(e){if(e.checked)d.screens|=parseInt(e.dataset.scr);});
   d.screen_facing=$('screen_facing').value;d.tar1090_host=$('tar1090_host').value;
   d.ntfy_topic=$('ntfy_topic').value.trim();d.notify_mask=ntfMask();

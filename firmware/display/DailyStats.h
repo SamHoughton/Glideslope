@@ -29,6 +29,7 @@ public:
     int  arrivals() const { return _arrivals; }
     int  departures() const { return _departures; }
     int  goArounds() const { return _goArounds; }
+    time_t lastMovement() const { return _lastMove; }   // 0 until one is counted (not saved)
     // Movements in each local hour today (0-23).
     int  arrivalsInHour(int h) const { return (h >= 0 && h < 24) ? _arrHour[h] : 0; }
     int  departuresInHour(int h) const { return (h >= 0 && h < 24) ? _depHour[h] : 0; }
@@ -91,6 +92,7 @@ private:
     uint16_t _arrHour[24] = {}, _depHour[24] = {};
     uint16_t _yHour[24] = {};          // yesterday, arrivals + departures
     bool     _hasYesterday = false;
+    time_t   _lastMove = 0;
     bool     _dirty = false;
 
     static constexpr size_t kSeenSlots = 1536;   // 6 KB; up to 1,152 movements a day
