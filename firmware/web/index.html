@@ -550,7 +550,7 @@ function pollFrame(){if(document.hidden){setTimeout(pollFrame,3000);return;}
     for(var j=0;j+2<u.length&&o<8192;j+=3){var v=u[j+1]|(u[j+2]<<8);for(var k=u[j];k>0&&o<8192;k--)px[o++]=v;}
     if(o<8192)return;
     if(same(px,lastPx)){still++;return;}still=0;lastPx=px;requestAnimationFrame(function(){draw(px);});})
-  .catch(function(){}).finally(function(){setTimeout(pollFrame,still>3?1500:500);});}
+  .catch(function(){}).finally(function(){setTimeout(pollFrame,still>3?3000:1000);});}   // each frame is a new connection: gently
 
 // Log, timestamps in amber.
 function poll(){if(document.hidden||!$('t-log').classList.contains('on')){setTimeout(poll,3000);return;}
