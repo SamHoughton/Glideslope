@@ -322,6 +322,8 @@ void test_replay_counts_arrivals()
     printf("\n");
     printf("replay: %d arrivals, %d departures (independent count %d), landing on %s\n",
            stats.arrivals(), stats.departures(), expected, runways.mainArrival());
+    printf("replay: %d go-arounds\n", stats.goArounds());
+    TEST_ASSERT_EQUAL(0, stats.goArounds());   // real traffic, none went around: no false alarms
     TEST_ASSERT_TRUE(expected > 0);
     // Within 15% of the independent count.
     TEST_ASSERT_INT_WITHIN(expected * 15 / 100 + 1, expected, stats.arrivals());
@@ -334,6 +336,35 @@ void test_replay_counts_arrivals()
     TEST_ASSERT_TRUE(nr >= 1);
     TEST_ASSERT_EQUAL(stats.arrivals(), sum);
     TEST_ASSERT_TRUE(nr < 2 || rw[0].n >= rw[1].n);
+}
+
+void test_go_around_from_traffic()
+{
+    // On final for 27L, then a little later climbing away past the
+    // threshold: counted, logged, reported once, whether or not it was
+    // the card's flight (8.1).
+    static DailyStats s;
+    std::vector<StateVector> v(1);
+    v[0] = onFinal("ga1", "27L", 3);
+    s.noteTraffic(v);
+    v[0] = onFinal("ga1", "27L", 1.5);
+    s.noteTraffic(v);
+    TEST_ASSERT_EQUAL(0, s.goArounds());
+    v[0] = onFinal("ga1", "27L", 0.2);
+    v[0].baro_altitude = 900 / 3.28084;          // climbing away
+    v[0].vertical_rate = 2000 / 196.85;
+    s.noteTraffic(v);
+    TEST_ASSERT_EQUAL(1, s.goArounds());
+    char id[10], rwy[4];
+    int alt = 0;
+    TEST_ASSERT_TRUE(s.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt));
+    TEST_ASSERT_EQUAL_STRING("TSTga1", id);
+    TEST_ASSERT_EQUAL_STRING("27L", rwy);
+    TEST_ASSERT_FALSE(s.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt));   // reported once
+    v[0].baro_altitude = 1400 / 3.28084;         // still climbing: not a second one
+    s.noteTraffic(v);
+    TEST_ASSERT_EQUAL(1, s.goArounds());
+    TEST_ASSERT_EQUAL(DailyStats::GoAround, s.spot(0).kind);
 }
 
 void test_spotter_log()
@@ -642,6 +673,7 @@ int main(int, char **)
     RUN_TEST(test_overhead_skips_arrivals);
     RUN_TEST(test_seen_log);
     RUN_TEST(test_spotter_log);
+    RUN_TEST(test_go_around_from_traffic);
     RUN_TEST(test_airport_time_zones);
     RUN_TEST(test_http_request);
     return UNITY_END();

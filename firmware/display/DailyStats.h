@@ -25,6 +25,10 @@ public:
     // Every aircraft in range, once per fetch.
     void noteTraffic(const std::vector<StateVector> &states);
     void noteGoAround() { rollDay(); ++_goArounds; _dirty = true; }
+    // A go-around spotted in noteTraffic since the last call (8.1): every
+    // aircraft in range is watched, not only the card's. Fills the call
+    // sign, runway and height; false if none.
+    bool takeGoAround(char *ident, size_t identLen, char *runway, size_t rwyLen, int &altFt);
 
     int  arrivals() const { return _arrivals; }
     int  departures() const { return _departures; }
@@ -125,6 +129,14 @@ private:
     uint8_t     _nRecent = 0, _nRwy = 0;
     RunwayCount _rwy[4] = {};
     void noteArrival(const StateVector &s, const char *runway);
+
+    // Go-around watch: who was on final lately, and how high they were.
+    struct FinalWatch { uint32_t id; uint32_t finalMs; int16_t altFt; char rwy[4]; };
+    FinalWatch _watch[10] = {};
+    char       _gaIdent[10] = "", _gaRwy[4] = "";
+    int16_t    _gaAlt = 0;
+    bool       _gaPending = false;
+    void       watchGoArounds(const StateVector &s, const struct ApproachStatus &st, bool onFinal, uint32_t now);
 
     // Spotter log: newest first (_spotHead is kept at 0; older files had a ring).
     Spot     _spots[kMaxSpots] = {};

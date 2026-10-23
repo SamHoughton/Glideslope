@@ -240,6 +240,7 @@ void DailyStats::noteTraffic(const std::vector<StateVector> &states)
         const ApproachStatus st = ApproachModel::evaluate(f);
         const bool onFinal = (st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing) &&
                              !isnan(st.distKm) && st.distKm < 12.0f;
+        watchGoArounds(s, st, onFinal, (uint32_t)millis());
         if (onFinal)
         {
             if (markSeen(fnv(s.icao24, s.callsign, 'A')))
@@ -499,4 +500,54 @@ void DailyStats::load()
     _year = year;
     _day  = day;   // rollDay() resets it if this is not today
     Log.printf("Stats: restored %u arrivals, %u departures\n", _arrivals, _departures);
+}
+
+// ── Go-arounds, from every aircraft in range ───────────────────────────────
+
+void DailyStats::watchGoArounds(const StateVector &s, const ApproachStatus &st, bool onFinal, uint32_t now)
+{
+    const uint32_t id = (uint32_t)strtoul(s.icao24.c_str(), nullptr, 16) | 1;
+    const float alt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
+    FinalWatch *slot = nullptr;
+    for (FinalWatch &w : _watch) if (w.id == id) { slot = &w; break; }
+    if (onFinal)
+    {
+        // On final: remember it (the slot it had, else the stalest).
+        if (!slot)
+        {
+            slot = &_watch[0];
+            for (FinalWatch &w : _watch) if (now - w.finalMs > now - slot->finalMs) slot = &w;
+            slot->id = id;
+        }
+        slot->finalMs = now;
+        slot->altFt = isnan(alt) ? 0 : (int16_t)alt;
+        strlcpy(slot->rwy, st.runway, sizeof(slot->rwy));
+        return;
+    }
+    if (!slot || now - slot->finalMs > 180000) return;
+    // Off final within three minutes, below 5,000 ft, climbing hard and
+    // higher than when it was last on final: it has gone around.
+    const float vr = isnan(s.vertical_rate) ? NAN : (float)(s.vertical_rate * 196.85);
+    if (!isnan(vr) && vr > 500 && !isnan(alt) && alt < 5000 && alt > slot->altFt + 100)
+    {
+        String cs = s.callsign;
+        cs.trim();
+        strlcpy(_gaIdent, cs.length() ? cs.c_str() : s.icao24.c_str(), sizeof(_gaIdent));
+        strlcpy(_gaRwy, slot->rwy, sizeof(_gaRwy));
+        _gaAlt = (int16_t)alt;
+        _gaPending = true;
+        ++_goArounds;
+        noteSpot(GoAround, _gaIdent, _gaRwy);   // marks the stats dirty too
+        slot->id = 0;                           // once
+    }
+}
+
+bool DailyStats::takeGoAround(char *ident, size_t identLen, char *runway, size_t rwyLen, int &altFt)
+{
+    if (!_gaPending) return false;
+    _gaPending = false;
+    strlcpy(ident, _gaIdent, identLen);
+    strlcpy(runway, _gaRwy, rwyLen);
+    altFt = _gaAlt;
+    return true;
 }

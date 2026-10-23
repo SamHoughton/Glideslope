@@ -7,6 +7,7 @@ Responsibilities:
   only the pixels that changed to the panel.
 */
 #include "adapters/DisplayInternal.h"
+#include "utils/Notify.h"
 
 // The panel mirror (declared in NeoMatrixDisplay.h; the web page reads it).
 FrameCanvas        g_shownFrame;
@@ -274,6 +275,16 @@ void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
     const unsigned long now = millis();
     Lock l(_lock);
     _stats.noteTraffic(states);
+    {
+        char id[10], rwy[4];
+        int alt = 0;
+        if (_stats.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt))
+        {
+            Log.printf("Traffic: %s GO-AROUND%s%s (%d ft)\n", id, rwy[0] ? " off " : "", rwy, alt);
+            Notify::post(Notify::GoAround, 4, "arrows_counterclockwise", "Go-around",
+                         "%s went around at %d ft%s%s", id, alt, rwy[0] ? " off " : "", rwy);
+        }
+    }
     _holds.noteStates(states, now);
     if (_runways.update(states, now))
     {
