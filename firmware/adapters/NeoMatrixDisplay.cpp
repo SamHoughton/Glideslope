@@ -275,6 +275,7 @@ void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
     const unsigned long now = millis();
     Lock l(_lock);
     _stats.noteTraffic(states);
+    checkRecords();
     {
         char id[10], rwy[4];
         int alt = 0;
@@ -419,6 +420,70 @@ void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const c
     _alertStartMs = millis();
     _alertActive  = true;
     _stats.noteSpot(DailyStats::Emergency, ident, code);
+}
+
+bool NeoMatrixDisplay::takeLogbookDay(Logbook::Day &day, std::vector<Logbook::Tally> &tallies)
+{
+    Lock l(_lock);
+    return _stats.takeDay(day, tallies);
+}
+
+int NeoMatrixDisplay::takeLogbookEvents(Logbook::Event *out, int cap)
+{
+    Lock l(_lock);
+    return _stats.takeEvents(out, cap);
+}
+
+void NeoMatrixDisplay::setRecords(const Logbook::Records &r)
+{
+    Lock l(_lock);
+    _records = r;
+}
+
+void NeoMatrixDisplay::showNews(const char *line1, const char *line2)
+{
+    if (!line1 || !line1[0]) return;
+    Lock l(_lock);
+    strlcpy(_news1, line1, sizeof(_news1));
+    strlcpy(_news2, line2 ? line2 : "", sizeof(_news2));
+    _newsPending = true;
+}
+
+// Today beating the all-time bests, as it happens (once each a day): the
+// busiest day, the most go-arounds, the tightest gap. Under the lock.
+void NeoMatrixDisplay::checkRecords()
+{
+    const uint32_t today = _stats.date();
+    if (!today || !_records.since) return;   // nothing to beat until a day is logged
+    if (today != _recordsDate) { _recordsDate = today; _beatDay = _beatGa = _beatGap = false; }
+    char l2[24];
+    const int moves = _stats.arrivals() + _stats.departures();
+    if (!_beatDay && _records.bestDay && moves > _records.bestDay)
+    {
+        _beatDay = true;
+        snprintf(l2, sizeof(l2), "%d today", moves);
+        strlcpy(_news1, "Busiest day ever", sizeof(_news1));
+        strlcpy(_news2, l2, sizeof(_news2));
+        _newsPending = true;
+        Log.printf("Logbook: today is the busiest day yet (%d, was %u)\n", moves, _records.bestDay);
+    }
+    if (!_beatGa && _stats.goArounds() > _records.bestGa && _records.bestGa)
+    {
+        _beatGa = true;
+        snprintf(l2, sizeof(l2), "%d go-arounds", _stats.goArounds());
+        strlcpy(_news1, "Most in a day", sizeof(_news1));
+        strlcpy(_news2, l2, sizeof(_news2));
+        _newsPending = true;
+    }
+    const int gap = _stats.tightestGapSec();
+    if (!_beatGap && gap && _records.tightest && gap < _records.tightest)
+    {
+        _beatGap = true;
+        snprintf(l2, sizeof(l2), "%d:%02d apart", gap / 60, gap % 60);
+        strlcpy(_news1, "Tightest gap ever", sizeof(_news1));
+        strlcpy(_news2, l2, sizeof(_news2));
+        _newsPending = true;
+    }
 }
 
 void NeoMatrixDisplay::setOriginWeather(const Metar &m)

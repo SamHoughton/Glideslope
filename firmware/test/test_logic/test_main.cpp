@@ -21,6 +21,10 @@ unsigned long g_fakeMillis = 1000;
 #include "display/RunwayTracker.h"
 #include "display/HoldTracker.h"
 #include "display/DailyStats.h"
+#include "utils/Logbook.h"
+#include <WiFiClient.h>
+#include <LittleFS.h>
+#include <algorithm>
 #include "utils/Weather.h"
 #include "adapters/ReadsbParser.h"
 
@@ -336,6 +340,56 @@ void test_replay_counts_arrivals()
     TEST_ASSERT_TRUE(nr >= 1);
     TEST_ASSERT_EQUAL(stats.arrivals(), sum);
     TEST_ASSERT_TRUE(nr < 2 || rw[0].n >= rw[1].n);
+}
+
+void test_logbook()
+{
+    LittleFS.wipe();
+    Logbook::begin();
+    char l1[20], l2[24];
+    auto tally = [](const char *code, uint8_t kind, uint16_t n) {
+        Logbook::Tally t{};
+        strlcpy(t.code, code, sizeof(t.code));
+        t.kind = kind; t.n = n;
+        return t;
+    };
+    // The first day: kept, no news (nothing to beat yet).
+    Logbook::Day d1;
+    d1.date = 20261020; d1.arrivals = 600; d1.departures = 590; d1.goArounds = 1; d1.tightestSec = 70;
+    std::vector<Logbook::Tally> t1 = {tally("BA", 0, 300), tally("A320", 1, 200)};
+    Logbook::addDay(d1, t1, l1, sizeof(l1), l2, sizeof(l2));
+    TEST_ASSERT_EQUAL_STRING("", l1);
+    TEST_ASSERT_EQUAL(1190, Logbook::records().bestDay);
+    TEST_ASSERT_EQUAL(1, Logbook::records().airlines);
+    // A busier day: a new record, BA seen again, Virgin new.
+    Logbook::Day d2 = d1;
+    d2.date = 20261021; d2.arrivals = 640; d2.departures = 610; d2.tightestSec = 64;
+    std::vector<Logbook::Tally> t2 = {tally("BA", 0, 310), tally("VS", 0, 20), tally("A320", 1, 210)};
+    Logbook::addDay(d2, t2, l1, sizeof(l1), l2, sizeof(l2));
+    TEST_ASSERT_EQUAL_STRING("New record", l1);
+    TEST_ASSERT_EQUAL_STRING("1250 movements", l2);
+    TEST_ASSERT_EQUAL(64, Logbook::records().tightest);
+    TEST_ASSERT_EQUAL(2, Logbook::records().airlines);
+    TEST_ASSERT_EQUAL(1, Logbook::records().types);
+    // The same day handed over again (a restart after midnight): not counted twice.
+    Logbook::addDay(d2, t2, l1, sizeof(l1), l2, sizeof(l2));
+    Logbook::Event e;
+    e.at = 1792350900; e.kind = DailyStats::GoAround;
+    strlcpy(e.ident, "BA117", sizeof(e.ident)); strlcpy(e.what, "27L", sizeof(e.what));
+    Logbook::addEvent(e);
+    // Read back as the web page does.
+    WiFiClient days, events, coll;
+    Logbook::writeDaysCsv(days);
+    Logbook::writeEventsCsv(events);
+    Logbook::writeCollectionCsv(coll);
+    TEST_ASSERT_TRUE(days.sent.find("\n2026-10-20,600,590,1,") != std::string::npos);
+    TEST_ASSERT_TRUE(days.sent.find("\n2026-10-21,640,610,") != std::string::npos);
+    const std::string body = days.sent.substr(days.sent.find("\r\n\r\n") + 4);   // after the HTTP header
+    TEST_ASSERT_EQUAL(3, (int)std::count(body.begin(), body.end(), '\n'));       // the CSV header and two days
+    TEST_ASSERT_TRUE(events.sent.find(",go-around,BA117,27L") != std::string::npos);
+    TEST_ASSERT_TRUE(coll.sent.find("airline,BA,2026-10-20,2026-10-21,2,610") != std::string::npos);
+    TEST_ASSERT_TRUE(coll.sent.find("airline,VS,2026-10-21,2026-10-21,1,20") != std::string::npos);
+    LittleFS.wipe();
 }
 
 void test_go_around_from_traffic()
@@ -674,6 +728,7 @@ int main(int, char **)
     RUN_TEST(test_seen_log);
     RUN_TEST(test_spotter_log);
     RUN_TEST(test_go_around_from_traffic);
+    RUN_TEST(test_logbook);
     RUN_TEST(test_airport_time_zones);
     RUN_TEST(test_http_request);
     return UNITY_END();

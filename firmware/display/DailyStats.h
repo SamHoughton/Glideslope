@@ -18,6 +18,7 @@ day's count; resets at local midnight.
 #include <Arduino.h>
 #include <vector>
 #include "models/StateVector.h"
+#include "display/LogbookTypes.h"
 
 class DailyStats
 {
@@ -29,6 +30,15 @@ public:
     // aircraft in range is watched, not only the card's. Fills the call
     // sign, runway and height; false if none.
     bool takeGoAround(char *ident, size_t identLen, char *runway, size_t rwyLen, int &altFt);
+
+    // ── For the logbook (8.1) ──────────────────────────────────────────────
+    // A finished day (made at midnight, before the tally resets) and its
+    // airlines and types; false if there is none waiting.
+    bool takeDay(Logbook::Day &day, std::vector<Logbook::Tally> &tallies);
+    // Sightings worth keeping (not overhead passes) since the last call.
+    int  takeEvents(Logbook::Event *out, int cap);
+    // Today's date as YYYYMMDD (0 before the clock is set).
+    uint32_t date() const;
 
     int  arrivals() const { return _arrivals; }
     int  departures() const { return _departures; }
@@ -145,6 +155,14 @@ private:
     // What serialise() writes for the two above, magic included.
     static constexpr size_t kExtraSize = 4 + 4 + 4 + 2 + 2 + 2 + 8 + 16 + 1 + 1 + sizeof(RunwayCount) * 4 +
                                          sizeof(Spot) * kMaxSpots + 1 + 1 + 2;
+
+    // The logbook's hand-over.
+    Logbook::Day                 _dayDone;
+    std::vector<Logbook::Tally>  _dayTallies;   // heap, only between midnight and the hand-over
+    bool                         _dayReady = false;
+    Logbook::Event               _events[4];
+    uint8_t                      _nEvents = 0;
+    void makeDayRecord();
 
     void rollDay();
     void reset();

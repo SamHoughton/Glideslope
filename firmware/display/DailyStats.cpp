@@ -63,6 +63,7 @@ void DailyStats::rollDay()
                                            (lt.tm_year == _year + 1 && lt.tm_yday == 0 && _day >= 364));
     _hasYesterday = consecutive;
     for (int h = 0; h < 24; ++h) _yHour[h] = consecutive ? _arrHour[h] + _depHour[h] : 0;
+    if (_day >= 0 && (_arrivals || _departures)) makeDayRecord();   // for the logbook, before it goes
     reset();
     _year = lt.tm_year;
     _day  = lt.tm_yday;
@@ -178,6 +179,16 @@ void DailyStats::noteSpot(SpotKind kind, const char *ident, const char *what)
     if (now > 1600000000) { localtime_r(&now, &lt); minute = (uint16_t)(lt.tm_hour * 60 + lt.tm_min); }
     ++_spotsToday;
     _dirty = true;
+    if (kind != Overhead && _nEvents < 4)
+    {
+        // For the logbook: written to flash by the main loop.
+        Logbook::Event &e = _events[_nEvents++];
+        e = Logbook::Event();
+        e.at = now > 1600000000 ? (uint32_t)now : 0;
+        e.kind = kind;
+        strlcpy(e.ident, ident, sizeof(e.ident));
+        strlcpy(e.what, what ? what : "", sizeof(e.what));
+    }
     if (_nSpots >= kMaxSpots)
     {
         // Full: make room by dropping the oldest overhead pass; if there is
@@ -550,4 +561,82 @@ bool DailyStats::takeGoAround(char *ident, size_t identLen, char *runway, size_t
     strlcpy(runway, _gaRwy, rwyLen);
     altFt = _gaAlt;
     return true;
+}
+
+// ── The logbook's hand-over ─────────────────────────────────────────────────
+
+namespace
+{
+    // YYYYMMDD for a tm year (since 1900) and day of the year.
+    uint32_t ymdOf(int tmYear, int yday)
+    {
+        static const int kDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+        const int y = tmYear + 1900;
+        const bool leap = (y % 4 == 0 && y % 100) || y % 400 == 0;
+        int m = 0;
+        while (m < 11 && yday >= kDays[m] + (m == 1 && leap)) { yday -= kDays[m] + (m == 1 && leap); ++m; }
+        return (uint32_t)y * 10000 + (m + 1) * 100 + (yday + 1);
+    }
+}
+
+uint32_t DailyStats::date() const
+{
+    return _day >= 0 ? ymdOf(_year, _day) : 0;
+}
+
+void DailyStats::makeDayRecord()
+{
+    Logbook::Day &d = _dayDone;
+    d = Logbook::Day();
+    d.date = ymdOf(_year, _day);
+    d.arrivals = _arrivals;
+    d.departures = _departures;
+    d.goArounds = (uint8_t)min(255, (int)_goArounds);
+    d.types = _nTypes;
+    d.airlines = _nAirlines;
+    for (int h = 0; h < 24; ++h) d.hours[h] = (uint8_t)min(255, _arrHour[h] + _depHour[h]);
+    int n = 0;
+    const String best = busiestAirline(n);
+    strlcpy(d.busiest, best.c_str(), sizeof(d.busiest));
+    d.busiestN = (uint16_t)n;
+    d.tightestSec = _tightSec;
+    d.avgGapSec = (uint16_t)averageGapSec();
+    RunwayCount rw[1];
+    if (runways(rw, 1)) { strlcpy(d.runway, rw[0].name, sizeof(d.runway)); d.runwayN = rw[0].n; }
+    // The day's airlines and types, for the collection.
+    _dayTallies.clear();
+    _dayTallies.reserve(_nAirlines + _nTypes);
+    for (uint8_t i = 0; i < _nAirlines; ++i)
+    {
+        Logbook::Tally t{};
+        strlcpy(t.code, _airlines[i].code, sizeof(t.code));
+        t.kind = 0; t.n = _airlines[i].n;
+        _dayTallies.push_back(t);
+    }
+    for (uint8_t i = 0; i < _nTypes; ++i)
+    {
+        Logbook::Tally t{};
+        memcpy(t.code, _types[i].t, 5); t.code[5] = 0;
+        t.kind = 1; t.n = _types[i].n;
+        _dayTallies.push_back(t);
+    }
+    _dayReady = true;
+}
+
+bool DailyStats::takeDay(Logbook::Day &day, std::vector<Logbook::Tally> &tallies)
+{
+    if (!_dayReady) return false;
+    _dayReady = false;
+    day = _dayDone;
+    tallies.swap(_dayTallies);
+    std::vector<Logbook::Tally>().swap(_dayTallies);   // give the memory back
+    return true;
+}
+
+int DailyStats::takeEvents(Logbook::Event *out, int cap)
+{
+    const int n = min((int)_nEvents, cap);
+    for (int i = 0; i < n; ++i) out[i] = _events[i];
+    _nEvents = 0;
+    return n;
 }

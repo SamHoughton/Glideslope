@@ -381,11 +381,27 @@ void CardRenderer::render(FrameCanvas &c, const FlightInfo &f, const ApproachSta
     else if (f.seen_days > 1) snprintf(seen, sizeof(seen), "Seen %u times", (unsigned)f.seen_days);
     if (f.seen_days > 1 && f.seen_prev_day)
     {
+        // How long ago, in words (8.1): "Last seen yesterday", "4 days ago",
+        // "3 weeks ago"; the date once it is more than two months back.
         static const char *const kMon[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
         const time_t t = (time_t)(18262L + f.seen_prev_day) * 86400L + 43200;   // midday that day
         struct tm lt;
         gmtime_r(&t, &lt);
-        snprintf(last, sizeof(last), "Last here %d %s", lt.tm_mday, kMon[lt.tm_mon]);
+        long ago = -1;
+        const time_t now = time(nullptr);
+        if (now > 1600000000)
+        {
+            struct tm nt;
+            localtime_r(&now, &nt);
+            // Today's local date as days since 1 Jan 2020, like seen_prev_day.
+            const int y = nt.tm_year + 1900;
+            const long today = (long)(y - 2020) * 365 + (y - 2017) / 4 - (y - 2001) / 100 + (y - 2001) / 400 + nt.tm_yday;
+            ago = today - f.seen_prev_day;
+        }
+        if (ago == 1)                 snprintf(last, sizeof(last), "Last seen yesterday");
+        else if (ago >= 2 && ago < 14) snprintf(last, sizeof(last), "Last seen %ld days ago", ago);
+        else if (ago >= 14 && ago < 60) snprintf(last, sizeof(last), "Last seen %ld weeks ago", ago / 7);
+        else                          snprintf(last, sizeof(last), "Last here %d %s", lt.tm_mday, kMon[lt.tm_mon]);
     }
 
     constexpr int kRouteY = 16, kTypeY = 25;

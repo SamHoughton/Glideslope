@@ -78,6 +78,17 @@ details[open]>summary{margin-bottom:10px}
 
 /* Fields */
 .f{margin-bottom:14px}
+.recs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:6px 0 16px}
+.recs div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.recs b{display:block;font-size:22px;font-weight:600;color:var(--amber)}.recs span{font-size:12px;color:var(--muted)}
+.heat{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,12px);grid-auto-columns:12px;gap:3px;overflow-x:auto;padding-bottom:4px}
+.heat i{border-radius:3px;background:var(--line)}
+.heatkey{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--faint);margin:6px 0 4px}
+.heatkey i{display:block;width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,#3a2c12,#ffb93c)}
+.coll{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media(max-width:480px){.coll{grid-template-columns:1fr}}
+.coll h4{margin:0 0 6px;font-size:13px;color:var(--muted);font-weight:500}
+.coll ol{margin:0;padding-left:22px;font-size:13px;max-height:320px;overflow:auto}.coll li{padding:2px 0}.coll li span{color:var(--faint);float:right}
+a.btn{display:inline-block;text-decoration:none;color:var(--text);border:1px solid var(--line2);border-radius:9px;padding:7px 12px;font-size:13px}
 .tdy{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;color:var(--muted);margin-bottom:10px}
 .tdy b{color:var(--text);font-size:20px;font-weight:600;margin-right:4px}
 .tdy .ev b{color:var(--amber)}
@@ -197,6 +208,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <button data-tab="data">Data</button>
       <button data-tab="spotter">Spotter</button>
       <button data-tab="alerts">Alerts</button>
+      <button data-tab="history">History</button>
       <button data-tab="system">System</button>
       <button data-tab="log">Log</button>
     </div>
@@ -326,6 +338,20 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       </div>
     </section>
 
+    <section class="tab" id="t-history">
+      <p class="hint" id="hsince">The board's logbook: a record of every day, every go-around and rare sighting, and every airline and aircraft type it has ever seen. It starts with the first midnight after the update.</p>
+      <div class="recs" id="hrecs"></div>
+      <h3>Busy days</h3>
+      <div class="heat" id="hheat"></div>
+      <div class="heatkey"><span>quiet</span><i></i><span>busy</span></div>
+      <h3>Moments</h3>
+      <ul class="spots" id="hevents"></ul>
+      <h3>The collection</h3>
+      <div class="coll"><div><h4 id="hairl">Airlines</h4><ol id="hairlines"></ol></div><div><h4 id="htyp">Aircraft types</h4><ol id="htypes"></ol></div></div>
+      <h3>Download</h3>
+      <div class="btns"><a class="btn" href="/api/history/days" download>Every day (CSV)</a><a class="btn" href="/api/history/events" download>Moments (CSV)</a><a class="btn" href="/api/history/collection" download>Collection (CSV)</a></div>
+    </section>
+
     <section class="tab" id="t-system">
       <dl class="kv" id="sys"></dl>
       <h3>Firmware update</h3>
@@ -368,7 +394,8 @@ function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;r
 function showTab(n){document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.tab===n);});
   document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('on',t.id==='t-'+n);});
   $('savebar').style.display=(n==='system'||n==='log')?'none':'';
-  try{localStorage.setItem('gs-tab',n);}catch(e){}}
+  try{localStorage.setItem('gs-tab',n);}catch(e){}
+  if(n==='history'&&window.loadHistory)loadHistory();}
 document.querySelectorAll('#tabs button').forEach(function(b){b.addEventListener('click',function(){showTab(b.dataset.tab);});});
 try{var lt=location.hash.slice(1)||localStorage.getItem('gs-tab');if(lt&&$('t-'+lt))showTab(lt);}catch(e){}
 
@@ -560,6 +587,55 @@ load();pollStatus();pollNow();pollFrame();poll();
     }).catch(function(){});
   }
   load();setInterval(load,30000);
+})();
+
+// History (8.1): the logbook, read as CSV and drawn here (the board just streams its files).
+(function(){
+  function csv(t){return t.trim().split('\n').slice(1).filter(function(l){return l;}).map(function(l){return l.split(',');});}
+  function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function nice(d){if(!d)return '';var p=d.split('-');var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1];return (+p[2])+' '+m+' '+p[0];}
+  function ms(s){s=+s;return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
+  var KIND={'rare':'Rare','first visit':'New','watchlist':'Watch','go-around':'Go-around','emergency':'Squawk','overhead':'Over'};
+  var KCLS={'rare':'rare','first visit':'first','watchlist':'watch','go-around':'goaround','emergency':'emergency','overhead':'overhead'};
+  var loading=false;
+  window.loadHistory=function(){
+    if(loading)return;loading=true;
+    fetch('/api/history/records').then(function(r){return r.json();}).then(function(r){
+      var h='';
+      function card(v,l){h+='<div><b>'+v+'</b><span>'+l+'</span></div>';}
+      card(r.days||0,r.days==1?'day logged':'days logged');
+      if(r.best_day)card(r.best_day.toLocaleString(),'busiest day, '+nice(r.best_day_date));
+      if(r.best_go_arounds)card(r.best_go_arounds,'most go-arounds, '+nice(r.best_go_arounds_date));
+      if(r.tightest)card(ms(r.tightest),'tightest gap, '+nice(r.tightest_date));
+      card(r.airlines||0,'airlines seen');card(r.types||0,'aircraft types');
+      card(r.events||0,'moments');
+      $('hrecs').innerHTML=h;
+      if(r.since)$('hsince').textContent='Kept on the board since '+nice(r.since)+' ('+Math.round((r.bytes||0)/1024)+' KB of its storage).';
+    }).catch(function(){})
+    .then(function(){return fetch('/api/history/days').then(function(r){return r.text();});}).then(function(t){
+      var rows=csv(t),by={},max=1;
+      rows.forEach(function(c){var n=(+c[1])+(+c[2]);by[c[0]]=n;if(n>max)max=n;});
+      // 26 weeks, columns of Monday..Sunday, today last.
+      var d=new Date();d.setHours(12,0,0,0);var dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow-25*7);var h='';
+      for(var k=0;k<26*7;k++){var key=d.toISOString().slice(0,10),n=by[key];
+        var a=n?0.25+0.75*n/max:0,col=n?'rgba(255,185,60,'+a.toFixed(2)+')':'';
+        h+='<i'+(col?' style="background:'+col+'"':'')+' title="'+nice(key)+(n?': '+n+' movements':'')+'"></i>';d.setDate(d.getDate()+1);}
+      $('hheat').innerHTML=h;
+    }).catch(function(){})
+    .then(function(){return fetch('/api/history/events').then(function(r){return r.text();});}).then(function(t){
+      var rows=csv(t).reverse().slice(0,40);
+      $('hevents').innerHTML=rows.length?rows.map(function(c){var dt=c[0].split(' ');
+        return '<li><span class="t">'+esc(dt[1]||'')+'</span><span class="k '+(KCLS[c[1]]||'')+'">'+esc(KIND[c[1]]||c[1])+'</span><span>'+esc(c[2])+' <span class="t">'+esc(nice(dt[0]))+'</span></span><span class="w">'+esc(c[3])+'</span></li>';}).join('')
+        :'<li><span></span><span></span><span class="t">Nothing yet: go-arounds, rare types, first visits and watchlist hits are kept here</span><span></span></li>';
+    }).catch(function(){})
+    .then(function(){return fetch('/api/history/collection').then(function(r){return r.text();});}).then(function(t){
+      var rows=csv(t),air=[],typ=[];
+      rows.forEach(function(c){(c[0]==='type'?typ:air).push(c);});
+      function list(a){a.sort(function(x,y){return y[5]-x[5];});return a.map(function(c){return '<li title="first seen '+nice(c[2])+', on '+c[4]+' days">'+esc(c[1])+'<span>'+(+c[5]).toLocaleString()+'</span></li>';}).join('');}
+      $('hairlines').innerHTML=list(air);$('htypes').innerHTML=list(typ);
+      $('hairl').textContent='Airlines ('+air.length+')';$('htyp').textContent='Aircraft types ('+typ.length+')';
+    }).catch(function(){}).then(function(){loading=false;});
+  };
 })();
 </script>
 </body>

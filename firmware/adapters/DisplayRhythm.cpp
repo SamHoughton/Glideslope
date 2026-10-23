@@ -127,6 +127,29 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
     }
     _nwBase = -1;
 
+    // Logbook news (a record, a milestone): a short gold banner, when no
+    // landing or transition has the panel.
+    if (_newsPending && !_landingActive && !_inTransition && !_alertActive)
+    {
+        _newsPending = false;
+        _newsActive = true;
+        _newsMs = now;
+        g_oldFrame.copyFrom(g_shownFrame);
+    }
+    if (_newsActive)
+    {
+        const uint32_t t = now - _newsMs;
+        if (t < 6000)
+        {
+            InfoScreens::renderRareBanner(g_workFrame, _news1, _news2, t);
+            present();
+            { wait = kCardFrameMs; return true; }
+        }
+        _newsActive = false;
+        g_oldFrame.copyFrom(g_shownFrame);
+        _ambientSinceMs = now;
+    }
+
     // The landing direction has changed: announce it once.
     if (s_runwayDemo)
     {

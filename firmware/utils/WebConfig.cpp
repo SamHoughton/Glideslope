@@ -5,6 +5,7 @@ WebServer library to avoid framework include-path issues.
 */
 #include "utils/Notify.h"
 #include "utils/WebConfig.h"
+#include "utils/Logbook.h"
 #include "utils/TelnetLogger.h"
 #include "utils/WifiProvisioner.h"
 #include "utils/StageTrace.h"
@@ -259,6 +260,15 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/clock"    && r.method == "POST") { requestScreenPreview(2, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/nightwatch" && r.method == "POST") { requestScreenPreview(9, 20000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/summary"  && r.method == "POST") { requestScreenPreview(7, 15000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/history/days"       && r.method == "GET") Logbook::writeDaysCsv(client);
+    else if (r.path == "/api/history/events"     && r.method == "GET") Logbook::writeEventsCsv(client);
+    else if (r.path == "/api/history/collection" && r.method == "GET") Logbook::writeCollectionCsv(client);
+    else if (r.path == "/api/history/records"    && r.method == "GET")
+    {
+        String body;
+        Logbook::recordsJson(body);
+        sendHttp(client, 200, "application/json", body);
+    }
     else if (r.path == "/api/today"         && r.method == "GET")
     {
         String body = "{}";

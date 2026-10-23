@@ -43,6 +43,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "config/RuntimeConfig.h"
 #include "config/Airport.h"
 #include "config/Airports.h"
+#include "utils/Logbook.h"
 #include "utils/Spotter.h"
 #include "utils/HomeAssistant.h"
 #include "utils/TlsArena.h"
@@ -546,6 +547,8 @@ void setup()
     g_logoStore.initialize();
     g_display.setLogoStore(&g_logoStore);
     RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
+    Logbook::begin();       // the days, events and collection kept for good (8.1)
+    g_display.setRecords(Logbook::records());
     AirportPack::load();    // Heathrow, or the airport pack on LittleFS
     g_display.loadStats();  // today's tally survives a restart
 
@@ -1001,6 +1004,28 @@ void loop()
             g_cardOrigin[0] = '\0';
             if (have && shown.origin.code_icao.length() == 4 && shown.origin.code_icao != g_airport.icao)
                 strlcpy(g_cardOrigin, shown.origin.code_icao.c_str(), sizeof(g_cardOrigin));
+        }
+    }
+
+    // The logbook (8.1): sightings worth keeping as they happen, the day
+    // after midnight; written here, outside the display lock.
+    {
+        static unsigned long lastLogbookMs = 0;
+        if (millis() - lastLogbookMs > 15000)
+        {
+            lastLogbookMs = millis();
+            Logbook::Event ev[4];
+            const int n = g_display.takeLogbookEvents(ev, 4);
+            for (int i = 0; i < n; ++i) Logbook::addEvent(ev[i]);
+            Logbook::Day day;
+            std::vector<Logbook::Tally> tallies;
+            if (g_display.takeLogbookDay(day, tallies))
+            {
+                char l1[20], l2[24];
+                Logbook::addDay(day, tallies, l1, sizeof(l1), l2, sizeof(l2));
+                g_display.setRecords(Logbook::records());
+                if (l1[0]) g_display.showNews(l1, l2);
+            }
         }
     }
 
