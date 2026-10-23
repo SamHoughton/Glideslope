@@ -352,6 +352,15 @@ void test_spotter_log()
     TEST_ASSERT_EQUAL(DailyStats::kMaxSpots, s.spotCount());   // the oldest dropped off
     TEST_ASSERT_EQUAL_STRING("X29", s.spot(0).ident);
     TEST_ASSERT_EQUAL(34, s.spotsToday());
+    // A busy run of overhead passes never pushes out the rare things (8.1).
+    int goArounds = 0, rare = 0;
+    for (int i = 0; i < s.spotCount(); ++i)
+    {
+        goArounds += s.spot(i).kind == DailyStats::GoAround;
+        rare += s.spot(i).kind == DailyStats::Rare;
+    }
+    TEST_ASSERT_EQUAL(2, goArounds);
+    TEST_ASSERT_EQUAL(1, rare);
 }
 
 // ── Robustness: random and mangled input must never crash a parser ──────────

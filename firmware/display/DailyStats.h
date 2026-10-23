@@ -66,11 +66,14 @@ public:
     struct Spot { uint16_t minute; uint8_t kind; char ident[8]; char what[9]; };
     static constexpr int kMaxSpots = 16;
     // Adds a sighting (the same aircraft and kind only once a day, except
-    // go-arounds and emergencies); the oldest drops off when full.
+    // go-arounds and emergencies). When full, an overhead pass makes room
+    // first (the oldest one); the rest (go-arounds, emergencies, watchlist,
+    // rare, first visits) only go when nothing else can, so a busy run of
+    // overhead traffic never pushes them out (8.1).
     void noteSpot(SpotKind kind, const char *ident, const char *what);
     int  spotCount() const { return _nSpots; }
     // i = 0 is the newest.
-    const Spot &spot(int i) const { return _spots[(_spotHead + kMaxSpots - 1 - i) % kMaxSpots]; }
+    const Spot &spot(int i) const { return _spots[i]; }
     int  spotsToday() const { return _spotsToday; }   // all of them, not just the 16 kept
 
     // Yesterday, for comparison: movements in each hour, and by this time of day.
@@ -123,7 +126,7 @@ private:
     RunwayCount _rwy[4] = {};
     void noteArrival(const StateVector &s, const char *runway);
 
-    // Spotter log: a ring, newest at _spotHead - 1.
+    // Spotter log: newest first (_spotHead is kept at 0; older files had a ring).
     Spot     _spots[kMaxSpots] = {};
     uint8_t  _nSpots = 0, _spotHead = 0;
     uint16_t _spotsToday = 0;

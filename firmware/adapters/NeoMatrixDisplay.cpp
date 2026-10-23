@@ -461,7 +461,7 @@ void NeoMatrixDisplay::todayJson(String &out)
     // Copied under the lock, written out after it: a web client can be slow.
     DailyStats::Spot spots[DailyStats::kMaxSpots];
     DailyStats::RunwayCount rw[4];
-    int nSpots, nRw, arr, dep, recent, avg, tight, tightMin, peakH, peakN, spotsToday;
+    int nSpots, nRw, arr, dep, recent, avg, tight, tightMin, peakH, peakN, spotsToday, goArounds;
     char tightId[8];
     {
         Lock l(_lock);
@@ -474,6 +474,7 @@ void NeoMatrixDisplay::todayJson(String &out)
         strlcpy(tightId, _stats.tightestIdent(), sizeof(tightId));
         peakH = _stats.busiestHour(peakN);
         spotsToday = _stats.spotsToday();
+        goArounds = _stats.goArounds();
     }
     // Idents and types are letters, digits and dashes; anything else is dropped.
     auto clean = [](const char *s, char *o, size_t len) {
@@ -493,7 +494,7 @@ void NeoMatrixDisplay::todayJson(String &out)
     snprintf(buf, sizeof(buf), "\"tightest_ident\":\"%s\",\"tightest_at\":%d,\"busiest_hour\":%d,\"busiest_n\":%d,",
              a, tightMin, peakH, peakN);
     out += buf;
-    snprintf(buf, sizeof(buf), "\"spotted\":%d,\"runways\":[", spotsToday);
+    snprintf(buf, sizeof(buf), "\"spotted\":%d,\"go_arounds\":%d,\"runways\":[", spotsToday, goArounds);
     out += buf;
     for (int i = 0; i < nRw; ++i)
     {

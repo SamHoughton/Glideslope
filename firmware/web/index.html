@@ -549,6 +549,7 @@ load();pollStatus();pollNow();pollFrame();poll();
       if(d.every)h+='<span class="ev"><b>'+ms(d.every)+'</b>a landing every</span>';
       if(d.tightest)h+='<span><b>'+ms(d.tightest)+'</b>tightest ('+esc(d.tightest_ident)+', '+hm(d.tightest_at)+')</span>';
       if(d.busiest_hour>=0)h+='<span><b>'+('0'+d.busiest_hour).slice(-2)+':00</b>busiest ('+d.busiest_n+')</span>';
+      h+='<span><b>'+(d.go_arounds||0)+'</b>'+(d.go_arounds==1?'go-around':'go-arounds')+'</span>';
       document.getElementById('tdyhead').innerHTML=h;
       var most=1;d.runways.forEach(function(r){most=Math.max(most,r.n);});
       document.getElementById('tdyrw').innerHTML=d.runways.map(function(r){

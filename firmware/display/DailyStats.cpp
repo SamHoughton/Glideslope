@@ -176,15 +176,32 @@ void DailyStats::noteSpot(SpotKind kind, const char *ident, const char *what)
     const time_t now = time(nullptr);
     uint16_t minute = 0;
     if (now > 1600000000) { localtime_r(&now, &lt); minute = (uint16_t)(lt.tm_hour * 60 + lt.tm_min); }
-    Spot &s = _spots[_spotHead];
+    ++_spotsToday;
+    _dirty = true;
+    if (_nSpots >= kMaxSpots)
+    {
+        // Full: make room by dropping the oldest overhead pass; if there is
+        // none, the oldest entry, unless the new one is only an overhead
+        // pass, which then isn't kept (it is still counted).
+        int drop = -1;
+        for (int i = _nSpots - 1; i >= 0 && drop < 0; --i)
+            if (_spots[i].kind == Overhead) drop = i;
+        if (drop < 0)
+        {
+            if (kind == Overhead) return;
+            drop = _nSpots - 1;
+        }
+        memmove(&_spots[drop], &_spots[drop + 1], (size_t)(_nSpots - 1 - drop) * sizeof(Spot));
+        --_nSpots;
+    }
+    memmove(&_spots[1], &_spots[0], (size_t)_nSpots * sizeof(Spot));
+    Spot &s = _spots[0];
     s.minute = minute;
     s.kind = kind;
     strlcpy(s.ident, ident, sizeof(s.ident));
     strlcpy(s.what, what ? what : "", sizeof(s.what));
-    _spotHead = (_spotHead + 1) % kMaxSpots;
-    if (_nSpots < kMaxSpots) ++_nSpots;
-    ++_spotsToday;
-    _dirty = true;
+    ++_nSpots;
+    _spotHead = 0;
 }
 
 bool DailyStats::wasSeen(uint32_t h) const
@@ -461,6 +478,14 @@ void DailyStats::load()
             }
             if (_tightSec && _tightSec < 60) { _tightSec = 0; _tightId[0] = 0; }   // saved before 7.1.0's one-minute floor
             for (Spot &sp : _spots) { sp.ident[sizeof(sp.ident) - 1] = '\0'; sp.what[sizeof(sp.what) - 1] = '\0'; }
+            if (_spotHead && _nSpots)
+            {
+                // Saved by 7.1-8.0 as a ring (newest at head - 1): newest first now.
+                Spot ordered[kMaxSpots];
+                for (int i = 0; i < _nSpots; ++i) ordered[i] = _spots[(_spotHead + kMaxSpots - 1 - i) % kMaxSpots];
+                memcpy(_spots, ordered, sizeof(Spot) * _nSpots);
+                _spotHead = 0;
+            }
         }
     }
     f.close();

@@ -90,7 +90,7 @@ static void busyDay(DailyStats &s)
     s.noteSpot(DailyStats::Overhead, "EI158", "A20N");
     s.noteSpot(DailyStats::FirstVisit, "SQ322", "9V-SMF");
     const uint16_t mins[7] = {9 * 60 + 41, 11 * 60 + 5, 14 * 60 + 22, 17 * 60 + 48, 19 * 60 + 2, 19 * 60 + 40, 19 * 60 + 56};
-    for (int i = 0; i < 7; ++i) s._spots[i].minute = mins[i];
+    for (int i = 0; i < 7; ++i) s._spots[6 - i].minute = mins[i];   // newest first
 }
 
 int main(int argc, char **argv)

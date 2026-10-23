@@ -1,4 +1,5 @@
 #include "utils/Spotter.h"
+#include "config/Airport.h"
 #include "utils/GeoUtils.h"
 #include "display/ApproachModel.h"
 #include <math.h>
@@ -134,6 +135,18 @@ bool check(const std::vector<StateVector> &states, const Settings &cfg, unsigned
             if (st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing ||
                 st.phase == ApproachStatus::Inbound) continue;
             if (ApproachModel::climbingOut(f, nullptr, 0)) continue;
+            // Being turned onto final: below 10,000 ft, coming down and
+            // pointing roughly at the airport. Not lined up yet, so not an
+            // approach, but not an overflight either (8.1: under the
+            // downwind leg these were nearly all the "overhead" passes).
+            if (!isnan(f.vertical_rate) && f.vertical_rate < -300 && f.baro_altitude < 10000 && !isnan(f.heading))
+            {
+                const double dLat = g_airport.lat - s.lat;
+                const double dLon = (g_airport.lon - s.lon) * cos(s.lat * M_PI / 180.0);
+                const double toAirport = fmod(atan2(dLon, dLat) * 180.0 / M_PI + 360.0, 360.0);
+                const double off = fabs(fmod(f.heading - toAirport + 540.0, 360.0) - 180.0);
+                if (off < 75) continue;
+            }
         }
         if (coolingDown(keyOf(s, false), nowMs, kOverheadCooldownMs)) continue;
         best = (int)i;
