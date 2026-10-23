@@ -393,7 +393,7 @@ function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;r
 // Tabs (remembered for next time).
 function showTab(n){document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.tab===n);});
   document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('on',t.id==='t-'+n);});
-  $('savebar').style.display=(n==='system'||n==='log')?'none':'';
+  $('savebar').style.display=(n==='system'||n==='log'||n==='history')?'none':'';
   try{localStorage.setItem('gs-tab',n);}catch(e){}
   if(n==='history'&&window.loadHistory)loadHistory();}
 document.querySelectorAll('#tabs button').forEach(function(b){b.addEventListener('click',function(){showTab(b.dataset.tab);});});
@@ -613,12 +613,13 @@ load();pollStatus();pollNow();pollFrame();poll();
       if(r.since)$('hsince').textContent='Kept on the board since '+nice(r.since)+' ('+Math.round((r.bytes||0)/1024)+' KB of its storage).';
     }).catch(function(){})
     .then(function(){return fetch('/api/history/days').then(function(r){return r.text();});}).then(function(t){
-      var rows=csv(t),by={},max=1;
-      rows.forEach(function(c){var n=(+c[1])+(+c[2]);by[c[0]]=n;if(n>max)max=n;});
+      var rows=csv(t),by={},max=1,min=1e9;
+      rows.forEach(function(c){var n=(+c[1])+(+c[2]);by[c[0]]=n;if(n>max)max=n;if(n<min)min=n;});
+      var span=Math.max(1,max-min);   // shade from the quietest day logged to the busiest
       // 26 weeks, columns of Monday..Sunday, today last.
       var d=new Date();d.setHours(12,0,0,0);var dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow-25*7);var h='';
       for(var k=0;k<26*7;k++){var key=d.toISOString().slice(0,10),n=by[key];
-        var a=n?0.25+0.75*n/max:0,col=n?'rgba(255,185,60,'+a.toFixed(2)+')':'';
+        var a=n?0.15+0.85*(n-min)/span:0,col=n?'rgba(255,185,60,'+a.toFixed(2)+')':'';
         h+='<i'+(col?' style="background:'+col+'"':'')+' title="'+nice(key)+(n?': '+n+' movements':'')+'"></i>';d.setDate(d.getDate()+1);}
       $('hheat').innerHTML=h;
     }).catch(function(){})
@@ -636,6 +637,7 @@ load();pollStatus();pollNow();pollFrame();poll();
       $('hairl').textContent='Airlines ('+air.length+')';$('htyp').textContent='Aircraft types ('+typ.length+')';
     }).catch(function(){}).then(function(){loading=false;});
   };
+  if($('t-history').classList.contains('on'))loadHistory();   // opened straight onto it
 })();
 </script>
 </body>
