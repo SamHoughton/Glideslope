@@ -180,6 +180,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="sky?look=day+snow">Sky: snow</button>
         <button data-demo="sky?look=night+fireworks">Sky: fireworks</button>
         <button data-demo="sky?look=night+christmas">Sky: Christmas</button>
+        <button data-demo="sky?look=night+halloween">Sky: Halloween</button>
         <button data-demo="sprites">Aircraft sprites</button>
       </div>
     </details>
@@ -522,7 +523,7 @@ function pollFrame(){if(document.hidden){setTimeout(pollFrame,3000);return;}
     for(var j=0;j+2<u.length&&o<8192;j+=3){var v=u[j+1]|(u[j+2]<<8);for(var k=u[j];k>0&&o<8192;k--)px[o++]=v;}
     if(o<8192)return;
     if(same(px,lastPx)){still++;return;}still=0;lastPx=px;requestAnimationFrame(function(){draw(px);});})
-  .catch(function(){}).finally(function(){setTimeout(pollFrame,still>3?1000:250);});}
+  .catch(function(){}).finally(function(){setTimeout(pollFrame,still>3?1500:500);});}
 
 // Log, timestamps in amber.
 function poll(){if(document.hidden){setTimeout(poll,3000);return;}

@@ -365,6 +365,8 @@ int main(int argc, char **argv)
             NightWatch::render(c, 7000, Sky::preview("night"), wxLine, tr, 51.5, -0.12, 270, t);   save(c, "nightwatch_next");
         }
         InfoScreens::renderNightScene(c, 2000, wxLine, Sky::preview("night"));          save(c, "night_scene");
+        InfoScreens::renderNightScene(c, 9000, wxLine, Sky::preview("night+halloween")); save(c, "halloween_night");
+        InfoScreens::renderNightScene(c, 9000, wxLine, Sky::preview("golden+halloween")); save(c, "halloween_dusk");
         InfoScreens::renderNightScene(c, 110000, wxLine, Sky::preview("night"));        save(c, "night_scene_sunrise");   // a plane far off, sunrise line
         InfoScreens::renderNightScene(c, 12000, wxLine, Sky::preview("night+christmas")); save(c, "night_scene_weather");
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");

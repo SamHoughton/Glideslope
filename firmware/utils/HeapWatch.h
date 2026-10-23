@@ -23,9 +23,18 @@ inline volatile bool g_netBusy = false;
 // and the network to itself (with a fetch alongside, it could stall).
 inline volatile bool g_updating = false;
 inline volatile bool g_feedPaused = false;   // set by the main loop once it has stopped for the upload
+// The web task is answering a request (its socket buffers and reply are on
+// the heap). The main loop's fetches wait for it, as it waits for them: the
+// two together ran the heap dry with a phone on the live preview (8.1).
+inline volatile bool g_webBusy = false;
+
 struct NetBusy
 {
-    NetBusy()  { g_netBusy = true; }
+    NetBusy()
+    {
+        g_netBusy = true;   // no new web requests from here ...
+        for (int i = 0; i < 100 && g_webBusy; ++i) delay(20);   // ... and the one in hand finishes (2 s at most)
+    }
     ~NetBusy() { g_netBusy = false; }
 };
 

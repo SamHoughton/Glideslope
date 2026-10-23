@@ -92,6 +92,7 @@ void WebConfig::loop()
     if (g_netBusy || ESP.getFreeHeap() < kMinHeapToServe) { delay(20); return; }
     WiFiClient client = _server.accept();
     if (!client) { StageTrace::mark(StageTrace::Web, StageTrace::WebIdle); return; }
+    struct Busy { Busy() { g_webBusy = true; } ~Busy() { g_webBusy = false; } } busy;   // while this request is handled
     ++_requests;
     // Accepted sockets block with no limit by default: a browser that stops
     // reading (background tab, phone asleep) would hang the web task. Bound

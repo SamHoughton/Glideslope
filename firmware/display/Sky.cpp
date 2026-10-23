@@ -150,6 +150,8 @@ Sky::Look Sky::at(const Metar &m, time_t t)
         l.season = Look::Fireworks;
     else if (lt.tm_mon == 11 && lt.tm_mday <= 26)
         l.season = Look::Christmas;
+    else if (lt.tm_mon == 9 && lt.tm_mday >= 18)   // the run-up to Halloween, to the 31st
+        l.season = Look::Halloween;
     finish(l);
     return l;
 }
@@ -169,6 +171,7 @@ Sky::Look Sky::preview(const char *name)
     if (strstr(name, "storm"))     { l.windDir = 250; l.windKt = 26; l.gustKt = 41; }
     if (strstr(name, "christmas")) l.season = Look::Christmas;
     if (strstr(name, "fireworks")) l.season = Look::Fireworks;
+    if (strstr(name, "halloween")) l.season = Look::Halloween;
     if (strstr(name, "storm")) { l.precip = Thunder; l.cloud = 3; }
     if (strstr(name, "fog"))   l.fog = true;
     finish(l);

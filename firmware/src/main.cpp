@@ -773,7 +773,23 @@ void loop()
         {
             NetBusy busy;
             StageTrace::mark(StageTrace::Main, StageTrace::MainFetch);
-            enriched = g_fetcher->fetchFlights(g_states, g_flights);
+            // Out of memory part-way (a heap that tight is rare, but a
+            // phone on the live preview once tipped it): skip this round,
+            // keep the board up, and try again in 5 s.
+            try
+            {
+                enriched = g_fetcher->fetchFlights(g_states, g_flights);
+            }
+            catch (const std::bad_alloc &)
+            {
+                g_states.clear();
+                g_flights.clear();
+                g_states.shrink_to_fit();
+                g_flights.shrink_to_fit();
+                enriched = 0;
+                Log.printf("Heap: out of memory in the fetch (%u free, block %u); skipped\n",
+                           (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+            }
             StageTrace::mark(StageTrace::Main, StageTrace::MainTraffic);
         }
 
