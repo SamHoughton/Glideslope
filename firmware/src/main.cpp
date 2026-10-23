@@ -829,7 +829,8 @@ void loop()
         {
             static unsigned long fragSinceMs = 0;
             const bool fragmented = !g_fetcher->lastFetchOk() && TlsArena::slotsFree() &&
-                                    ESP.getFreeHeap() > 34000 && ESP.getMaxAllocHeap() < 10000;
+                                    ESP.getFreeHeap() > 22000 && ESP.getMaxAllocHeap() < 10000;   // 34000 until 8.1: the
+                                    // board now idles near 30 KB free, so it never fired (stuck on scanning)
             if (!fragmented)        fragSinceMs = 0;
             else if (!fragSinceMs)  fragSinceMs = millis();
             else if (millis() - fragSinceMs > 90000)
