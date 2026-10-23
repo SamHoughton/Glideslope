@@ -88,7 +88,7 @@ static unsigned long g_lastMetarMs = 0;
 static constexpr unsigned long kMetarEveryMs = 10UL * 60 * 1000;
 static char g_originIds[24] = "";   // where the next arrivals came from, for the weather fetch
 static char g_cardOrigin[5] = "";   // the card's origin (ICAO), to have its weather in time
-static constexpr unsigned long kOriginEarlyMs = 4UL * 60 * 1000;   // an early fetch for it at most this often
+
 
 // Emergency squawks: 7500 unlawful interference, 7600 radio failure, 7700
 // general emergency. Returns the panel wording, or nullptr for any other code.
@@ -948,12 +948,11 @@ void loop()
     }
 
     // Heathrow weather for the arrivals board and the night clock.
-    // Early, at most every 4 minutes, when the card's origin has no weather
-    // yet: its card is only up for the last three minutes of the approach.
-    const bool originDue = g_cardOrigin[0] && g_lastMetarMs && millis() - g_lastMetarMs >= kOriginEarlyMs &&
-                           !g_display.hasOriginWeather(g_cardOrigin);
+    // (8.1: no early request for the card's origin any more. Each one closed
+    // and reopened the feed's TLS session, and the reopens fragmented the
+    // heap; origins come with the regular request, or the page goes without.)
     if (WiFi.status() == WL_CONNECTED && millis() > 20000 && !g_display.showcaseRunning() &&
-        (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= kMetarEveryMs || originDue))
+        (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= kMetarEveryMs))
     {
         // The card's origin first, then the next arrivals'.
         if (g_cardOrigin[0] && !strstr(g_originIds, g_cardOrigin))

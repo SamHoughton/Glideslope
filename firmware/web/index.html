@@ -553,7 +553,7 @@ function pollFrame(){if(document.hidden){setTimeout(pollFrame,3000);return;}
   .catch(function(){}).finally(function(){setTimeout(pollFrame,still>3?1500:500);});}
 
 // Log, timestamps in amber.
-function poll(){if(document.hidden){setTimeout(poll,3000);return;}
+function poll(){if(document.hidden||!$('t-log').classList.contains('on')){setTimeout(poll,3000);return;}
   fetch('/api/log?cursor='+cur).then(function(r){return r.json();}).then(function(d){
     if(d.lines&&d.lines.length){var atEnd=lb.scrollHeight-lb.scrollTop<=lb.clientHeight+8;
       d.lines.forEach(function(l){var v=document.createElement('div'),m=/^(\[[^\]]*\]) ?(.*)$/.exec(l);

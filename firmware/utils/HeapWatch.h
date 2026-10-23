@@ -47,7 +47,10 @@ inline bool tlsAffordable(const char *what)
 {
     // The two record buffers come from utils/TlsArena; the heap only needs
     // room for the handshake's own working memory.
-    static constexpr uint32_t kMinFree = 30000, kMinBlock = 10000;   // 42 KB left 40 KB free short (5.1 soak)
+    // kMinBlock: the arena takes every request of 8 KB or more (kLarge), so
+    // no single heap allocation in a handshake is bigger than this (10000
+    // until 8.1 refused handshakes that would have fitted).
+    static constexpr uint32_t kMinFree = 30000, kMinBlock = 8192;   // 42 KB left 40 KB free short (5.1 soak)
     auto room = [] { return TlsArena::slotsFree() && ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= kMinBlock; };
     if (room()) return true;
     if (g_tlsReleaser)
