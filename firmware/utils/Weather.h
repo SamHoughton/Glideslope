@@ -97,6 +97,15 @@ namespace Weather
     void describe(const char *wx, char *out, size_t len);
     // Pressure as the panel shows it: "Q1012", or "A29.89" where the report uses inches.
     void pressure(const Metar &m, char *out, size_t len);
+    // Heights against the airport's pressure (8.3). ADS-B's barometric
+    // altitude is measured against the standard 1013.25 hPa: at 991 hPa an
+    // aircraft on Heathrow's runway (83 ft) reads about 680 ft. Below the
+    // transition altitude (6,000 ft in the UK) heights are corrected to the
+    // METAR's QNH, 27 ft a hectopascal, fading out by 7,000 ft so flight
+    // levels stay flight levels. qnh 0: unknown (no correction).
+    void setQnh(int hPa);
+    double qnhAltitudeM(double pressureAltM);
+
     // Wind component across / along a runway heading (kt; tail > 0 = tailwind).
     void components(const Metar &m, int runwayDeg, int &crossKt, int &tailKt);
 }

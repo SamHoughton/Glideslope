@@ -13,6 +13,7 @@ Output: Returns displayable flight count; fills outStates/outFlights.
 #include "config/Airport.h"
 #include "config/Airports.h"
 #include "utils/RouteBook.h"
+#include "utils/Weather.h"
 #include "config/RuntimeConfig.h"
 #include "adapters/FlightWallFetcher.h"
 #include "utils/TelnetLogger.h"
@@ -108,6 +109,9 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
 
     const RuntimeConfig cfg = configSnapshot();   // centre and radius from the same settings
     bool ok = _stateFetcher->fetchStateVectors(cfg.center_lat, cfg.center_lon, cfg.radius_km, outStates);
+    // Real heights near the airport (8.3): corrected to the airport's
+    // pressure, before anything uses them (utils/Weather.h).
+    for (StateVector &s : outStates) s.baro_altitude = Weather::qnhAltitudeM(s.baro_altitude);
     _lastFetchOk = ok;
     heapCheckpoint("position fetch");
     if (!ok)

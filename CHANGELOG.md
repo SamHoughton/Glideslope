@@ -25,6 +25,11 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   A380, 747, An-124 and Concorde.
 
 **Fixes**
+- **Real heights near the airport**: aircraft report their height against
+  standard pressure, so on a low-pressure day they seemed to land at 500 ft
+  or more (at 991 hPa, Heathrow's runway reads about 680 ft). Below 6,000 ft
+  heights are now corrected to the airport's pressure from the METAR, as a
+  pilot's altimeter is; flight levels above stay as they are.
 - The next aircraft to land always gets the card: one no route database
   knew (VIR156T) was dropped and a later arrival shown instead. Without a
   route its card shows the airline.
