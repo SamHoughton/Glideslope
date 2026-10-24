@@ -209,7 +209,7 @@ void LandingScene::drawBackdrop(FrameCanvas &c, uint32_t tMs, const Sky::Look &s
     c.clear();
     Sky::drawSky(c, sky, tMs, kSurfaceY - 1);
     kSilhouette = Sky::shade(sky, kSilhouetteNight);
-    kWindowLit  = kWindowLitNight;
+    kWindowLit  = sky.season == Sky::Look::Halloween ? Rgb{230, 120, 25} : kWindowLitNight;   // pumpkin-lit windows
     s_hills     = Sky::shade(sky, Rgb{26, 30, 42});
     s_roof      = Sky::shade(sky, Rgb{58, 64, 82});
     s_windows   = !sky.known || sky.lightsOn;
@@ -250,6 +250,55 @@ void LandingScene::drawBackdrop(FrameCanvas &c, uint32_t tMs, const Sky::Look &s
                 const bool on = ((x * 7 + tMs / 300) % 5) != 0;   // a gentle twinkle
                 if (on) c.set(x, s_top[x] + 1, kBulbs[k]);
             }
+    }
+    if (sky.season == Sky::Look::Halloween)
+    {
+        // Bats after dusk: a few flapping slowly across the sky, each on its
+        // own wavering path.
+        if (sky.night > 0.35f)
+        {
+            const Rgb bat = FrameCanvas::scale(Rgb{95, 70, 120}, 0.5f + 0.5f * sky.night);
+            for (int b = 0; b < 3; ++b)
+            {
+                const uint32_t period = 26000 + b * 7000;
+                const float u = ((tMs + b * 9100) % period) / (float)period;
+                const int x = (b % 2 ? -6 + (int)(u * 140) : 134 - (int)(u * 140));
+                const int y = 14 + b * 7 + (int)lroundf(3.0f * sinf(u * 18.0f + b));
+                const bool up = ((tMs / 140) + b) % 2;
+                static const char *const kUp[2] = {"#...#", ".###."}, *const kDown[2] = {".###.", "#...#"};
+                const char *const *rows = up ? kUp : kDown;
+                for (int r = 0; r < 2; ++r)
+                    for (int i = 0; i < 5; ++i)
+                        if (rows[r][i] == '#') c.set(x + i, y + r, bat);
+                c.set(x + 2, y + (up ? 1 : 0), bat);   // the body
+            }
+        }
+        // Jack-o'-lanterns along the skyline: dark by day, their faces
+        // glowing and flickering like candles after dark.
+        static const char *const kPumpkin[5] = {"..g..", "ooooo", "oyoyo", "o.y.o", "ooooo"};
+        static const int kAt[3] = {14, 66, 108};
+        const bool lit = !sky.known || sky.lightsOn;
+        for (int k = 0; k < 3; ++k)
+        {
+            const int px = mirrored ? FrameCanvas::W - 6 - kAt[k] : kAt[k], py = kSurfaceY - 6;
+            uint32_t h = (tMs / 110) * 2654435761u + k * 977u;
+            h ^= h >> 15;
+            const float flicker = 0.75f + 0.25f * ((h % 100) / 100.0f);
+            for (int r = 0; r < 5; ++r)
+                for (int i = 0; i < 5; ++i)
+                {
+                    const char ch = kPumpkin[r][i];
+                    if (ch == '.') continue;
+                    Rgb col;
+                    // By day plain orange (dimmer as the light goes), not the
+                    // silhouettes' tint: pumpkins should look like pumpkins.
+                    const float day = 1.0f - 0.5f * sky.night;
+                    if (ch == 'g')      col = FrameCanvas::scale(Rgb{50, 120, 40}, day);
+                    else if (ch == 'o') col = lit ? Rgb{150, 62, 8} : FrameCanvas::scale(Rgb{235, 110, 20}, day);
+                    else                col = lit ? FrameCanvas::scale(Rgb{255, 210, 70}, flicker) : FrameCanvas::scale(Rgb{130, 55, 10}, day);
+                    c.set(px + i, py + r, col);
+                }
+        }
     }
     if (sky.season == Sky::Look::Fireworks && sky.night > 0.5f)
     {

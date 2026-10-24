@@ -61,6 +61,10 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Runway rhythm: a landing every 1:45, today's average and tightest gap, each runway's share](docs/rhythm.png) | ![Today's spotter log: rare spots, first visits, overhead and watchlist passes, go-arounds](docs/spotted.png) |
 
+| Night watch: aircraft as their lights out of the window | Halloween |
+| --- | --- |
+| ![Night watch: the skyline at night, the time, aircraft lights above the rooftops and tonight's tally](docs/nightwatch.png) | ![Halloween: jack-o'-lanterns along the skyline and pumpkin-lit windows](docs/halloween.png) |
+
 | Overnight: the night scene | The day in one card |
 | --- | --- |
 | ![The night scene: the skyline under the stars, the time and the next sunrise](docs/night.png) | ![The bedtime summary: movements, the busiest hour, the tightest gap and the best spot](docs/summary.png) |
@@ -81,10 +85,12 @@ are the board's own frames.
 
 ### The web page
 
-Every board serves a page at `http://glideslope.local/`: a live mirror of the
-panel drawn as glowing LEDs, what's on it now, the animations on demand, every
+Every board serves a page at `http://glideslope.local/`: the panel drawn as
+glowing LEDs (a still, or live for two minutes from the **Live** button),
+what's on it now, the animations on demand, the board's history, every
 setting in tabs (display with a switch for each screen, airport, night, data,
-spotter, phone alerts and Home Assistant, system, log), firmware updates and a log.
+spotter, phone alerts and Home Assistant, history, system, log), firmware
+updates and a log.
 
 | Desktop | Phone |
 | --- | --- |
@@ -94,6 +100,12 @@ The **Today** card under the panel: the day's movements and rhythm, and
 what was spotted.
 
 <img src="docs/webui-today.png" alt="The Today card: movements, a landing every 1:45, the tightest gap, runway shares and today's spotter log" width="420">
+
+The **History** tab: the logbook. The records, a heatmap of busy days, the
+go-arounds and rare sightings, every airline and type ever seen, and the lot
+as CSV.
+
+<img src="docs/webui-history.png" alt="The History tab: records, a heatmap of busy days, the moments and the collection" width="560">
 
 | Alerts | Spotter |
 | --- | --- |
@@ -190,6 +202,16 @@ what was spotted.
   spots, first visits, watchlist and overhead passes, go-arounds and
   emergencies. A page of the stats, and on the web page's **Today** card
   with the day's movements and rhythm.
+- **The logbook**: every day (movements by hour, go-arounds, busiest
+  airline, tightest gap), every go-around, emergency, rare type, first
+  visit and watchlist hit, and every airline and aircraft type the board
+  has ever seen, kept in its flash for good (about 25 KB a year). A new
+  record (busiest day, most go-arounds, tightest gap) or every 25th airline
+  or type gets a short gold banner; today becoming the busiest day yet is
+  announced as it happens. Read it on the web page's History tab, or as CSV.
+- **Go-arounds** are spotted from every aircraft in range: one that was on
+  final and climbs away is counted, logged with its runway, and sent to
+  your phone.
 - **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
   before gets a gold banner before it flies in (seen types are logged on the
   board).
@@ -260,8 +282,9 @@ what was spotted.
   runways in use, today's arrivals and departures, aircraft holding, the
   last flight and the last aircraft overhead.
 - **Through the year**: snow on the skyline's roofs when it is freezing,
-  Christmas lights along them through December, and fireworks over London
-  on Bonfire Night and New Year's Eve.
+  jack-o'-lanterns, bats and pumpkin-lit windows in the run-up to Halloween,
+  Christmas lights through December, and fireworks over London on Bonfire
+  Night and New Year's Eve.
 
   ![Fireworks over the London skyline](docs/fireworks.png)
 - **Night scene**: overnight the panel shows the skyline under the real
@@ -270,6 +293,14 @@ what was spotted.
   now and then an aircraft's lights cross far off. For 15 seconds a minute
   the day's summary takes its place: the movements, the busiest hour, the
   tightest gap and the best spot.
+- **Night watch** (on by default): through the night hours the panel keeps
+  a quiet watch instead of its cards and scenes. The night scene, and every
+  aircraft as just its lights where it really is out of your window (its
+  compass bearing against the way the window faces, up the panel by its
+  angle above the horizon): a white light, the nav light on the side you
+  would see, a slow red beacon. A dim tally along the bottom: tonight's
+  movements and the last, the next expected, today's total. Emergencies
+  still take over.
 - **Quiet hours**: the night scene, dimmed, overnight when there's no
   traffic. Night dimming can follow the sun instead of fixed times, easing
   down through dusk and up at dawn.
@@ -284,7 +315,7 @@ what was spotted.
   hides the home marker, and each frame is time-stamped, so
   `tools/record_demo.py` records the README GIF in one clean run and
   `tools/record_shots.py` cuts the other README images from it.
-- **Web page** on the board: a live mirror of the panel, animation and sky
+- **Web page** on the board: the panel (a still, or live on request), animation and sky
   previews, a switch for each screen, brightness, night dimming (by the clock
   or following the sun), location and data source settings, the spotter
   (overhead distance, watchlist), phone alerts, Home Assistant, firmware

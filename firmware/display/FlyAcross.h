@@ -13,6 +13,8 @@ a short white flash.
 
 namespace FlyAcross
 {
+    // The way the window faces ("SSW") in degrees true; 0 if unknown.
+    float facingDegrees(const char *name);
     constexpr uint32_t DURATION_MS = 1700;
 
     struct Path

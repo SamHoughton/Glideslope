@@ -23,6 +23,7 @@
 #include "display/MapRenderer.h"
 #include "display/Traffic.h"
 #include "display/LineupScreen.h"
+#include "display/NightWatch.h"
 #include "adapters/ReadsbParser.h"
 #include "config/AirlineCodes.h"
 #include <fstream>
@@ -89,7 +90,7 @@ static void busyDay(DailyStats &s)
     s.noteSpot(DailyStats::Overhead, "EI158", "A20N");
     s.noteSpot(DailyStats::FirstVisit, "SQ322", "9V-SMF");
     const uint16_t mins[7] = {9 * 60 + 41, 11 * 60 + 5, 14 * 60 + 22, 17 * 60 + 48, 19 * 60 + 2, 19 * 60 + 40, 19 * 60 + 56};
-    for (int i = 0; i < 7; ++i) s._spots[i].minute = mins[i];
+    for (int i = 0; i < 7; ++i) s._spots[6 - i].minute = mins[i];   // newest first
 }
 
 int main(int argc, char **argv)
@@ -142,6 +143,11 @@ int main(int argc, char **argv)
     s4.oLat = -33.95f; s4.oLon = 151.18f; s4.dLat = 51.47f; s4.dLon = -0.45f;
     s4.lat = 50.9f; s4.lon = 2.5f; s4.speedKts = 280;
     Globe::render(c, s4, 6000, evening);                  save(c, "globe_syd_lhr");
+    Globe::Route s5 = r;                                  // a short hop: zoomed in, nearly straight
+    strcpy(s5.ident, "BA816"); strcpy(s5.from, "London"); strcpy(s5.to, "Billund");
+    s5.oLat = 51.47f; s5.oLon = -0.45f; s5.dLat = 55.74f; s5.dLon = 9.15f;
+    s5.lat = 53.6f; s5.lon = 4.2f; s5.speedKts = 420;
+    Globe::render(c, s5, 6000, evening);                  save(c, "globe_lhr_bll");
 
 #ifdef HAVE_OVERHEAD
     OverheadScene::Info o;
@@ -343,7 +349,29 @@ int main(int argc, char **argv)
             lp[1].km = 5.6f; lp[1].altFt = 5.6f * 172;   // a tight one: under a minute behind
             LineupScreen::render(c, lp, 2, 5000, Sky::preview("night"));               save(c, "lineup_tight_night");
         }
+        {
+            // Night watch: looking west from central London, three aircraft
+            // (an arrival low on final, one further out, one climbing away).
+            static TrafficTracker tr;
+            std::vector<TrafficPoint> pts(3);
+            const struct { double lat, lon; float hdg, alt, gs; uint32_t id; } k[] = {
+                {51.474, -0.36, 90, 2200, 150, 0x400001}, {51.48, -0.62, 92, 5200, 210, 0x400002},
+                {51.56, -0.42, 300, 7000, 280, 0x400003}};
+            for (int i = 0; i < 3; ++i)
+            {
+                pts[i].lat = k[i].lat; pts[i].lon = k[i].lon; pts[i].heading = k[i].hdg;
+                pts[i].altFt = k[i].alt; pts[i].gsKt = k[i].gs; pts[i].id = k[i].id;
+            }
+            tr.update(pts, 1000);
+            NightWatch::Tracker t;
+            t.tonight = 7; t.today = 512; t.last = 1792350900 - 33 * 60; t.next = 0;
+            NightWatch::render(c, 1000, Sky::preview("night"), wxLine, tr, 51.5, -0.12, 270, t);   save(c, "nightwatch");
+            t.next = 1792350900 + 300;
+            NightWatch::render(c, 7000, Sky::preview("night"), wxLine, tr, 51.5, -0.12, 270, t);   save(c, "nightwatch_next");
+        }
         InfoScreens::renderNightScene(c, 2000, wxLine, Sky::preview("night"));          save(c, "night_scene");
+        InfoScreens::renderNightScene(c, 9000, wxLine, Sky::preview("night+halloween")); save(c, "halloween_night");
+        InfoScreens::renderNightScene(c, 9000, wxLine, Sky::preview("golden+halloween")); save(c, "halloween_dusk");
         InfoScreens::renderNightScene(c, 110000, wxLine, Sky::preview("night"));        save(c, "night_scene_sunrise");   // a plane far off, sunrise line
         InfoScreens::renderNightScene(c, 12000, wxLine, Sky::preview("night+christmas")); save(c, "night_scene_weather");
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");

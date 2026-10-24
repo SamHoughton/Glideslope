@@ -63,6 +63,7 @@ void DailyStats::rollDay()
                                            (lt.tm_year == _year + 1 && lt.tm_yday == 0 && _day >= 364));
     _hasYesterday = consecutive;
     for (int h = 0; h < 24; ++h) _yHour[h] = consecutive ? _arrHour[h] + _depHour[h] : 0;
+    if (_day >= 0 && (_arrivals || _departures)) makeDayRecord();   // for the logbook, before it goes
     reset();
     _year = lt.tm_year;
     _day  = lt.tm_yday;
@@ -176,15 +177,42 @@ void DailyStats::noteSpot(SpotKind kind, const char *ident, const char *what)
     const time_t now = time(nullptr);
     uint16_t minute = 0;
     if (now > 1600000000) { localtime_r(&now, &lt); minute = (uint16_t)(lt.tm_hour * 60 + lt.tm_min); }
-    Spot &s = _spots[_spotHead];
+    ++_spotsToday;
+    _dirty = true;
+    if (kind != Overhead && _nEvents < 4)
+    {
+        // For the logbook: written to flash by the main loop.
+        Logbook::Event &e = _events[_nEvents++];
+        e = Logbook::Event();
+        e.at = now > 1600000000 ? (uint32_t)now : 0;
+        e.kind = kind;
+        strlcpy(e.ident, ident, sizeof(e.ident));
+        strlcpy(e.what, what ? what : "", sizeof(e.what));
+    }
+    if (_nSpots >= kMaxSpots)
+    {
+        // Full: make room by dropping the oldest overhead pass; if there is
+        // none, the oldest entry, unless the new one is only an overhead
+        // pass, which then isn't kept (it is still counted).
+        int drop = -1;
+        for (int i = _nSpots - 1; i >= 0 && drop < 0; --i)
+            if (_spots[i].kind == Overhead) drop = i;
+        if (drop < 0)
+        {
+            if (kind == Overhead) return;
+            drop = _nSpots - 1;
+        }
+        memmove(&_spots[drop], &_spots[drop + 1], (size_t)(_nSpots - 1 - drop) * sizeof(Spot));
+        --_nSpots;
+    }
+    memmove(&_spots[1], &_spots[0], (size_t)_nSpots * sizeof(Spot));
+    Spot &s = _spots[0];
     s.minute = minute;
     s.kind = kind;
     strlcpy(s.ident, ident, sizeof(s.ident));
     strlcpy(s.what, what ? what : "", sizeof(s.what));
-    _spotHead = (_spotHead + 1) % kMaxSpots;
-    if (_nSpots < kMaxSpots) ++_nSpots;
-    ++_spotsToday;
-    _dirty = true;
+    ++_nSpots;
+    _spotHead = 0;
 }
 
 bool DailyStats::wasSeen(uint32_t h) const
@@ -223,6 +251,7 @@ void DailyStats::noteTraffic(const std::vector<StateVector> &states)
         const ApproachStatus st = ApproachModel::evaluate(f);
         const bool onFinal = (st.phase == ApproachStatus::Approach || st.phase == ApproachStatus::Landing) &&
                              !isnan(st.distKm) && st.distKm < 12.0f;
+        watchGoArounds(s, st, onFinal, (uint32_t)millis());
         if (onFinal)
         {
             if (markSeen(fnv(s.icao24, s.callsign, 'A')))
@@ -241,6 +270,10 @@ void DailyStats::noteTraffic(const std::vector<StateVector> &states)
 
 void DailyStats::count(const StateVector &s, bool arrival, int hour)
 {
+    {
+        const time_t now = time(nullptr);
+        if (now > 1600000000) _lastMove = now;
+    }
     if (arrival) { ++_arrivals;   if (hour >= 0) ++_arrHour[hour]; }
     else         { ++_departures; if (hour >= 0) ++_depHour[hour]; }
     _dirty = true;
@@ -457,6 +490,14 @@ void DailyStats::load()
             }
             if (_tightSec && _tightSec < 60) { _tightSec = 0; _tightId[0] = 0; }   // saved before 7.1.0's one-minute floor
             for (Spot &sp : _spots) { sp.ident[sizeof(sp.ident) - 1] = '\0'; sp.what[sizeof(sp.what) - 1] = '\0'; }
+            if (_spotHead && _nSpots)
+            {
+                // Saved by 7.1-8.0 as a ring (newest at head - 1): newest first now.
+                Spot ordered[kMaxSpots];
+                for (int i = 0; i < _nSpots; ++i) ordered[i] = _spots[(_spotHead + kMaxSpots - 1 - i) % kMaxSpots];
+                memcpy(_spots, ordered, sizeof(Spot) * _nSpots);
+                _spotHead = 0;
+            }
         }
     }
     f.close();
@@ -470,4 +511,132 @@ void DailyStats::load()
     _year = year;
     _day  = day;   // rollDay() resets it if this is not today
     Log.printf("Stats: restored %u arrivals, %u departures\n", _arrivals, _departures);
+}
+
+// ── Go-arounds, from every aircraft in range ───────────────────────────────
+
+void DailyStats::watchGoArounds(const StateVector &s, const ApproachStatus &st, bool onFinal, uint32_t now)
+{
+    const uint32_t id = (uint32_t)strtoul(s.icao24.c_str(), nullptr, 16) | 1;
+    const float alt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
+    FinalWatch *slot = nullptr;
+    for (FinalWatch &w : _watch) if (w.id == id) { slot = &w; break; }
+    if (onFinal)
+    {
+        // On final: remember it (the slot it had, else the stalest).
+        if (!slot)
+        {
+            slot = &_watch[0];
+            for (FinalWatch &w : _watch) if (now - w.finalMs > now - slot->finalMs) slot = &w;
+            slot->id = id;
+        }
+        slot->finalMs = now;
+        slot->altFt = isnan(alt) ? 0 : (int16_t)alt;
+        strlcpy(slot->rwy, st.runway, sizeof(slot->rwy));
+        return;
+    }
+    if (!slot || now - slot->finalMs > 180000) return;
+    // Off final within three minutes, below 5,000 ft, climbing hard and
+    // higher than when it was last on final: it has gone around.
+    const float vr = isnan(s.vertical_rate) ? NAN : (float)(s.vertical_rate * 196.85);
+    if (!isnan(vr) && vr > 500 && !isnan(alt) && alt < 5000 && alt > slot->altFt + 100)
+    {
+        String cs = s.callsign;
+        cs.trim();
+        strlcpy(_gaIdent, cs.length() ? cs.c_str() : s.icao24.c_str(), sizeof(_gaIdent));
+        strlcpy(_gaRwy, slot->rwy, sizeof(_gaRwy));
+        _gaAlt = (int16_t)alt;
+        _gaPending = true;
+        ++_goArounds;
+        noteSpot(GoAround, _gaIdent, _gaRwy);   // marks the stats dirty too
+        slot->id = 0;                           // once
+    }
+}
+
+bool DailyStats::takeGoAround(char *ident, size_t identLen, char *runway, size_t rwyLen, int &altFt)
+{
+    if (!_gaPending) return false;
+    _gaPending = false;
+    strlcpy(ident, _gaIdent, identLen);
+    strlcpy(runway, _gaRwy, rwyLen);
+    altFt = _gaAlt;
+    return true;
+}
+
+// ── The logbook's hand-over ─────────────────────────────────────────────────
+
+namespace
+{
+    // YYYYMMDD for a tm year (since 1900) and day of the year.
+    uint32_t ymdOf(int tmYear, int yday)
+    {
+        static const int kDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+        const int y = tmYear + 1900;
+        const bool leap = (y % 4 == 0 && y % 100) || y % 400 == 0;
+        int m = 0;
+        while (m < 11 && yday >= kDays[m] + (m == 1 && leap)) { yday -= kDays[m] + (m == 1 && leap); ++m; }
+        return (uint32_t)y * 10000 + (m + 1) * 100 + (yday + 1);
+    }
+}
+
+uint32_t DailyStats::date() const
+{
+    return _day >= 0 ? ymdOf(_year, _day) : 0;
+}
+
+void DailyStats::makeDayRecord()
+{
+    Logbook::Day &d = _dayDone;
+    d = Logbook::Day();
+    d.date = ymdOf(_year, _day);
+    d.arrivals = _arrivals;
+    d.departures = _departures;
+    d.goArounds = (uint8_t)min(255, (int)_goArounds);
+    d.types = _nTypes;
+    d.airlines = _nAirlines;
+    for (int h = 0; h < 24; ++h) d.hours[h] = (uint8_t)min(255, _arrHour[h] + _depHour[h]);
+    int n = 0;
+    const String best = busiestAirline(n);
+    strlcpy(d.busiest, best.c_str(), sizeof(d.busiest));
+    d.busiestN = (uint16_t)n;
+    d.tightestSec = _tightSec;
+    d.avgGapSec = (uint16_t)averageGapSec();
+    RunwayCount rw[1];
+    if (runways(rw, 1)) { strlcpy(d.runway, rw[0].name, sizeof(d.runway)); d.runwayN = rw[0].n; }
+    // The day's airlines and types, for the collection.
+    _dayTallies.clear();
+    _dayTallies.reserve(_nAirlines + _nTypes);
+    for (uint8_t i = 0; i < _nAirlines; ++i)
+    {
+        Logbook::Tally t{};
+        strlcpy(t.code, _airlines[i].code, sizeof(t.code));
+        t.kind = 0; t.n = _airlines[i].n;
+        _dayTallies.push_back(t);
+    }
+    for (uint8_t i = 0; i < _nTypes; ++i)
+    {
+        Logbook::Tally t{};
+        memcpy(t.code, _types[i].t, 5); t.code[5] = 0;
+        t.kind = 1; t.n = _types[i].n;
+        _dayTallies.push_back(t);
+    }
+    _dayReady = true;
+}
+
+bool DailyStats::takeDay(Logbook::Day &day, std::vector<Logbook::Tally> &tallies)
+{
+    if (!_dayReady) return false;
+    _dayReady = false;
+    day = _dayDone;
+    tallies.swap(_dayTallies);
+    std::vector<Logbook::Tally>().swap(_dayTallies);   // give the memory back
+    return true;
+}
+
+int DailyStats::takeEvents(Logbook::Event *out, int cap)
+{
+    const int n = min((int)_nEvents, cap);
+    for (int i = 0; i < n; ++i) out[i] = _events[i];
+    _nEvents = 0;
+    return n;
 }

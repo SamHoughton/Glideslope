@@ -710,7 +710,8 @@ void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weath
     }
 }
 
-void InfoScreens::renderNightScene(FrameCanvas &c, uint32_t animMs, const char *weather, const Sky::Look &sky)
+void InfoScreens::renderNightScene(FrameCanvas &c, uint32_t animMs, const char *weather, const Sky::Look &sky,
+                                   bool decorativePlane)
 {
     struct tm lt;
     if (!sky.known || !localNow(lt)) { renderClock(c, animMs, weather); return; }
@@ -727,7 +728,7 @@ void InfoScreens::renderNightScene(FrameCanvas &c, uint32_t animMs, const char *
     // Now and then an aircraft far off: its lights crossing above the
     // skyline, slowly coming down (one every 100 s, 30 s across).
     const uint32_t cyc = animMs % 100000;
-    if (cyc < 30000)
+    if (decorativePlane && cyc < 30000)
     {
         const float u = cyc / 30000.0f;
         const uint32_t n = animMs / 100000;

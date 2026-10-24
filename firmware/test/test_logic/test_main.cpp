@@ -21,6 +21,10 @@ unsigned long g_fakeMillis = 1000;
 #include "display/RunwayTracker.h"
 #include "display/HoldTracker.h"
 #include "display/DailyStats.h"
+#include "utils/Logbook.h"
+#include <WiFiClient.h>
+#include <LittleFS.h>
+#include <algorithm>
 #include "utils/Weather.h"
 #include "adapters/ReadsbParser.h"
 
@@ -322,6 +326,8 @@ void test_replay_counts_arrivals()
     printf("\n");
     printf("replay: %d arrivals, %d departures (independent count %d), landing on %s\n",
            stats.arrivals(), stats.departures(), expected, runways.mainArrival());
+    printf("replay: %d go-arounds\n", stats.goArounds());
+    TEST_ASSERT_EQUAL(0, stats.goArounds());   // real traffic, none went around: no false alarms
     TEST_ASSERT_TRUE(expected > 0);
     // Within 15% of the independent count.
     TEST_ASSERT_INT_WITHIN(expected * 15 / 100 + 1, expected, stats.arrivals());
@@ -334,6 +340,85 @@ void test_replay_counts_arrivals()
     TEST_ASSERT_TRUE(nr >= 1);
     TEST_ASSERT_EQUAL(stats.arrivals(), sum);
     TEST_ASSERT_TRUE(nr < 2 || rw[0].n >= rw[1].n);
+}
+
+void test_logbook()
+{
+    LittleFS.wipe();
+    Logbook::begin();
+    char l1[20], l2[24];
+    auto tally = [](const char *code, uint8_t kind, uint16_t n) {
+        Logbook::Tally t{};
+        strlcpy(t.code, code, sizeof(t.code));
+        t.kind = kind; t.n = n;
+        return t;
+    };
+    // The first day: kept, no news (nothing to beat yet).
+    Logbook::Day d1;
+    d1.date = 20261020; d1.arrivals = 600; d1.departures = 590; d1.goArounds = 1; d1.tightestSec = 70;
+    std::vector<Logbook::Tally> t1 = {tally("BA", 0, 300), tally("A320", 1, 200)};
+    Logbook::addDay(d1, t1, l1, sizeof(l1), l2, sizeof(l2));
+    TEST_ASSERT_EQUAL_STRING("", l1);
+    TEST_ASSERT_EQUAL(1190, Logbook::records().bestDay);
+    TEST_ASSERT_EQUAL(1, Logbook::records().airlines);
+    // A busier day: a new record, BA seen again, Virgin new.
+    Logbook::Day d2 = d1;
+    d2.date = 20261021; d2.arrivals = 640; d2.departures = 610; d2.tightestSec = 64;
+    std::vector<Logbook::Tally> t2 = {tally("BA", 0, 310), tally("VS", 0, 20), tally("A320", 1, 210)};
+    Logbook::addDay(d2, t2, l1, sizeof(l1), l2, sizeof(l2));
+    TEST_ASSERT_EQUAL_STRING("New record", l1);
+    TEST_ASSERT_EQUAL_STRING("1250 movements", l2);
+    TEST_ASSERT_EQUAL(64, Logbook::records().tightest);
+    TEST_ASSERT_EQUAL(2, Logbook::records().airlines);
+    TEST_ASSERT_EQUAL(1, Logbook::records().types);
+    // The same day handed over again (a restart after midnight): not counted twice.
+    Logbook::addDay(d2, t2, l1, sizeof(l1), l2, sizeof(l2));
+    Logbook::Event e;
+    e.at = 1792350900; e.kind = DailyStats::GoAround;
+    strlcpy(e.ident, "BA117", sizeof(e.ident)); strlcpy(e.what, "27L", sizeof(e.what));
+    Logbook::addEvent(e);
+    // Read back as the web page does.
+    WiFiClient days, events, coll;
+    Logbook::writeDaysCsv(days);
+    Logbook::writeEventsCsv(events);
+    Logbook::writeCollectionCsv(coll);
+    TEST_ASSERT_TRUE(days.sent.find("\n2026-10-20,600,590,1,") != std::string::npos);
+    TEST_ASSERT_TRUE(days.sent.find("\n2026-10-21,640,610,") != std::string::npos);
+    const std::string body = days.sent.substr(days.sent.find("\r\n\r\n") + 4);   // after the HTTP header
+    TEST_ASSERT_EQUAL(3, (int)std::count(body.begin(), body.end(), '\n'));       // the CSV header and two days
+    TEST_ASSERT_TRUE(events.sent.find(",go-around,BA117,27L") != std::string::npos);
+    TEST_ASSERT_TRUE(coll.sent.find("airline,BA,2026-10-20,2026-10-21,2,610") != std::string::npos);
+    TEST_ASSERT_TRUE(coll.sent.find("airline,VS,2026-10-21,2026-10-21,1,20") != std::string::npos);
+    LittleFS.wipe();
+}
+
+void test_go_around_from_traffic()
+{
+    // On final for 27L, then a little later climbing away past the
+    // threshold: counted, logged, reported once, whether or not it was
+    // the card's flight (8.1).
+    static DailyStats s;
+    std::vector<StateVector> v(1);
+    v[0] = onFinal("ga1", "27L", 3);
+    s.noteTraffic(v);
+    v[0] = onFinal("ga1", "27L", 1.5);
+    s.noteTraffic(v);
+    TEST_ASSERT_EQUAL(0, s.goArounds());
+    v[0] = onFinal("ga1", "27L", 0.2);
+    v[0].baro_altitude = 900 / 3.28084;          // climbing away
+    v[0].vertical_rate = 2000 / 196.85;
+    s.noteTraffic(v);
+    TEST_ASSERT_EQUAL(1, s.goArounds());
+    char id[10], rwy[4];
+    int alt = 0;
+    TEST_ASSERT_TRUE(s.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt));
+    TEST_ASSERT_EQUAL_STRING("TSTga1", id);
+    TEST_ASSERT_EQUAL_STRING("27L", rwy);
+    TEST_ASSERT_FALSE(s.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt));   // reported once
+    v[0].baro_altitude = 1400 / 3.28084;         // still climbing: not a second one
+    s.noteTraffic(v);
+    TEST_ASSERT_EQUAL(1, s.goArounds());
+    TEST_ASSERT_EQUAL(DailyStats::GoAround, s.spot(0).kind);
 }
 
 void test_spotter_log()
@@ -352,6 +437,15 @@ void test_spotter_log()
     TEST_ASSERT_EQUAL(DailyStats::kMaxSpots, s.spotCount());   // the oldest dropped off
     TEST_ASSERT_EQUAL_STRING("X29", s.spot(0).ident);
     TEST_ASSERT_EQUAL(34, s.spotsToday());
+    // A busy run of overhead passes never pushes out the rare things (8.1).
+    int goArounds = 0, rare = 0;
+    for (int i = 0; i < s.spotCount(); ++i)
+    {
+        goArounds += s.spot(i).kind == DailyStats::GoAround;
+        rare += s.spot(i).kind == DailyStats::Rare;
+    }
+    TEST_ASSERT_EQUAL(2, goArounds);
+    TEST_ASSERT_EQUAL(1, rare);
 }
 
 // ── Robustness: random and mangled input must never crash a parser ──────────
@@ -633,6 +727,8 @@ int main(int, char **)
     RUN_TEST(test_overhead_skips_arrivals);
     RUN_TEST(test_seen_log);
     RUN_TEST(test_spotter_log);
+    RUN_TEST(test_go_around_from_traffic);
+    RUN_TEST(test_logbook);
     RUN_TEST(test_airport_time_zones);
     RUN_TEST(test_http_request);
     return UNITY_END();

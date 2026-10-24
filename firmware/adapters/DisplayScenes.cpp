@@ -182,13 +182,10 @@ void NeoMatrixDisplay::noteApproachProgress(Entry &e, const ApproachStatus &st, 
         e.goAroundMs = now;
         e.goAroundAnimPending = true;
         e.finalMs = 0;
-        _stats.noteGoAround();
-        _stats.noteSpot(DailyStats::GoAround, (f.ident_iata.length() ? f.ident_iata : f.ident).c_str(), e.runway);
-        Log.printf("Display: %s GO-AROUND (%.0f ft, +%.0f fpm)\n", f.ident.c_str(),
+        // The scene and the card's GO AROUND; counting, the log and the
+        // phone alert come from the traffic watch (every aircraft, 8.1).
+        Log.printf("Display: %s GO-AROUND on the card (%.0f ft, +%.0f fpm)\n", f.ident.c_str(),
                    f.baro_altitude, f.vertical_rate);
-        Notify::post(Notify::GoAround, 4, "arrows_counterclockwise", "Go-around",
-                     "%s went around at %.0f ft%s%s", (f.ident_iata.length() ? f.ident_iata : f.ident).c_str(),
-                     f.baro_altitude, e.runway[0] ? " off " : "", e.runway);
         return;
     }
     if (onFinal && descending) e.finalMs = now;

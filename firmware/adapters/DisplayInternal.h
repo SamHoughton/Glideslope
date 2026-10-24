@@ -66,6 +66,7 @@ inline volatile uint32_t s_splashRequestMs  = 0;   // set by the web task
 inline unsigned long     s_splashUntil      = 0;
 inline volatile uint32_t s_mapRequestMs  = 0;   // set by the web task
 inline unsigned long     s_mapPreviewUntil = 0;
+inline volatile unsigned long s_demoUntil = 0;   // night watch stands aside until then (a web demo)
 inline volatile uint8_t s_screenPreview = 0;
 inline unsigned long    s_screenPreviewUntil = 0;
 inline volatile uint8_t s_replayRequest = 0;

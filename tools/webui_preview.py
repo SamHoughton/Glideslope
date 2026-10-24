@@ -132,6 +132,10 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/api/logos':      self.send({'count': 177, 'missing': [{'code': 'CTN', 'seen': 9}, {'code': 'LZB', 'seen': 4}, {'code': 'RBA', 'seen': 2}]})
         elif p == '/api/display':    self.send(DISPLAY)
         elif p == '/api/today':      self.send(TODAY)
+        elif p == '/api/history/records': self.send(HIST_RECORDS)
+        elif p == '/api/history/days':       self.send(hist_days().encode(), 'text/csv')
+        elif p == '/api/history/events':     self.send(HIST_EVENTS.encode(), 'text/csv')
+        elif p == '/api/history/collection': self.send(HIST_COLLECTION.encode(), 'text/csv')
         elif p == '/api/frame':      self.send(rle(self.frame) if 'z=1' in self.path else self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
         elif p.startswith('/packs/') and (ROOT / p.lstrip('/')).is_file():
@@ -165,6 +169,53 @@ TODAY = {'arrivals': 612, 'departures': 598, 'every': 105, 'average': 128, 'tigh
                    {'at': 862, 'kind': 'overhead', 'ident': 'LH915', 'what': 'A20N'},
                    {'at': 665, 'kind': 'first', 'ident': 'VS3', 'what': 'G-VJAZ'},
                    {'at': 581, 'kind': 'rare', 'ident': 'QR7', 'what': 'A388'}]}
+
+
+# History (8.1): a made-up logbook, about four months of it.
+HIST_RECORDS = {'since': '2026-06-25', 'days': 120, 'events': 214, 'bytes': 19800, 'best_day': 1312,
+                'best_day_date': '2026-08-14', 'best_go_arounds': 6, 'best_go_arounds_date': '2026-09-28',
+                'tightest': 58, 'tightest_date': '2026-08-02', 'airlines': 143, 'types': 61}
+
+
+def hist_days():
+    import datetime, math, random
+    random.seed(7)
+    out = ['date,arrivals,departures,go_arounds,busiest_airline,busiest_n,tightest_s,average_gap_s,runway,runway_n,airlines,types' +
+           ''.join(',h%02d' % h for h in range(24))]
+    d = datetime.date.today() - datetime.timedelta(days=120)
+    for i in range(120):
+        n = int(560 + 60 * math.sin(i / 9) + random.randint(-40, 40) + (40 if d.weekday() in (4, 6) else 0))
+        out.append('%s,%d,%d,%d,BA,%d,%d,%d,27L,%d,%d,%d' % (d.isoformat(), n, n - 10, random.choice([0, 0, 0, 1, 2]),
+                                                          n // 2, random.randint(60, 90), random.randint(95, 130), n - 20, 70, 38)
+                   + ',0' * 24)
+        d += datetime.timedelta(days=1)
+    return '\n'.join(out) + '\n'
+
+
+HIST_EVENTS = """time,kind,flight,detail
+2026-09-28 16:42,go-around,BA117,27L
+2026-10-02 09:41,rare,QR7,A388
+2026-10-11 14:22,watchlist,G-CIVA,B744
+2026-10-19 07:55,first visit,SQ322,9V-SMF
+2026-10-22 21:03,go-around,VS4,27R
+2026-10-23 18:36,rare,EK4CK,A388
+"""
+HIST_COLLECTION = """kind,code,first_seen,last_seen,days,count
+airline,BA,2026-06-25,2026-10-23,120,61840
+airline,VS,2026-06-25,2026-10-23,120,6120
+airline,EI,2026-06-25,2026-10-23,118,4410
+airline,LH,2026-06-25,2026-10-23,120,3980
+airline,AA,2026-06-25,2026-10-23,120,3310
+airline,EK,2026-06-25,2026-10-23,120,1690
+airline,QR,2026-06-25,2026-10-23,120,1460
+type,A320,2026-06-25,2026-10-23,120,30110
+type,A20N,2026-06-25,2026-10-23,120,12340
+type,B789,2026-06-25,2026-10-23,120,9120
+type,A35K,2026-06-25,2026-10-23,120,5230
+type,B77W,2026-06-25,2026-10-23,120,4410
+type,A388,2026-06-25,2026-10-23,118,1520
+type,B744,2026-07-03,2026-10-11,6,6
+"""
 
 
 def browser():
@@ -201,6 +252,7 @@ def main():
     shoot(url + '#alerts', str(ROOT / 'docs' / 'webui-alerts.png'), 1280, 820, 1)
     shoot(url + '#spotter', str(ROOT / 'docs' / 'webui-spotter.png'), 1280, 820, 1)
     shoot(url + 'logos', str(ROOT / 'docs' / 'webui-logos.png'), 1280, 820, 1)
+    shoot(url + '#history', str(ROOT / 'docs' / 'webui-history.png'), 1280, 1100, 1)
     today = ROOT / 'docs' / 'webui-today.png'
     shoot(url, str(today), 1280, 1240, 1)
     from PIL import Image

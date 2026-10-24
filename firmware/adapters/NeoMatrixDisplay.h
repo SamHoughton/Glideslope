@@ -14,6 +14,7 @@
 #include "display/ApproachModel.h"
 #include "display/Traffic.h"
 #include "display/DailyStats.h"
+#include "display/LogbookTypes.h"
 #include "display/RunwayTracker.h"
 #include "display/Sky.h"
 #include "display/InfoScreens.h"
@@ -39,6 +40,8 @@ void requestMapPreview(uint32_t durationMs);
 
 // Preview a screen (1 = stats, 2 = clock, 3 = arrivals, 4 = weather) for durationMs. Safe from the web task.
 void requestScreenPreview(uint8_t which, uint32_t durationMs);
+// A demo from the web page: night watch stands aside for a minute so it shows.
+void noteWebDemo();
 
 // Replay the fly-across onto the current card. forceDirection: 0 = the
 // flight's real direction, +1 = left-to-right, -1 = right-to-left (testing).
@@ -120,6 +123,13 @@ public:
     void todayJson(String &out);
     // The weather where an arrival came from (8.0), from the weather fetch.
     void setOriginWeather(const Metar &m);
+    // The logbook (8.1): the finished day and the sightings to keep, taken
+    // from the tally under the lock; the records to beat; news for the
+    // panel (a record or milestone), shown when nothing else has it.
+    bool takeLogbookDay(Logbook::Day &day, std::vector<Logbook::Tally> &tallies);
+    int  takeLogbookEvents(Logbook::Event *out, int cap);
+    void setRecords(const Logbook::Records &r);
+    void showNews(const char *line1, const char *line2);
     bool hasOriginWeather(const char *icao);
 
     // Today's stats from every aircraft in range (call once per fetch), and
@@ -228,6 +238,18 @@ private:
     void                 noteGlobe(const Entry &e);
     void                 refreshGlobe(unsigned long now);
     int                  statsPages() const;
+    // Logbook news and records.
+    Logbook::Records     _records;
+    uint32_t             _recordsDate = 0;            // the day the "today beat it" flags belong to
+    bool                 _beatDay = false, _beatGa = false, _beatGap = false;
+    char                 _news1[20] = "", _news2[24] = "";
+    bool                 _newsPending = false, _newsActive = false;
+    unsigned long        _newsMs = 0;
+    void                 checkRecords();
+    // Night watch (8.1).
+    bool                 nightWatchNow(unsigned long now) const;
+    void                 renderNightWatch(unsigned long now);
+    int                  _nwBase = -1, _nwCarry = 0, _nwLastTotal = 0;   // tonight's count across midnight
     // Origins' weather, compact: the last few airports asked about.
     struct OriginWx { char icao[5]; int8_t tempC; uint8_t cloud; char wx[8]; int16_t visM; uint32_t atMs; };
     OriginWx             _origins[6] = {};

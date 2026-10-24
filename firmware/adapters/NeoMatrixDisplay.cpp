@@ -7,6 +7,7 @@ Responsibilities:
   only the pixels that changed to the panel.
 */
 #include "adapters/DisplayInternal.h"
+#include "utils/Notify.h"
 
 // The panel mirror (declared in NeoMatrixDisplay.h; the web page reads it).
 FrameCanvas        g_shownFrame;
@@ -18,6 +19,8 @@ void requestSplashPreview(uint32_t durationMs) { s_splashRequestMs = durationMs 
 void requestMapPreview(uint32_t durationMs) { s_mapRequestMs = durationMs ? durationMs : 1; }
 
 // Ambient screen previews from the web page: 1 stats, 2 clock.
+
+void noteWebDemo() { s_demoUntil = millis() + 60000; }
 
 void requestScreenPreview(uint8_t which, uint32_t durationMs)
 {
@@ -272,6 +275,17 @@ void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
     const unsigned long now = millis();
     Lock l(_lock);
     _stats.noteTraffic(states);
+    checkRecords();
+    {
+        char id[10], rwy[4];
+        int alt = 0;
+        if (_stats.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt))
+        {
+            Log.printf("Traffic: %s GO-AROUND%s%s (%d ft)\n", id, rwy[0] ? " off " : "", rwy, alt);
+            Notify::post(Notify::GoAround, 4, "arrows_counterclockwise", "Go-around",
+                         "%s went around at %d ft%s%s", id, alt, rwy[0] ? " off " : "", rwy);
+        }
+    }
     _holds.noteStates(states, now);
     if (_runways.update(states, now))
     {
@@ -408,6 +422,70 @@ void NeoMatrixDisplay::raiseAlert(const char *code, const char *meaning, const c
     _stats.noteSpot(DailyStats::Emergency, ident, code);
 }
 
+bool NeoMatrixDisplay::takeLogbookDay(Logbook::Day &day, std::vector<Logbook::Tally> &tallies)
+{
+    Lock l(_lock);
+    return _stats.takeDay(day, tallies);
+}
+
+int NeoMatrixDisplay::takeLogbookEvents(Logbook::Event *out, int cap)
+{
+    Lock l(_lock);
+    return _stats.takeEvents(out, cap);
+}
+
+void NeoMatrixDisplay::setRecords(const Logbook::Records &r)
+{
+    Lock l(_lock);
+    _records = r;
+}
+
+void NeoMatrixDisplay::showNews(const char *line1, const char *line2)
+{
+    if (!line1 || !line1[0]) return;
+    Lock l(_lock);
+    strlcpy(_news1, line1, sizeof(_news1));
+    strlcpy(_news2, line2 ? line2 : "", sizeof(_news2));
+    _newsPending = true;
+}
+
+// Today beating the all-time bests, as it happens (once each a day): the
+// busiest day, the most go-arounds, the tightest gap. Under the lock.
+void NeoMatrixDisplay::checkRecords()
+{
+    const uint32_t today = _stats.date();
+    if (!today || !_records.since) return;   // nothing to beat until a day is logged
+    if (today != _recordsDate) { _recordsDate = today; _beatDay = _beatGa = _beatGap = false; }
+    char l2[24];
+    const int moves = _stats.arrivals() + _stats.departures();
+    if (!_beatDay && _records.bestDay && moves > _records.bestDay)
+    {
+        _beatDay = true;
+        snprintf(l2, sizeof(l2), "%d today", moves);
+        strlcpy(_news1, "Busiest day ever", sizeof(_news1));
+        strlcpy(_news2, l2, sizeof(_news2));
+        _newsPending = true;
+        Log.printf("Logbook: today is the busiest day yet (%d, was %u)\n", moves, _records.bestDay);
+    }
+    if (!_beatGa && _stats.goArounds() > _records.bestGa && _records.bestGa)
+    {
+        _beatGa = true;
+        snprintf(l2, sizeof(l2), "%d go-arounds", _stats.goArounds());
+        strlcpy(_news1, "Most in a day", sizeof(_news1));
+        strlcpy(_news2, l2, sizeof(_news2));
+        _newsPending = true;
+    }
+    const int gap = _stats.tightestGapSec();
+    if (!_beatGap && gap && _records.tightest && gap < _records.tightest)
+    {
+        _beatGap = true;
+        snprintf(l2, sizeof(l2), "%d:%02d apart", gap / 60, gap % 60);
+        strlcpy(_news1, "Tightest gap ever", sizeof(_news1));
+        strlcpy(_news2, l2, sizeof(_news2));
+        _newsPending = true;
+    }
+}
+
 void NeoMatrixDisplay::setOriginWeather(const Metar &m)
 {
     if (!m.valid || !m.station[0]) return;
@@ -459,7 +537,7 @@ void NeoMatrixDisplay::todayJson(String &out)
     // Copied under the lock, written out after it: a web client can be slow.
     DailyStats::Spot spots[DailyStats::kMaxSpots];
     DailyStats::RunwayCount rw[4];
-    int nSpots, nRw, arr, dep, recent, avg, tight, tightMin, peakH, peakN, spotsToday;
+    int nSpots, nRw, arr, dep, recent, avg, tight, tightMin, peakH, peakN, spotsToday, goArounds;
     char tightId[8];
     {
         Lock l(_lock);
@@ -472,6 +550,7 @@ void NeoMatrixDisplay::todayJson(String &out)
         strlcpy(tightId, _stats.tightestIdent(), sizeof(tightId));
         peakH = _stats.busiestHour(peakN);
         spotsToday = _stats.spotsToday();
+        goArounds = _stats.goArounds();
     }
     // Idents and types are letters, digits and dashes; anything else is dropped.
     auto clean = [](const char *s, char *o, size_t len) {
@@ -491,7 +570,7 @@ void NeoMatrixDisplay::todayJson(String &out)
     snprintf(buf, sizeof(buf), "\"tightest_ident\":\"%s\",\"tightest_at\":%d,\"busiest_hour\":%d,\"busiest_n\":%d,",
              a, tightMin, peakH, peakN);
     out += buf;
-    snprintf(buf, sizeof(buf), "\"spotted\":%d,\"runways\":[", spotsToday);
+    snprintf(buf, sizeof(buf), "\"spotted\":%d,\"go_arounds\":%d,\"runways\":[", spotsToday, goArounds);
     out += buf;
     for (int i = 0; i < nRw; ++i)
     {

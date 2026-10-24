@@ -27,6 +27,8 @@ namespace
     }
 }
 
+float FlyAcross::facingDegrees(const char *name) { return ::facingDegrees(name); }
+
 FlyAcross::Path FlyAcross::pathFor(double headingDeg, double verticalRateFpm, const char *screenFacing)
 {
     Path p;

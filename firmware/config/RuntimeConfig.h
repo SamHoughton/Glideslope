@@ -44,6 +44,7 @@ struct RuntimeConfig
     // Night mode — optional time-based brightness reduction
     bool     night_mode_enabled;
     bool     night_follow_sun;           // dim from dusk to dawn at the airport (ignores the times)
+    bool     night_watch;                // 8.1: through the night hours, only the quiet night view (no cards or scenes)
     uint16_t night_start_minutes;        // local time of night start (minutes since midnight)
     uint16_t night_end_minutes;          // local time of night end
     uint8_t  night_brightness;           // brightness during night period (0 = screen off)

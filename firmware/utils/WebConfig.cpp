@@ -5,6 +5,7 @@ WebServer library to avoid framework include-path issues.
 */
 #include "utils/Notify.h"
 #include "utils/WebConfig.h"
+#include "utils/Logbook.h"
 #include "utils/TelnetLogger.h"
 #include "utils/WifiProvisioner.h"
 #include "utils/StageTrace.h"
@@ -92,6 +93,7 @@ void WebConfig::loop()
     if (g_netBusy || ESP.getFreeHeap() < kMinHeapToServe) { delay(20); return; }
     WiFiClient client = _server.accept();
     if (!client) { StageTrace::mark(StageTrace::Web, StageTrace::WebIdle); return; }
+    struct Busy { Busy() { g_webBusy = true; } ~Busy() { g_webBusy = false; } } busy;   // while this request is handled
     ++_requests;
     // Accepted sockets block with no limit by default: a browser that stops
     // reading (background tab, phone asleep) would hang the web task. Bound
@@ -192,6 +194,8 @@ void WebConfig::loop()
     // Path length identifies the route in hang reports (1 = page, 10 = frame,
     // 11 = config, 12 = display, 8 = log, 14+ = demo).
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, (uint8_t)r.path.length());
+    // Any demo: night watch stands aside so it can be seen at night.
+    if (r.path.startsWith("/api/demo/") && r.path != "/api/demo/nightwatch") noteWebDemo();
     if      (r.path == "/"                  && r.method == "GET")  handleRoot(client);
     else if (r.path == "/api/config"        && r.method == "GET")  handleGetConfig(client);
     else if (r.path == "/api/config"        && r.method == "POST") handlePostConfig(client, r);
@@ -254,7 +258,17 @@ void WebConfig::loop()
     }
     else if (r.path == "/api/demo/holding"  && r.method == "POST") { requestScreenPreview(5, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/clock"    && r.method == "POST") { requestScreenPreview(2, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/nightwatch" && r.method == "POST") { requestScreenPreview(9, 20000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/summary"  && r.method == "POST") { requestScreenPreview(7, 15000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/history/days"       && r.method == "GET") Logbook::writeDaysCsv(client);
+    else if (r.path == "/api/history/events"     && r.method == "GET") Logbook::writeEventsCsv(client);
+    else if (r.path == "/api/history/collection" && r.method == "GET") Logbook::writeCollectionCsv(client);
+    else if (r.path == "/api/history/records"    && r.method == "GET")
+    {
+        String body;
+        Logbook::recordsJson(body);
+        sendHttp(client, 200, "application/json", body);
+    }
     else if (r.path == "/api/today"         && r.method == "GET")
     {
         String body = "{}";
@@ -367,6 +381,7 @@ void WebConfig::handleGetConfig(WiFiClient &c)
     doc["display_flip"]                  = g_config.display_flip;
     doc["night_mode_enabled"]            = g_config.night_mode_enabled;
     doc["night_follow_sun"]              = g_config.night_follow_sun;
+    doc["night_watch"]                   = g_config.night_watch;
     doc["route_cities"]                  = g_config.route_cities;
     doc["night_start_minutes"]           = g_config.night_start_minutes;
     doc["night_end_minutes"]             = g_config.night_end_minutes;
@@ -458,6 +473,7 @@ void WebConfig::handlePostConfig(WiFiClient &c, const Req &r)
     next.display_flip          = doc["display_flip"]          | next.display_flip;
     next.night_mode_enabled    = doc["night_mode_enabled"]    | next.night_mode_enabled;
     next.night_follow_sun      = doc["night_follow_sun"]      | next.night_follow_sun;
+    next.night_watch           = doc["night_watch"]           | next.night_watch;
     next.route_cities          = doc["route_cities"]          | next.route_cities;
     next.night_start_minutes   = (uint16_t)(doc["night_start_minutes"] | (int)next.night_start_minutes);
     next.night_end_minutes     = (uint16_t)(doc["night_end_minutes"]   | (int)next.night_end_minutes);
@@ -918,9 +934,9 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
     // Built in a static buffer (only the web task calls this): a log reply
     // every 1.5 s used to allocate and free several KB, fragmenting the heap.
     // Sub-steps for hang reports: 82 building, 83 sending.
-    static char s_json[3 * 1024];
+    static char s_json[1536];   // 12 lines (3 KB and 24 until 8.1); the page asks again in a few seconds
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 82);
-    size_t n = Log.linesJson(cursor, 24, s_json, sizeof(s_json));
+    size_t n = Log.linesJson(cursor, 12, s_json, sizeof(s_json));
     if (n == 0) n = snprintf(s_json, sizeof(s_json), "{\"cursor\":%lu,\"lines\":[]}", (unsigned long)cursor);
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, 83);
     c.printf("HTTP/1.1 200 OK\r\n"

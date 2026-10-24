@@ -107,16 +107,31 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
         frac = flown + left > 1e-4f ? flown / (flown + left) : 0;
     }
 
-    // Face the middle of the route, turning in from the west as the screen opens.
+    // Face the route from its equator side, turning in from the west as the
+    // screen opens. Seen from straight above its middle, a great circle is a
+    // straight line; from beside it, it curves towards the pole as it does on
+    // a flight map (8.1). The tilt grows with the route: short hops are
+    // nearly straight anyway, and their zoom needs them near the middle.
     const V3 mid = slerp(a, b, d, 0.5f);
-    const float midLat = asinf(mid.z) / kDeg, midLon = atan2f(mid.y, mid.x) / kDeg;
+    V3 side{ a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };   // the route's pole
+    const float sideLen = sqrtf(dot(side, side));
+    const float tilt = sideLen > 1e-4f ? fminf(30.0f * kDeg, 0.75f * d) : 0;
+    if (sideLen > 1e-4f)
+    {
+        const float k = (side.z * mid.z < 0 ? -1.0f : 1.0f) / sideLen;   // towards the nearer pole
+        side = { side.x * k, side.y * k, side.z * k };
+    }
+    const V3 eye{ mid.x * cosf(tilt) - side.x * sinf(tilt), mid.y * cosf(tilt) - side.y * sinf(tilt),
+                  mid.z * cosf(tilt) - side.z * sinf(tilt) };
+    const float eyeLat = asinf(fmaxf(-1.0f, fminf(1.0f, eye.z))) / kDeg, eyeLon = atan2f(eye.y, eye.x) / kDeg;
     View v;
     // Short routes closer in (London to Billund is a smudge on the whole
-    // Earth): the route about 0.9 of the radius long, up to 4x (beyond that
-    // the 1-degree land cells get blocky).
-    const float chord = 2 * sinf(d / 2);
-    v.zoom = chord > 1e-3f ? fminf(4.0f, fmaxf(1.0f, 0.9f / chord)) : 4.0f;
-    v.at(midLat, midLon - 60.0f * (1 - ease(shownMs / 1600.0f)));
+    // Earth), up to 4x (beyond that the 1-degree land cells get blocky):
+    // the ends, off to the side with the tilt, about 0.6 of the radius out.
+    const float half = sinf(d / 2), across = cosf(d / 2) * sinf(tilt);
+    const float reach = sqrtf(half * half + across * across);
+    v.zoom = reach > 1e-3f ? fminf(4.0f, fmaxf(1.0f, 0.6f / reach)) : 4.0f;
+    v.at(eyeLat, eyeLon - 60.0f * (1 - ease(shownMs / 1600.0f)));
 
     // Sun: full light without a clock.
     const bool sunKnown = now > 1600000000;

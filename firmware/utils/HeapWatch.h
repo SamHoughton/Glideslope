@@ -23,9 +23,18 @@ inline volatile bool g_netBusy = false;
 // and the network to itself (with a fetch alongside, it could stall).
 inline volatile bool g_updating = false;
 inline volatile bool g_feedPaused = false;   // set by the main loop once it has stopped for the upload
+// The web task is answering a request (its socket buffers and reply are on
+// the heap). The main loop's fetches wait for it, as it waits for them: the
+// two together ran the heap dry with a phone on the live preview (8.1).
+inline volatile bool g_webBusy = false;
+
 struct NetBusy
 {
-    NetBusy()  { g_netBusy = true; }
+    NetBusy()
+    {
+        g_netBusy = true;   // no new web requests from here ...
+        for (int i = 0; i < 100 && g_webBusy; ++i) delay(20);   // ... and the one in hand finishes (2 s at most)
+    }
     ~NetBusy() { g_netBusy = false; }
 };
 
@@ -38,7 +47,10 @@ inline bool tlsAffordable(const char *what)
 {
     // The two record buffers come from utils/TlsArena; the heap only needs
     // room for the handshake's own working memory.
-    static constexpr uint32_t kMinFree = 30000, kMinBlock = 10000;   // 42 KB left 40 KB free short (5.1 soak)
+    // kMinBlock: the arena takes every request of 8 KB or more (kLarge), so
+    // no single heap allocation in a handshake is bigger than this (10000
+    // until 8.1 refused handshakes that would have fitted).
+    static constexpr uint32_t kMinFree = 30000, kMinBlock = 8192;   // 42 KB left 40 KB free short (5.1 soak)
     auto room = [] { return TlsArena::slotsFree() && ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= kMinBlock; };
     if (room()) return true;
     if (g_tlsReleaser)

@@ -65,6 +65,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.route_cities               = false;
     c.night_mode_enabled         = true;      // dim overnight by default
     c.night_follow_sun           = false;
+    c.night_watch                = true;
     c.night_start_minutes        = 22 * 60;   // 22:00
     c.night_end_minutes          =  7 * 60;   // 07:00
     c.night_brightness           = 38;        // ~15%
@@ -143,6 +144,7 @@ void loadConfig()
     g_config.display_flip           = p.getBool("flip",     g_config.display_flip);
     g_config.night_mode_enabled     = p.getBool("night_en", g_config.night_mode_enabled);
     g_config.night_follow_sun       = p.getBool("night_sun", g_config.night_follow_sun);
+    g_config.night_watch            = p.getBool("night_watch", g_config.night_watch);
     g_config.route_cities           = p.getBool("rt_cities", g_config.route_cities);
     g_config.night_start_minutes    = (uint16_t)p.getUInt("night_s",  g_config.night_start_minutes);
     g_config.night_end_minutes      = (uint16_t)p.getUInt("night_e",  g_config.night_end_minutes);
@@ -243,6 +245,7 @@ void saveConfig()
     p.putBool("flip",     g_config.display_flip);
     p.putBool("night_en", g_config.night_mode_enabled);
     p.putBool("night_sun", g_config.night_follow_sun);
+    p.putBool("night_watch", g_config.night_watch);
     p.putBool("rt_cities", g_config.route_cities);
     p.putUInt("night_s",  g_config.night_start_minutes);
     p.putUInt("night_e",  g_config.night_end_minutes);

@@ -6,6 +6,7 @@ the pages on final. Part of NeoMatrixDisplay (see NeoMatrixDisplay.cpp).
 #include "adapters/DisplayInternal.h"
 #include "config/Airports.h"
 #include "display/LineupScreen.h"
+#include "display/NightWatch.h"
 
 bool NeoMatrixDisplay::departuresPage() const
 {
@@ -113,6 +114,40 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
             { wait = kCardFrameMs; return true; }
         }
         _alertActive = false;
+    }
+
+    // Night watch: through the night hours just the quiet view (emergencies
+    // above still take over); cards, scenes, banners and the rotation wait
+    // for the morning.
+    if (nightWatchNow(now))
+    {
+        renderNightWatch(now);
+        present();
+        { wait = kCardFrameMs; return true; }
+    }
+    _nwBase = -1;
+
+    // Logbook news (a record, a milestone): a short gold banner, when no
+    // landing or transition has the panel.
+    if (_newsPending && !_landingActive && !_inTransition && !_alertActive)
+    {
+        _newsPending = false;
+        _newsActive = true;
+        _newsMs = now;
+        g_oldFrame.copyFrom(g_shownFrame);
+    }
+    if (_newsActive)
+    {
+        const uint32_t t = now - _newsMs;
+        if (t < 6000)
+        {
+            InfoScreens::renderRareBanner(g_workFrame, _news1, _news2, t);
+            present();
+            { wait = kCardFrameMs; return true; }
+        }
+        _newsActive = false;
+        g_oldFrame.copyFrom(g_shownFrame);
+        _ambientSinceMs = now;
     }
 
     // The landing direction has changed: announce it once.
@@ -769,4 +804,38 @@ int NeoMatrixDisplay::statsPageList(uint8_t *out) const
     if (_stats.typeCount() >= 3) out[n++] = 3;
     if (_stats.spotCount()) out[n++] = 4;
     return n;
+}
+
+// Night watch is on: the setting, the night hours, the board in its normal
+// mode, and no showcase, preview or demo the web page has just asked for.
+bool NeoMatrixDisplay::nightWatchNow(unsigned long now) const
+{
+    if (s_screenPreview == 9) return true;   // the web page's "Show night watch"
+    if (!g_config.night_watch || !isNightActive() || _mode != Mode::Auto || _showcaseActive) return false;
+    if (s_screenPreview && s_screenPreview != 9) return false;
+    if (s_mapPreviewUntil || s_skyPreviewUntil) return false;
+    if (s_demoUntil && (long)(now - s_demoUntil) < 0) return false;
+    return true;
+}
+
+void NeoMatrixDisplay::renderNightWatch(unsigned long now)
+{
+    // Tonight's movements: counted from when night watch began, across the
+    // midnight reset of the day's tally.
+    const int total = _stats.arrivals() + _stats.departures();
+    if (_nwBase < 0) { _nwBase = total; _nwCarry = 0; }
+    else if (total < _nwLastTotal) { _nwCarry += _nwLastTotal - _nwBase; _nwBase = 0; }
+    _nwLastTotal = total;
+    NightWatch::Tracker t;
+    t.tonight = _nwCarry + total - _nwBase;
+    t.last = _stats.lastMovement();
+    t.today = total;
+    const time_t wall = time(nullptr);
+    if (_arrivalCount > 0 && !isnan(_arrivals[0].etaSec) && wall > 1600000000)
+        t.next = wall + (time_t)max(0.0f, _arrivals[0].etaSec - (now - _arrivals[0].dataMs) / 1000.0f);
+    const bool homeSet = g_config.home_lat != 0 || g_config.home_lon != 0;
+    NightWatch::render(g_workFrame, now, _sky, _weather, _traffic,
+                       homeSet ? g_config.home_lat : g_config.center_lat,
+                       homeSet ? g_config.home_lon : g_config.center_lon,
+                       FlyAcross::facingDegrees(g_config.screen_facing), t);
 }
