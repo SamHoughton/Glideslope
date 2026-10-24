@@ -7,6 +7,47 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 8.1.0 (in progress)
+
+Night watch, the logbook, and a steadier board.
+
+**New**
+- **Night watch** (on by default, Night tab): through the night hours
+  only a quiet view out of the window. The skyline under the real sky,
+  the time, and every aircraft as just its lights where it really is
+  (its bearing against the way the window faces, up by its angle above
+  the horizon), with a dim tally of the night. No cards, scenes or
+  banners; emergencies still take over.
+- **The logbook**: every day, every go-around and rare sighting, and
+  every airline and type the board has ever seen, kept in its flash for
+  good. A **History** tab on the web page with the records, a heatmap of
+  busy days, the moments and the collection, and CSV downloads. A new
+  record or a collection milestone gets a short gold banner, and today
+  beating the busiest day is announced as it happens.
+- **Go-arounds from every aircraft** in range, not just the one on the
+  card: counted, logged and sent to your phone.
+- **Halloween** (18-31 October): jack-o'-lanterns along the skyline,
+  bats after dusk, pumpkin-lit windows.
+- **"Last seen 4 days ago"** on the card, in turn with how often the
+  aircraft has been seen.
+- **The live preview only when asked for**: the web page shows a still of
+  the panel; the Live button (or a demo) shows it moving for two minutes.
+
+**Fixes**
+- The board could crash when a phone had the web page open (it ran out
+  of memory during a fetch); the fetch and the web server now take turns,
+  and a failed allocation skips a fetch instead of ending the program.
+- It could stay on the scanning screen with its memory too fragmented
+  for the feed: the self-heal restart now fires (it needed more free
+  memory than the board has since 8.0), 3.3 KB more memory is free, and
+  the extra weather requests for flights' origins are gone (the origin
+  page uses the regular weather request's).
+- The spotter log keeps go-arounds, emergencies, watchlist hits, rare
+  types and first visits when overhead passes pile up, and aircraft being
+  turned onto final no longer count as overhead.
+- Up to 96 airlines a day are counted (48 before); airlines seen without
+  a logo are remembered across restarts.
+
 ## 8.0.0 (20 Oct 2026)
 
 The line-up: everyone coming in, where they came from, where they're going.
