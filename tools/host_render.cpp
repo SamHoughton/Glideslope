@@ -143,6 +143,11 @@ int main(int argc, char **argv)
     s4.oLat = -33.95f; s4.oLon = 151.18f; s4.dLat = 51.47f; s4.dLon = -0.45f;
     s4.lat = 50.9f; s4.lon = 2.5f; s4.speedKts = 280;
     Globe::render(c, s4, 6000, evening);                  save(c, "globe_syd_lhr");
+    Globe::Route s5 = r;                                  // a short hop: zoomed in, nearly straight
+    strcpy(s5.ident, "BA816"); strcpy(s5.from, "London"); strcpy(s5.to, "Billund");
+    s5.oLat = 51.47f; s5.oLon = -0.45f; s5.dLat = 55.74f; s5.dLon = 9.15f;
+    s5.lat = 53.6f; s5.lon = 4.2f; s5.speedKts = 420;
+    Globe::render(c, s5, 6000, evening);                  save(c, "globe_lhr_bll");
 
 #ifdef HAVE_OVERHEAD
     OverheadScene::Info o;
