@@ -101,6 +101,9 @@ namespace InfoScreens
     void renderNightScene(FrameCanvas &c, uint32_t animMs, const char *weather, const Sky::Look &sky,
                           bool decorativePlane = true);
     void renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs);
+    // A go-around anywhere in range (8.3): an amber frame flashing for the
+    // first seconds, GO-AROUND, the flight, and a track climbing away.
+    void renderGoAroundAlert(FrameCanvas &c, const char *ident, const char *runway, int altFt, uint32_t tMs);
     // The airfield's mood (8.2), as a banner like the rare spot's: 1 low
     // visibility (fog drifting by), 2 thunderstorm (rain and lightning),
     // 3 a runway change on the way (a yellow-on-black direction sign).

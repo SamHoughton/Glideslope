@@ -385,6 +385,8 @@ int main(int argc, char **argv)
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");
         InfoScreens::renderRareBanner(c, "RARE SPOT", "A380", 900);                           save(c, "banner_rare");
         InfoScreens::renderMoodBanner(c, 1, "Low visibility", "Fog 300 m", 2500);            save(c, "banner_fog");
+        InfoScreens::renderGoAroundAlert(c, "BAW117", "27L", 1200, 250);                     save(c, "alert_goaround_flash");
+        InfoScreens::renderGoAroundAlert(c, "BAW117", "27L", 1200, 6000);                    save(c, "alert_goaround");
         InfoScreens::renderMoodBanner(c, 2, "Thunderstorm", "Over Heathrow", 1750);          save(c, "banner_storm");
         InfoScreens::renderMoodBanner(c, 2, "Thunderstorm", "Over Heathrow", 900);           save(c, "banner_storm_dark");
         InfoScreens::renderMoodBanner(c, 3, "Runway change due", "To 09 at 19:00", 900);     save(c, "banner_runway");

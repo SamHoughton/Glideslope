@@ -52,6 +52,7 @@ void requestLandingReplay();
 
 // Play the go-around animation on the current card (demo).
 void requestGoAroundDemo();
+void requestGoAroundAlertDemo();   // 8.3: the alert for one in range
 
 // Show the rare-spot flourish on the current card (demo).
 void requestRareSpotDemo();
@@ -255,6 +256,11 @@ private:
     uint8_t              _newsStyle = 0;              // 0 gold (logbook), else a mood banner
     unsigned long        _newsQueuedMs = 0;
     uint8_t              _mood = 0;
+    // A go-around anywhere in range (8.3): taken over the panel once.
+    char                 _gaIdent[10] = "", _gaRwy[4] = "";
+    int                  _gaAlt = 0;
+    bool                 _gaPending = false, _gaActive = false;
+    unsigned long        _gaQueuedMs = 0, _gaMs = 0;
     char                 _outlook[20] = "";
     void                 checkRecords();
     // Night watch (8.1).

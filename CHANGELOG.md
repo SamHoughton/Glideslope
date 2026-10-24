@@ -7,6 +7,16 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 8.3.0 (in progress)
+
+**New**
+- **Go-arounds you can't miss**: one anywhere in range now takes over the
+  panel for ten seconds: a flashing amber frame, GO-AROUND, the flight, the
+  runway and height, and its track climbing away. (Before, only the
+  aircraft on the card played its scene; the rest went to the spotter log
+  and your phone.) Day and night, after any landing already playing. A
+  demo under Animations, More.
+
 ## 8.2.1 (24 Oct 2026)
 
 **Fixes**

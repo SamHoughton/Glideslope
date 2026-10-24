@@ -116,6 +116,39 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
         _alertActive = false;
     }
 
+    // A go-around anywhere in range (8.3): its own alert, once a landing or
+    // transition has finished (and not two minutes late). Before night
+    // watch: rare enough at night to be worth the light.
+    if (s_gaAlertDemo)
+    {
+        s_gaAlertDemo = false;
+        strlcpy(_gaIdent, "GS101", sizeof(_gaIdent));
+        strlcpy(_gaRwy, _runwayInUse[0] ? _runwayInUse : "27L", sizeof(_gaRwy));
+        _gaAlt = 1200;
+        _gaQueuedMs = now;
+        _gaPending = true;
+    }
+    if (_gaPending && now - _gaQueuedMs > 120000UL) _gaPending = false;
+    if (_gaPending && !_landingActive && !_inTransition)
+    {
+        _gaPending = false;
+        _gaActive = true;
+        _gaMs = now;
+    }
+    if (_gaActive)
+    {
+        const uint32_t t = now - _gaMs;
+        if (t < 10000)
+        {
+            InfoScreens::renderGoAroundAlert(g_workFrame, _gaIdent, _gaRwy, _gaAlt, t);
+            present();
+            { wait = kCardFrameMs; return true; }
+        }
+        _gaActive = false;
+        g_oldFrame.copyFrom(g_shownFrame);
+        _ambientSinceMs = now;
+    }
+
     // Night watch: through the night hours just the quiet view (emergencies
     // above still take over); cards, scenes, banners and the rotation wait
     // for the morning.
