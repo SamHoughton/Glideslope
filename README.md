@@ -61,6 +61,10 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Runway rhythm: a landing every 1:45, today's average and tightest gap, each runway's share](docs/rhythm.png) | ![Today's spotter log: rare spots, first visits, overhead and watchlist passes, go-arounds](docs/spotted.png) |
 
+| Night watch: aircraft as their lights out of the window | Halloween |
+| --- | --- |
+| ![Night watch: the skyline at night, the time, aircraft lights above the rooftops and tonight's tally](docs/nightwatch.png) | ![Halloween: jack-o'-lanterns along the skyline and pumpkin-lit windows](docs/halloween.png) |
+
 | Overnight: the night scene | The day in one card |
 | --- | --- |
 | ![The night scene: the skyline under the stars, the time and the next sunrise](docs/night.png) | ![The bedtime summary: movements, the busiest hour, the tightest gap and the best spot](docs/summary.png) |
