@@ -548,6 +548,7 @@ void setup()
     g_display.setLogoStore(&g_logoStore);
     RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
     Logbook::begin();       // the days, events and collection kept for good (8.1)
+    LogoBook::loadMissing(); // airlines seen without a logo, kept across restarts (8.1)
     g_display.setRecords(Logbook::records());
     AirportPack::load();    // Heathrow, or the airport pack on LittleFS
     g_display.loadStats();  // today's tally survives a restart
@@ -1014,6 +1015,7 @@ void loop()
         if (millis() - lastLogbookMs > 15000)
         {
             lastLogbookMs = millis();
+            LogoBook::saveMissingIfChanged();
             Logbook::Event ev[4];
             const int n = g_display.takeLogbookEvents(ev, 4);
             for (int i = 0; i < n; ++i) Logbook::addEvent(ev[i]);

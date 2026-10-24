@@ -106,6 +106,7 @@ struct Missing { char code[5]; uint16_t seen; };
 Missing           s_missing[16] = {};
 portMUX_TYPE      s_mux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t s_version = 1;
+volatile bool     s_missingDirty = false;
 
 bool validCode(const String &c)
 {
@@ -133,7 +134,41 @@ void noteMissing(const String &icao)
         slot->seen = 0;
     }
     if (slot->seen < 0xFFFF) ++slot->seen;
+    s_missingDirty = true;
     portEXIT_CRITICAL(&s_mux);
+}
+
+void loadMissing()
+{
+    File f = LittleFS.open("/logos/missing.bin", "r");
+    if (!f) return;
+    Missing m[16];
+    if (f.read((uint8_t *)m, sizeof(m)) == sizeof(m))
+    {
+        for (Missing &x : m) x.code[sizeof(x.code) - 1] = 0;
+        portENTER_CRITICAL(&s_mux);
+        memcpy(s_missing, m, sizeof(s_missing));
+        portEXIT_CRITICAL(&s_mux);
+    }
+    f.close();
+}
+
+void saveMissingIfChanged()
+{
+    if (!s_missingDirty) return;
+    Missing copy[16];
+    portENTER_CRITICAL(&s_mux);
+    memcpy(copy, s_missing, sizeof(copy));
+    s_missingDirty = false;
+    portEXIT_CRITICAL(&s_mux);
+    // Drop the ones that have a logo now, so they don't hold places.
+    for (Missing &m : copy)
+        if (m.code[0] && LittleFS.exists(String("/logos/") + m.code + ".bin")) m = Missing{};
+    if (!LittleFS.exists("/logos")) LittleFS.mkdir("/logos");
+    File f = LittleFS.open("/logos/missing.bin", "w");
+    if (!f) return;
+    f.write((const uint8_t *)copy, sizeof(copy));
+    f.close();
 }
 
 String missingJson()

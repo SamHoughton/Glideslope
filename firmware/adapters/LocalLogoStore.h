@@ -29,6 +29,10 @@ namespace LogoBook
 
     // An airline seen in traffic with no logo file (ICAO code).
     void noteMissing(const String &icao);
+    // Kept in flash (/logos/missing.bin) so the list builds up across
+    // restarts (8.1): load at start, save from the main loop when changed.
+    void loadMissing();
+    void saveMissingIfChanged();
     // [{"code":"CTN","seen":12},...], most seen first, without any added since.
     String missingJson();
     // Write /logos/<CODE>.bin (via a temporary file); false on a bad code or size.

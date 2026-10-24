@@ -122,7 +122,7 @@ private:
     // and over a day the tallies grew to ~8 KB, below the TLS headroom.
     struct AirlineCount { char code[4]; uint16_t n; };
     struct TypeCount    { char t[6]; uint16_t n; uint16_t seq; };
-    static constexpr size_t kMaxAirlines = 48, kMaxTypes = 80;
+    static constexpr size_t kMaxAirlines = 96, kMaxTypes = 80;   // 48 airlines until 8.1: Heathrow filled them
     AirlineCount _airlines[kMaxAirlines] = {};
     TypeCount    _types[kMaxTypes] = {};
     uint8_t      _nAirlines = 0, _nTypes = 0;
