@@ -17,9 +17,14 @@ downloads that release's firmware.bin itself,
   https://github.com/SamHoughton/Glideslope/releases/download/<tag>/firmware.bin
 
 (GitHub redirects to its file store), and installs it. Only signed images:
-the signature, not the connection, is what makes it genuine. The web server
-pauses while it runs (the panel shows the progress); the board restarts
-into the new firmware, or carries on with a reason in /api/status.
+the signature, not the connection, is what makes it genuine.
+
+It does that straight after a restart, before the feed starts: 1.7 MB over
+HTTPS wants the memory a fresh boot has (after an hour or two the largest
+free block is down to 8-12 KB and a download that long stalls). So the
+request restarts the board with the tag kept in RTC memory, setup() finds
+it once Wi-Fi is up, and the board restarts again into the new firmware,
+or carries on with the reason in /api/status.
 */
 #include <Arduino.h>
 #include "utils/FirmwareSig.h"
@@ -49,6 +54,9 @@ namespace Ota
     // tag: "v8.2.0". False if it isn't a release tag.
     bool request(const char *tag);
     bool takeRequest(char *tag, size_t len);
+    // Main loop: restart with the tag kept for setup(); setup(): take it.
+    void restartToInstall(const char *tag);
+    bool takeBootRequest(char *tag, size_t len);
     // Download and install; restarts on success, else returns why.
     const char *installRelease(const char *tag);
     // The last one-tap update's failure ("" if none), for /api/status.

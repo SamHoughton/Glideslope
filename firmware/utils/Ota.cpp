@@ -8,12 +8,46 @@
 #include <WiFiClientSecure.h>
 #include <Update.h>
 #include <esp_task_wdt.h>
+#include <esp_attr.h>
+#include <esp_system.h>
 
 namespace
 {
     portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
     char         s_wanted[16] = "";
     char         s_error[64] = "";
+    // The release to install after the restart (RTC memory survives a
+    // software reset), and its checksum so stale bytes are never taken for one.
+    RTC_NOINIT_ATTR char     s_bootTag[16];
+    RTC_NOINIT_ATTR uint32_t s_bootSum;
+    uint32_t tagSum(const char *t)
+    {
+        uint32_t h = 0x4F544131;   // "OTA1"
+        for (size_t i = 0; i < 16; ++i) h = (h ^ (uint8_t)t[i]) * 16777619u;
+        return h;
+    }
+}
+
+void Ota::restartToInstall(const char *tag)
+{
+    memset(s_bootTag, 0, sizeof(s_bootTag));
+    strlcpy(s_bootTag, tag, sizeof(s_bootTag));
+    s_bootSum = tagSum(s_bootTag);
+    Log.printf("Update: restarting to install %s\n", tag);
+    requestPanelMessage("UPDATING", 20000);
+    char why[32];
+    snprintf(why, sizeof(why), "to install %s", tag);
+    Health::noteRestart(why);
+    delay(300);
+    ESP.restart();
+}
+
+bool Ota::takeBootRequest(char *tag, size_t len)
+{
+    const bool have = esp_reset_reason() == ESP_RST_SW && s_bootSum == tagSum(s_bootTag) && s_bootTag[0] == 'v';
+    if (have) strlcpy(tag, s_bootTag, len);
+    s_bootSum = 0;
+    return have;
 }
 
 Ota::Writer &Ota::writer()

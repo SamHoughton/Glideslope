@@ -705,6 +705,13 @@ void setup()
             // background; the TZ rule makes localtime() follow GMT/BST.
             configTzTime(g_airport.tz, "pool.ntp.org", "time.nist.gov");
             Log.println("NTP sync started (pool.ntp.org)");
+            // A one-tap update asked for before the restart (8.2): now, with
+            // the most memory the board will have. On success it restarts
+            // into the new firmware; otherwise it carries on starting up.
+            {
+                char tag[16];
+                if (Ota::takeBootRequest(tag, sizeof(tag))) Ota::installRelease(tag);
+            }
 
             g_webConfig.setTodaySource([](String &out) { g_display.todayJson(out); });
             g_webConfig.begin(80);  // start HTTP config + log UI
@@ -1047,21 +1054,14 @@ void loop()
         }
     }
 
-    // One-tap update from GitHub (8.2), asked for on the web page: the
-    // board restarts into it, or carries on (the reason in /api/status).
+    // One-tap update from GitHub (8.2), asked for on the web page: a
+    // restart, then setup() downloads and installs it (utils/Ota.h).
     {
         char tag[16];
         if (Ota::takeRequest(tag, sizeof(tag)) && WiFi.status() == WL_CONNECTED)
         {
             saveStats();
-            // Every KB counts for the download (GitHub's certificates stay
-            // in memory while it runs): the aircraft lists come back with
-            // the next fetch.
-            g_states.clear();
-            g_flights.clear();
-            g_states.shrink_to_fit();
-            g_flights.shrink_to_fit();
-            Ota::installRelease(tag);
+            Ota::restartToInstall(tag);   // the download happens straight after, with a fresh heap
         }
     }
 
