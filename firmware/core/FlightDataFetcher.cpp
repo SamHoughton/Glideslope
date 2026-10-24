@@ -161,8 +161,7 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
 
         if (!isCommercialCallsign(s.callsign))
         {
-            Log.printf("FlightDataFetcher: [%u/%u] skipping %s (non-commercial)\n",
-                       stateIdx, totalStates, s.callsign.c_str());
+            // (quiet since 8.3.1: it repeats every fetch)
             continue;
         }
 
@@ -174,8 +173,7 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             // Cache hit — reuse static enrichment data (logos are NOT cached,
             // see below — they are reloaded from LittleFS on every cycle)
             info = hit->info;
-            Log.printf("FlightDataFetcher: [%u/%u] cache hit for %s\n",
-                       stateIdx, totalStates, s.callsign.c_str());
+            // (quiet since 8.3.1: it repeats every fetch)
         }
         else   // (each HTTPS source checks tlsAffordable itself; adsb.im needs no TLS)
         {
@@ -318,8 +316,13 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                                   (info.origin.code_icao.length() > 0 || info.destination.code_icao == g_airport.icao);
             if (hasRoute)
             {
-                Log.printf("FlightDataFetcher: nearest routed flight (%s) — stopping early\n",
-                           s.callsign.c_str());
+                // Logged when it changes, not every fetch (8.3.1).
+                static String lastNearest;
+                if (lastNearest != s.callsign)
+                {
+                    lastNearest = s.callsign;
+                    Log.printf("FlightDataFetcher: nearest routed flight now %s\n", s.callsign.c_str());
+                }
                 break;
             }
         }
@@ -335,8 +338,12 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                        (f.origin.code_icao.length() == 0 && f.destination.code_icao != g_airport.icao);
             }),
         outFlights.end());
-    Log.printf("FlightDataFetcher: %u flights before filter, %u after\n",
+    static size_t lastBefore = SIZE_MAX, lastAfter = SIZE_MAX;   // logged when they change (8.3.1)
+    if (beforeFilter != lastBefore || outFlights.size() != lastAfter)
+        Log.printf("FlightDataFetcher: %u flights before filter, %u after\n",
                (unsigned)beforeFilter, (unsigned)outFlights.size());
+    lastBefore = beforeFilter;
+    lastAfter  = outFlights.size();
 
     // Landing traffic first, then nearest
     std::stable_sort(outFlights.begin(), outFlights.end(),

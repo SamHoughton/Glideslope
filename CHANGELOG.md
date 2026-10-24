@@ -7,6 +7,15 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 8.3.1 (in progress)
+
+**Fixes**
+- The log keeps what matters: the fetcher no longer writes three lines
+  every five seconds (cache hits, the nearest flight, the count), which
+  pushed everything else (go-arounds, landings, weather) out of the 36-line
+  log within a minute. It now says when the nearest flight or the count
+  changes.
+
 ## 8.3.0 (24 Oct 2026)
 
 **New**
