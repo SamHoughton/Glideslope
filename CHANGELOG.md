@@ -7,6 +7,36 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 8.2.0 (in progress)
+
+The airfield's moods, and a board that looks after itself.
+
+**New**
+- **Low visibility and thunderstorms**: the board reads the cloud base and
+  thunder from the METAR. Fog or a low ceiling (under 1,000 m, or cloud at
+  200 ft or below) gets a banner with fog drifting by; a thunderstorm over
+  the airfield or nearby gets one with rain and lightning. Both go to your
+  phone (a new alert kind, Fog and storms, on by default), and the weather
+  screen says "Low visibility" or "Thunderstorm" in place of the weather words.
+- **The runway outlook**: the weather request now brings the airport's TAF
+  too. When the forecast wind would put 5 kt or more of tailwind on the
+  runways in use (at Heathrow on easterlies: when it lets them go back
+  west), the weather screen shows `To 09 at 19:00`, the web page says so,
+  and a change within three hours gets a yellow-on-black sign on the panel
+  and an alert on your phone.
+- **Updates at a tap**: the System tab checks GitHub for a newer release
+  and installs it with one button. The board downloads the release itself
+  and only takes a signed one; it restarts into it in under a minute.
+- **A health page**: a Health tab with the board's memory over the last
+  24 hours, every start and why it happened (an update, the restart button,
+  a self-heal, a crash, a power cut), how the feed and the weather are
+  doing, the Wi-Fi signal, storage and the chip's temperature.
+- Demos for the new banners under Animations, More.
+
+**Changes**
+- The log on the web page keeps the last 36 lines (40), for the room the
+  health history takes.
+
 ## 8.1.0 (24 Oct 2026)
 
 Night watch, the logbook, and a steadier board.
