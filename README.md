@@ -65,6 +65,10 @@ repository (see [Airline logos](#airline-logos)).
 | --- | --- |
 | ![Night watch: the skyline at night, the time, aircraft lights above the rooftops and tonight's tally](docs/nightwatch.png) | ![Halloween: jack-o'-lanterns along the skyline and pumpkin-lit windows](docs/halloween.png) |
 
+| Fog: the airfield's mood | A runway change on the way |
+| --- | --- |
+| ![Low visibility: fog drifting across the panel, "Fog 300 m"](docs/fog.png) | ![Runway change due: a yellow-on-black sign, "To 09 at 19:00"](docs/runway-outlook.png) |
+
 | Overnight: the night scene | The day in one card |
 | --- | --- |
 | ![The night scene: the skyline under the stars, the time and the next sunrise](docs/night.png) | ![The bedtime summary: movements, the busiest hour, the tightest gap and the best spot](docs/summary.png) |
@@ -87,17 +91,18 @@ are the board's own frames.
 
 Every board serves a page at `http://glideslope.local/`: the panel drawn as
 glowing LEDs (a still, or live for two minutes from the **Live** button),
-what's on it now, the animations on demand, the board's history, every
-setting in tabs (display with a switch for each screen, airport, night, data,
-spotter, phone alerts and Home Assistant, history, system, log), firmware
-updates and a log.
+what's on it now, the animations on demand, the board's history and health,
+every setting in tabs (display with a switch for each screen, airport, night,
+data, spotter, phone alerts and Home Assistant, history, system, health,
+log), updates at a tap and a log.
 
 | Desktop | Phone |
 | --- | --- |
 | <img src="docs/webui-desktop.png" alt="The Glideslope web page on a desktop" width="560"> | <img src="docs/webui-phone.png" alt="The Glideslope web page on a phone" width="220"> |
 
-The **Today** card under the panel: the day's movements and rhythm, and
-what was spotted.
+The **Today** card under the panel: the day's movements and rhythm, the
+airfield's conditions (fog, storms, a runway change on the way) and what
+was spotted.
 
 <img src="docs/webui-today.png" alt="The Today card: movements, a landing every 1:45, the tightest gap, runway shares and today's spotter log" width="420">
 
@@ -106,6 +111,15 @@ go-arounds and rare sightings, every airline and type ever seen, and the lot
 as CSV.
 
 <img src="docs/webui-history.png" alt="The History tab: records, a heatmap of busy days, the moments and the collection" width="560">
+
+The **Health** tab: memory over the last day (the free heap and the largest
+free block, which the feed's secure connection needs), every start and its
+reason, the feed, the weather, Wi-Fi, storage and temperature. The
+**System** tab checks GitHub for a newer release and installs it at a tap.
+
+| Health | System |
+| --- | --- |
+| <img src="docs/webui-health.png" alt="The Health tab: uptime, memory, feed and weather, a 24-hour memory chart and the starts" width="420"> | <img src="docs/webui-system.png" alt="The System tab: a newer release found on GitHub with an Install button" width="420"> |
 
 | Alerts | Spotter |
 | --- | --- |
@@ -233,7 +247,16 @@ as CSV.
   and the temperature, large) and on the right the weather in words (in
   turn with the next sunrise or sunset), the wind and gusts, the runway in
   use seen from above with the wind crossing it, crosswind and head- or
-  tailwind, visibility and pressure.
+  tailwind, visibility and pressure, and when the forecast says the runways
+  will change (`To 09 at 19:00`).
+- **Fog and storms**: low visibility (under 1,000 m, or cloud at 200 ft or
+  below) gets a banner with fog drifting across it, a thunderstorm one with
+  rain and lightning, and both an alert on your phone.
+- **The runway outlook**, from the airport's TAF: the first forecast wind
+  that puts 5 kt of tailwind on the runways in use (at Heathrow, which
+  prefers westerlies, on easterlies: the first that lets them go back). A
+  change within three hours gets a yellow-on-black sign on the panel and an
+  alert.
 - **Runways in use**, worked out from the traffic itself: every aircraft on
   final or climbing out counts, at any airport, with several runways at once
   (arrivals top left of the map, departures top right; `27L UNTIL 15:00` on
@@ -273,8 +296,9 @@ as CSV.
   (`G-CIVA, B74*, A388, RRR*`; `*` matches the start). One anywhere in range
   gets the same pass with a gold `WATCHLIST` label, and a phone alert.
 - **Phone alerts** through [ntfy](https://ntfy.sh) (free, no account): emergency
-  squawks, rare spots, the watchlist, go-arounds, runway changes, busy
-  stacks and the evening round-up, each switchable on the web page's Alerts
+  squawks, rare spots, the watchlist, go-arounds, runway changes (and ones
+  the forecast says are coming), busy stacks, fog and thunderstorms, and
+  the evening round-up, each switchable on the web page's Alerts
   tab. Emergency, rare-spot and watchlist alerts carry a picture of the
   panel. Quiet hours (23:00 to 07:00 by default) let only emergencies
   through.
@@ -318,8 +342,8 @@ as CSV.
 - **Web page** on the board: the panel (a still, or live on request), animation and sky
   previews, a switch for each screen, brightness, night dimming (by the clock
   or following the sun), location and data source settings, the spotter
-  (overhead distance, watchlist), phone alerts, Home Assistant, firmware
-  updates over Wi-Fi, a log and a health endpoint. Anything that changes the
+  (overhead distance, watchlist), phone alerts, Home Assistant, updates at
+  a tap (or from a file), a log and a health page. Anything that changes the
   board needs a code the panel shows you once.
 
 Twenty aircraft sprites are chosen by ICAO type code (A320, A321, 737, A220,
@@ -401,11 +425,14 @@ Or by hand:
 
 ## Updating
 
-Open the board's web page, choose `firmware.bin` (from a
-[release](../../releases), or `firmware/.pio/build/hd_wf2/firmware.bin` from
-your own build) under **Firmware**, and press **Install update**. It takes
-about 10 seconds and the board restarts into the new version; if anything
-goes wrong the old one keeps running. A new version is on trial until it has
+Open the board's web page and the **System** tab: it checks GitHub for a
+newer release, and **Install** has the board download it and install it
+itself (signed releases only), in under a minute. Or choose a
+`firmware.bin` (from a [release](../../releases), or
+`firmware/.pio/build/hd_wf2/firmware.bin` from your own build) under
+**Firmware file** and press **Install update**: about 10 seconds. Either
+way the board restarts into the new version; if anything goes wrong the old
+one keeps running. A new version is on trial until it has
 fetched positions (or run for five minutes): if it crashes before then, the
 board goes back to the previous version by itself.
 
@@ -418,8 +445,8 @@ reach it through your browser. Scripts that call the API send
 `X-Glideslope: 1` and, for those changes, `X-Glideslope-Token: <code>` (the
 tools in `tools/` read the code from `GLIDESLOPE_TOKEN`).
 
-If the board ever restarts unexpectedly, `http://glideslope.local/api/status`
-says why (and what each task was doing), and `/api/coredump` gives the
+If the board ever restarts unexpectedly, the **Health** tab lists its starts
+and why, `http://glideslope.local/api/status` says what each task was doing, and `/api/coredump` gives the
 crash's backtrace, to decode with `xtensa-esp32s3-elf-addr2line -pfiaC -e
 firmware.elf <addresses>` against that release's build; please include both
 in a bug report.
@@ -540,8 +567,11 @@ Aircraft positions, first to answer wins:
 - [hexdb.io](https://hexdb.io/) (HTTPS) for routes adsb.im doesn't know,
   then OpenSky and AeroAPI if configured.
 - [aviationweather.gov](https://aviationweather.gov/) (NOAA) for Heathrow's
-  METAR every 10 minutes, and in the same request the reports from where the
-  next arrivals came from.
+  METAR and TAF every 10 minutes, and in the same request the reports from
+  where the next arrivals came from.
+- [GitHub](https://github.com/SamHoughton/Glideslope/releases) for updates:
+  the web page asks GitHub's API for the newest release, and the board
+  downloads it when you press Install.
 - FlightAware AeroAPI, optional and paid.
 - [ntfy.sh](https://ntfy.sh/) for phone alerts, if a topic is set.
 - Built into the firmware: the airport table for city names and the globe

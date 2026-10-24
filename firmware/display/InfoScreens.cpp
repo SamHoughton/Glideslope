@@ -1081,7 +1081,7 @@ void InfoScreens::renderHeadings(FrameCanvas &c, const Departure *rows, int n, u
 }
 
 void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runway, unsigned long nowMs,
-                                const Sky::Look &skyNow)
+                                const Sky::Look &skyNow, uint8_t mood, const char *outlook)
 {
     c.clear();
     if (!m.valid)
@@ -1140,9 +1140,13 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
         }
     }
     if (words[0]) words[0] = (char)toupper((unsigned char)words[0]);
+    // The airfield's mood says it more plainly (8.2).
+    Rgb wordsCol = soft;
+    if (mood == Weather::LowVis)                                { snprintf(words, sizeof(words), "Low visibility"); wordsCol = Rgb{255, 190, 90}; }
+    else if (mood == Weather::Storm || mood == Weather::StormNear) { snprintf(words, sizeof(words), mood == Weather::Storm ? "Thunderstorm" : "Thunder nearby"); wordsCol = red; }
     const bool showSun = sun[0] && (!words[0] || (nowMs / 4000) % 2 == 1);
     if (showSun)        c.print(Fonts::Label, kX, 10, sun, Rgb{255, 190, 110});
-    else if (words[0])  c.print(Fonts::Label, kX, 10, words, soft);
+    else if (words[0])  c.print(Fonts::Label, kX, 10, words, wordsCol);
 
     // Wind: direction and speed large, gusts in red after them.
     int x = kX;
@@ -1188,7 +1192,9 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     Weather::pressure(m, pr, sizeof(pr));
     char row[28];
     snprintf(row, sizeof(row), "%s%s%s", vis, vis[0] && pr[0] ? "  " : "", pr);
-    c.print(Fonts::Label, kX, 57, row, faint);
+    // In turn with the runway outlook (8.2), out of step with the sun line.
+    if (outlook && outlook[0] && (nowMs / 4000) % 2 == 0) c.print(Fonts::Label, kX, 57, outlook, Rgb{255, 200, 60});
+    else                                                    c.print(Fonts::Label, kX, 57, row, faint);
 }
 
 void InfoScreens::renderAlert(FrameCanvas &c, const char *code, const char *meaning, const char *ident,
@@ -1238,6 +1244,72 @@ void InfoScreens::renderRareBanner(FrameCanvas &c, const char *line1, const char
     const Fonts::Font &big = FrameCanvas::width(Fonts::Large, line2) <= FrameCanvas::W - 4 ? Fonts::Large
                            : FrameCanvas::width(Fonts::Medium, line2) <= FrameCanvas::W - 4 ? Fonts::Medium : Fonts::Label;
     centredL(c, 28, line2, kGold, big);
+}
+
+void InfoScreens::renderMoodBanner(FrameCanvas &c, uint8_t style, const char *line1, const char *line2, uint32_t tMs)
+{
+    c.clear();
+    Rgb title{255, 255, 255}, subject{230, 235, 240};
+    if (style == 1)
+    {
+        // Fog: soft grey banks drifting slowly to the left, thicker low down.
+        const float drift = tMs / 900.0f;
+        for (int y = 0; y < FrameCanvas::H; ++y)
+        {
+            const float row = 0.10f + 0.16f * y / FrameCanvas::H + 0.05f * sinf(y * 0.37f + drift * 0.6f);
+            for (int x = 0; x < FrameCanvas::W; ++x)
+            {
+                const float k = row + 0.05f * sinf(x * 0.071f + drift + sinf(y * 0.21f) * 1.5f) + 0.025f * sinf(x * 0.19f - drift * 1.7f + y * 0.5f);
+                const uint8_t v = (uint8_t)(255 * fmaxf(0.0f, fminf(0.45f, k)));
+                c.set(x, y, Rgb{v, (uint8_t)(v + v / 30), (uint8_t)(v + v / 12)});
+            }
+        }
+        title = Rgb{200, 208, 220};
+    }
+    else if (style == 2)
+    {
+        // Thunderstorm: dark cloud, slanting rain, now and then a flash and a bolt.
+        const uint32_t cycle = tMs % 1700;
+        const bool flash = cycle < 90 || (cycle > 160 && cycle < 210);
+        const Rgb sky = flash ? Rgb{70, 70, 110} : Rgb{10, 10, 26};
+        c.fillRect(0, 0, FrameCanvas::W, FrameCanvas::H, sky);
+        for (int i = 0; i < 46; ++i)
+        {
+            const int x0 = (i * 37 + 11) % FrameCanvas::W, speed = 3 + i % 3;
+            const int y = (int)((tMs / 16 * speed + i * 23) % (FrameCanvas::H + 8)) - 4;
+            const int x = (x0 - (int)(tMs / 16 * speed) / 3 % FrameCanvas::W + FrameCanvas::W) % FrameCanvas::W;
+            c.set(x, y, Rgb{60, 80, 130});
+            c.set(x - 1, y + 2, Rgb{40, 55, 95});
+        }
+        if (cycle < 210)
+        {
+            // A jagged bolt, somewhere new each time.
+            uint32_t seed = tMs / 1700 * 2654435761u;
+            int x = 12 + (int)(seed >> 8) % (FrameCanvas::W - 24);
+            for (int y = 0; y < 26; ++y)
+            {
+                seed = seed * 1103515245u + 12345u;
+                if (y % 3 == 0) x += (int)((seed >> 16) % 3) - 1;
+                c.set(x, y, Rgb{255, 255, 230});
+                c.set(x + 1, y, Rgb{150, 150, 200});
+            }
+        }
+        subject = Rgb{255, 200, 60};
+    }
+    else
+    {
+        // A runway change on the way: a yellow-on-black direction sign.
+        title = Rgb{200, 205, 215};
+        subject = Rgb{255, 200, 0};
+        const int w = FrameCanvas::width(Fonts::Large, line2) + 14;
+        const int x0 = (FrameCanvas::W - w) / 2;
+        c.fillRect(x0, 25, w, 24, Rgb{255, 200, 0});
+        c.fillRect(x0 + 2, 27, w - 4, 20, Rgb{0, 0, 0});
+    }
+    centred(c, 14, line1, title);
+    const Fonts::Font &big = FrameCanvas::width(Fonts::Large, line2) <= FrameCanvas::W - 4 ? Fonts::Large
+                           : FrameCanvas::width(Fonts::Medium, line2) <= FrameCanvas::W - 4 ? Fonts::Medium : Fonts::Label;
+    centredL(c, 28, line2, subject, big);
 }
 
 namespace

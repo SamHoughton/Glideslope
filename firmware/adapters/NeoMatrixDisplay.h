@@ -55,6 +55,8 @@ void requestGoAroundDemo();
 
 // Show the rare-spot flourish on the current card (demo).
 void requestRareSpotDemo();
+// The airfield's mood banners (8.2): 1 low visibility, 2 thunderstorm, 3 runway change due.
+void requestMoodDemo(uint8_t style);
 
 // Play the take-off scene for the current card (demo).
 void requestTakeoffDemo();
@@ -130,6 +132,11 @@ public:
     int  takeLogbookEvents(Logbook::Event *out, int cap);
     void setRecords(const Logbook::Records &r);
     void showNews(const char *line1, const char *line2);
+    // The airfield's mood and the runway outlook (8.2): a banner (style 1 low
+    // visibility, 2 thunderstorm, 3 runway change due), and what the weather
+    // screen says (mood: Weather::Mood; outlook: "To 09 at 19:00" or "").
+    void showMood(uint8_t style, const char *line1, const char *line2);
+    void setAirfield(uint8_t mood, const char *outlook);
     bool hasOriginWeather(const char *icao);
 
     // Today's stats from every aircraft in range (call once per fetch), and
@@ -245,6 +252,10 @@ private:
     char                 _news1[20] = "", _news2[24] = "";
     bool                 _newsPending = false, _newsActive = false;
     unsigned long        _newsMs = 0;
+    uint8_t              _newsStyle = 0;              // 0 gold (logbook), else a mood banner
+    unsigned long        _newsQueuedMs = 0;
+    uint8_t              _mood = 0;
+    char                 _outlook[20] = "";
     void                 checkRecords();
     // Night watch (8.1).
     bool                 nightWatchNow(unsigned long now) const;

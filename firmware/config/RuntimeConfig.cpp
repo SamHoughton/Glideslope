@@ -85,7 +85,7 @@ static void applyDefaults(RuntimeConfig &c)
     c.opensky_priority               = false;
     c.use_community_feeds            = true;
     c.ntfy_topic[0]                  = '\0';
-    c.notify_mask                    = 0x5F;   // all events but the round-up (once a topic is set)
+    c.notify_mask                    = 0x15F;  // all events but the round-up (once a topic is set)
     c.quiet_alerts                   = true;
     c.quiet_start_minutes            = 23 * 60;   // after the 22:30 round-up
     c.quiet_end_minutes              = 7 * 60;
@@ -153,8 +153,9 @@ void loadConfig()
 
     g_config.opensky_priority              = p.getBool("osky_pri",  g_config.opensky_priority);
     g_config.use_community_feeds           = p.getBool("community", g_config.use_community_feeds);
-    g_config.notify_mask                   = (uint8_t)p.getUInt("ntfy_m", g_config.notify_mask);
+    g_config.notify_mask                   = (uint16_t)p.getUInt("ntfy_m", g_config.notify_mask);
     if (!p.isKey("ntf_v5")) g_config.notify_mask |= 64;   // watchlist alerts (5.0)
+    if (!p.isKey("ntf_v82")) g_config.notify_mask |= 256; // the airfield's weather (8.2)
     g_config.overhead_km                   = p.getFloat("ovh_km", g_config.overhead_km);
     g_config.quiet_alerts                  = p.getBool("q_on", g_config.quiet_alerts);
     g_config.quiet_start_minutes           = (uint16_t)p.getUInt("q_from", g_config.quiet_start_minutes);
@@ -256,6 +257,7 @@ void saveConfig()
     p.putBool("community", g_config.use_community_feeds);
     p.putUInt("ntfy_m",    g_config.notify_mask);
     p.putBool("ntf_v5",    true);
+    p.putBool("ntf_v82",   true);
     p.putFloat("ovh_km",   g_config.overhead_km);
     p.putBool("q_on",      g_config.quiet_alerts);
     p.putUInt("q_from",    g_config.quiet_start_minutes);

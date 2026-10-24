@@ -92,7 +92,27 @@ bool Weather::parse(const char *raw, Metar &m)
             continue;
         }
         whole = (haveWind && m.visM < 0 && tl <= 2 && allDigits(t, tl)) ? atoi(t) : -1;
-        if (!m.wx[0] && isWeather(t)) { strlcpy(m.wx, t, sizeof(m.wx)); continue; }
+        if (isWeather(t))
+        {
+            if (!m.wx[0]) strlcpy(m.wx, t, sizeof(m.wx));
+            if (strstr(t, "TS")) (strstr(t, "VC") ? m.thunderNear : m.thunder) = true;
+            continue;
+        }
+        // Cloud: "BKN004", "OVC012CB", "SCT030TCU"; vertical visibility "VV002", "VV///".
+        if (tl >= 6 && allDigits(t + 3, 3) &&
+            (!strncmp(t, "FEW", 3) || !strncmp(t, "SCT", 3) || !strncmp(t, "BKN", 3) || !strncmp(t, "OVC", 3)))
+        {
+            const int ft = atoi(t + 3) * 100;
+            if ((t[0] == 'B' || t[0] == 'O') && (m.ceilingFt < 0 || ft < m.ceilingFt)) m.ceilingFt = ft;
+            if (strstr(t + 6, "CB") || strstr(t + 6, "TCU")) m.cb = true;
+            continue;
+        }
+        if (tl == 5 && !strncmp(t, "VV", 2))
+        {
+            const int ft = allDigits(t + 2, 3) ? atoi(t + 2) * 100 : 0;
+            if (m.ceilingFt < 0 || ft < m.ceilingFt) m.ceilingFt = ft;
+            continue;
+        }
         // Temperature/dew point: "14/12", "M01/M03".
         const char *slash = strchr(t, '/');
         if (slash && m.tempC == -99 && (isdigit((unsigned char)t[0]) || t[0] == 'M') &&
@@ -114,7 +134,7 @@ bool Weather::parse(const char *raw, Metar &m)
 }
 
 #ifndef NATIVE_TEST
-bool Weather::fetch(Metar &out, const char *others, void (*onOther)(const Metar &))
+bool Weather::fetch(Metar &out, const char *others, void (*onOther)(const Metar &), Taf *taf)
 {
     WiFiClientSecure client;
     client.setInsecure();
@@ -122,6 +142,7 @@ bool Weather::fetch(Metar &out, const char *others, void (*onOther)(const Metar 
     String url = String("https://aviationweather.gov/api/data/metar?ids=") + g_airport.icao;
     if (others && others[0]) { url += ","; url += others; }
     url += "&format=raw";
+    if (taf) url += "&taf=true";
     if (!http.begin(client, url))
         return false;
     http.setTimeout(6000);
@@ -134,28 +155,46 @@ bool Weather::fetch(Metar &out, const char *others, void (*onOther)(const Metar 
         http.end();
         return false;
     }
-    String body = http.getString();
-    http.end();
-    body.trim();
-    // One report a line: ours, and any others asked for.
-    bool ours = false;
-    int start = 0;
-    while (start < (int)body.length())
+    // One report a line: ours, any others asked for, and with taf=true each
+    // one's TAF after it (its later lines indented). Read as it arrives, a
+    // line at a time, so the TAFs never sit in memory whole.
+    WiFiClient *body = http.getStreamPtr();
+    const time_t now = time(nullptr);
+    bool ours = false, inTaf = false;
+    char first[48] = "";
+    const unsigned long t0 = millis();
+    while (body && (body->connected() || body->available()) && millis() - t0 < 8000)
     {
-        int end = body.indexOf((char)10, start);   // a newline
-        if (end < 0) end = body.length();
-        String line = body.substring(start, end);
+        if (!body->available()) { delay(5); continue; }
+        String line = body->readStringUntil((char)10);
+        const bool continued = line.length() && line[0] == ' ';
         line.trim();
-        start = end + 1;
         if (!line.length()) continue;
+        if (!first[0]) strlcpy(first, line.c_str(), sizeof(first));
+        if (continued) { if (inTaf) tafFeed(*taf, line.c_str(), now); continue; }
+        if (line.startsWith("TAF"))
+        {
+            // "TAF [AMD|COR] EGLL ...": only the airport's own.
+            inTaf = false;
+            if (taf)
+            {
+                const int at = (line.startsWith("TAF AMD ") || line.startsWith("TAF COR ")) ? 8 : 4;
+                char st[5] = "";
+                if ((int)line.length() > at) strlcpy(st, line.c_str() + at, sizeof(st));
+                if (strcasecmp(st, g_airport.icao) == 0) { tafBegin(*taf); tafFeed(*taf, line.c_str(), now); inTaf = true; }
+            }
+            continue;
+        }
+        inTaf = false;
         Metar m;
         if (!parse(line.c_str(), m)) continue;
         if (!m.station[0] || strcasecmp(m.station, g_airport.icao) == 0) { out = m; ours = true; }
         else if (onOther) onOther(m);
     }
+    http.end();
     if (!ours)
     {
-        Log.printf("Weather: could not read \"%.80s\"\n", body.c_str());
+        Log.printf("Weather: could not read \"%s\"\n", first);
         return false;
     }
     return true;
@@ -249,4 +288,193 @@ void Weather::components(const Metar &m, int runwayDeg, int &crossKt, int &tailK
     const float a = (m.windDir - runwayDeg) * (float)M_PI / 180.0f;
     crossKt = (int)lroundf(fabsf(sinf(a)) * m.windKt);
     tailKt  = (int)lroundf(-cosf(a) * m.windKt);
+}
+
+// -- The airfield's mood (8.2) ---------------------------------------------
+
+Weather::Mood Weather::mood(const Metar &m, Mood previous)
+{
+    if (!m.valid) return Calm;
+    if (m.thunder) return Storm;
+    if (m.thunderNear) return StormNear;
+    const bool low = (m.visM >= 0 && m.visM < 1000) || (m.ceilingFt >= 0 && m.ceilingFt <= 200);
+    const bool still = previous == LowVis &&
+                       ((m.visM >= 0 && m.visM < 1500) || (m.ceilingFt >= 0 && m.ceilingFt < 300));
+    return low || still ? LowVis : Calm;
+}
+
+void Weather::moodLines(Mood k, const Metar &m, char *l1, size_t l1Len, char *l2, size_t l2Len)
+{
+    char place[24];
+    strlcpy(place, g_airport.name, sizeof(place));
+    for (char *p = place + 1; *p; ++p)   // "HEATHROW" -> "Heathrow", "SAN FRANCISCO" -> "San Francisco"
+        if (p[-1] != ' ') *p = (char)tolower((unsigned char)*p);
+    if (k == Storm || k == StormNear)
+    {
+        snprintf(l1, l1Len, "%s", k == Storm ? "Thunderstorm" : "Thunder nearby");
+        snprintf(l2, l2Len, "%s %s", k == Storm ? "Over" : "Around", place);
+        return;
+    }
+    if (k != LowVis) { if (l1Len) l1[0] = 0; if (l2Len) l2[0] = 0; return; }
+    snprintf(l1, l1Len, "Low visibility");
+    char what[20];
+    describe(m.wx, what, sizeof(what));
+    if (what[0]) what[0] = (char)toupper((unsigned char)what[0]);
+    if (m.visM >= 0 && m.visM < 1500)
+        snprintf(l2, l2Len, "%s %d m", what[0] ? what : "Visibility", m.visM);
+    else if (m.ceilingFt >= 0)
+        snprintf(l2, l2Len, "Cloud at %d ft", m.ceilingFt);
+    else
+        snprintf(l2, l2Len, "%s", what);
+}
+
+// -- TAF -------------------------------------------------------------------
+
+namespace
+{
+    // Days since 1970-01-01 of a civil date (Howard Hinnant's algorithm);
+    // a day past the month's end carries over.
+    long daysFrom(int y, int m, int d)
+    {
+        y -= m <= 2;
+        const long era = (y >= 0 ? y : y - 399) / 400;
+        const unsigned yoe = (unsigned)(y - era * 400);
+        const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+        const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        return era * 146097 + (long)doe - 719468;
+    }
+    // Day of month, hour (24 allowed) and minute, in the month around now (UTC).
+    time_t tafTime(int day, int hour, int minute, time_t now)
+    {
+        struct tm g;
+        gmtime_r(&now, &g);
+        int y = g.tm_year + 1900, mo = g.tm_mon + 1;
+        auto build = [&](int yy, int mm) { return (time_t)daysFrom(yy, mm, day) * 86400 + hour * 3600 + minute * 60; };
+        time_t t = build(y, mo);
+        if (t - now > 15L * 86400)      { if (--mo < 1)  { mo = 12; --y; } t = build(y, mo); }
+        else if (now - t > 15L * 86400) { if (++mo > 12) { mo = 1;  ++y; } t = build(y, mo); }
+        return t;
+    }
+    int two(const char *p) { return (p[0] - '0') * 10 + (p[1] - '0'); }
+    bool isPeriod(const char *t) { return strlen(t) == 9 && t[4] == '/' && allDigits(t, 4) && allDigits(t + 5, 4); }
+    bool space(char c) { return c == ' ' || c == 9 || c == 10 || c == 13; }
+}
+
+void Weather::tafBegin(Taf &t) { t = Taf(); }
+
+void Weather::tafFeed(Taf &t, const char *text, time_t now)
+{
+    enum { Header = 0, Base, Becmg, Group, Skip };
+    const char *p = text;
+    char tok[24];
+    while (*p)
+    {
+        while (*p && space(*p)) ++p;
+        size_t n = 0;
+        while (*p && !space(*p)) { if (n + 1 < sizeof(tok)) tok[n++] = *p; ++p; }
+        tok[n] = 0;
+        if (!n) continue;
+        if (t.mode == Header)
+        {
+            if (n == 7 && tok[6] == 'Z' && allDigits(tok, 6)) t.issued = tafTime(two(tok), two(tok + 2), two(tok + 4), now);
+            else if (isPeriod(tok))
+            {
+                t.from = tafTime(two(tok), two(tok + 2), 0, now);
+                t.to   = tafTime(two(tok + 5), two(tok + 7), 0, now);
+                t.pending = t.from;
+                t.groupWind = false;
+                t.mode = Base;
+            }
+            continue;
+        }
+        if (!strcmp(tok, "BECMG")) { t.mode = Becmg; t.groupWind = false; continue; }
+        if (n == 8 && tok[0] == 'F' && tok[1] == 'M' && allDigits(tok + 2, 6))
+        {
+            t.pending = tafTime(two(tok + 2), two(tok + 4), two(tok + 6), now);
+            t.mode = Group;
+            t.groupWind = false;
+            continue;
+        }
+        if (!strcmp(tok, "TEMPO") || !strncmp(tok, "PROB", 4) || !strcmp(tok, "INTER")) { t.mode = Skip; continue; }
+        if (t.mode == Becmg && isPeriod(tok))
+        {
+            const time_t a = tafTime(two(tok), two(tok + 2), 0, now), b = tafTime(two(tok + 5), two(tok + 7), 0, now);
+            t.pending = a + (b - a) / 2;   // a change over a few hours: count it from halfway
+            t.mode = Group;
+            continue;
+        }
+        if ((t.mode == Base || t.mode == Group) && !t.groupWind && t.n < sizeof(t.w) / sizeof(t.w[0]))
+        {
+            Metar w;
+            if (!parseWind(tok, w)) continue;
+            t.groupWind = true;
+            int at = t.n;   // kept in time order
+            while (at > 0 && t.w[at - 1].at > t.pending) { t.w[at] = t.w[at - 1]; --at; }
+            t.w[at] = { t.pending, (int16_t)w.windDir, (uint8_t)min(w.windKt, 255), (uint8_t)min(w.gustKt, 255) };
+            ++t.n;
+            t.valid = t.from && t.to;
+        }
+    }
+}
+
+bool Weather::tafWindAt(const Taf &t, time_t when, Taf::Wind &out)
+{
+    if (!t.valid || !t.n || when > t.to || when < t.from - 3600) return false;
+    out = t.w[0];
+    for (int i = 0; i < t.n; ++i)
+        if (t.w[i].at <= when) out = t.w[i];
+    return true;
+}
+
+namespace
+{
+    float angleBetween(float a, float b) { float d = fmodf(fabsf(a - b), 360.0f); return d > 180 ? 360 - d : d; }
+    // Tailwind (kt) on a landing course; variable winds count as none.
+    float tailOn(float course, const Taf::Wind &w)
+    {
+        if (w.dir < 0) return 0;
+        return -cosf((w.dir - course) * (float)M_PI / 180.0f) * w.kt;
+    }
+    // The airport's runway end nearest a course; nullptr if none within 30 degrees.
+    const RunwayEnd *runwayNear(float course)
+    {
+        const RunwayEnd *best = nullptr;
+        for (int i = 0; i < g_airport.runwayCount; ++i)
+            if (angleBetween(g_airport.runways[i].course, course) < 30 &&
+                (!best || angleBetween(g_airport.runways[i].course, course) < angleBetween(best->course, course)))
+                best = &g_airport.runways[i];
+        return best;
+    }
+}
+
+bool Weather::runwayOutlook(const Taf &t, float currentCourse, time_t now, Outlook &out)
+{
+    out = Outlook();
+    if (!t.valid || !t.n || isnan(currentCourse) || now > t.to) return false;
+    // Heathrow prefers westerlies and takes up to 5 kt of tailwind to keep them.
+    const RunwayEnd *west = g_airport.lhrAlternation ? runwayNear(270) : nullptr;
+    const float preferred = west ? west->course : NAN;
+    const bool onPreferred = !isnan(preferred) && angleBetween(currentCourse, preferred) < 90;
+    for (int i = 0; i < t.n; ++i)
+    {
+        const time_t ends = i + 1 < t.n ? t.w[i + 1].at : t.to;
+        if (ends <= now) continue;   // already past
+        const Taf::Wind &w = t.w[i];
+        const bool change = (isnan(preferred) || onPreferred) ? tailOn(currentCourse, w) >= 5
+                                                              : tailOn(preferred, w) < 5;
+        if (!change) continue;
+        const float target = fmodf(currentCourse + 180.0f, 360.0f);
+        if (const RunwayEnd *r = runwayNear(target))
+        {
+            strlcpy(out.to, r->name, sizeof(out.to));
+            if (strlen(out.to) == 3 && isalpha((unsigned char)out.to[2])) out.to[2] = 0;   // "09L" -> "09"
+        }
+        else snprintf(out.to, sizeof(out.to), "%02d", ((int)lroundf(target / 10.0f) + 35) % 36 + 1);
+        out.change  = true;
+        out.at      = w.at > now ? w.at : now;
+        out.windDir = w.dir;
+        out.windKt  = w.kt;
+        return true;
+    }
+    return true;
 }

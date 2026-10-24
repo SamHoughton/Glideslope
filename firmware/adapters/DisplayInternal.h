@@ -72,6 +72,7 @@ inline unsigned long    s_screenPreviewUntil = 0;
 inline volatile uint8_t s_replayRequest = 0;
 inline volatile bool s_landingReplay = false;
 inline volatile bool s_rareDemo = false;
+inline volatile uint8_t s_moodDemo = 0;   // 8.2: a mood banner (1 fog, 2 storm, 3 runway due)
 inline volatile bool s_goAroundDemo = false;
 inline volatile bool s_takeoffDemo = false;
 inline volatile bool s_alertDemo = false;

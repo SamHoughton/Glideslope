@@ -55,8 +55,11 @@ namespace InfoScreens
     // temperature, pressure, and the wind across / along the runway in use.
     // The weather as a scene (sky in the real light, windsock in the real
     // wind, rain or snow falling, temperature) and the numbers beside it.
+    // mood: Weather::Mood (8.2: "Low visibility", "Thunderstorm" in place of
+    // the weather words); outlook: the forecast runway change ("To 09 at 19:00"),
+    // in turn with the visibility and pressure.
     void renderWeather(FrameCanvas &c, const Metar &m, const char *runway, unsigned long nowMs,
-                       const Sky::Look &sky);
+                       const Sky::Look &sky, uint8_t mood = 0, const char *outlook = nullptr);
 
     // Emergency squawk: flashing red frame, code, meaning, call sign, detail.
     void renderAlert(FrameCanvas &c, const char *code, const char *meaning, const char *ident,
@@ -98,6 +101,10 @@ namespace InfoScreens
     void renderNightScene(FrameCanvas &c, uint32_t animMs, const char *weather, const Sky::Look &sky,
                           bool decorativePlane = true);
     void renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs);
+    // The airfield's mood (8.2), as a banner like the rare spot's: 1 low
+    // visibility (fog drifting by), 2 thunderstorm (rain and lightning),
+    // 3 a runway change on the way (a yellow-on-black direction sign).
+    void renderMoodBanner(FrameCanvas &c, uint8_t style, const char *line1, const char *line2, uint32_t tMs);
     void renderCaption(FrameCanvas &c, const char *text);
     // Holding stacks: one row per stack, its aircraft circling a racetrack.
     void renderHolding(FrameCanvas &c, const HoldTracker::Row *rows, int n, uint32_t animMs);
