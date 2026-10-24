@@ -30,6 +30,9 @@ Night watch, the logbook, and a steadier board.
   bats after dusk, pumpkin-lit windows.
 - **"Last seen 4 days ago"** on the card, in turn with how often the
   aircraft has been seen.
+- **Curved routes on the globe**: it now looks at the route from the
+  equator side, so a flight's great circle bends towards the pole as it
+  does on a flight map (from straight above, it looked like a straight line).
 - **The live preview only when asked for**: the web page shows a still of
   the panel; the Live button (or a demo) shows it moving for two minutes.
 
