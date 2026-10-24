@@ -46,6 +46,8 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/Logbook.h"
 #include "utils/Spotter.h"
 #include "utils/HomeAssistant.h"
+#include "utils/Ota.h"
+#include "utils/Health.h"
 #include "utils/TlsArena.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
@@ -287,6 +289,15 @@ static void airfieldCheck()
                              g_metar.windDir < 0 ? 0 : g_metar.windDir, g_metar.windKt, extra);
             }
         }
+    }
+
+    static time_t tafIssued = 0;
+    if (g_taf.valid && g_taf.issued != tafIssued)
+    {
+        tafIssued = g_taf.issued;
+        struct tm u;
+        gmtime_r(&g_taf.to, &u);
+        Log.printf("Weather: TAF read, %u winds to %02d %02d:00Z\n", (unsigned)g_taf.n, u.tm_mday, u.tm_hour);
     }
 
     // The landing course in use (the last one seen, overnight too).
@@ -615,6 +626,7 @@ void setup()
     // StageTrace) is logged on the next boot.
     esp_task_wdt_init(30, true);
     StageTrace::reportAtBoot();
+    Health::begin();
     ImageCheck::begin();
 
     // Load config first so g_config is fully populated before any component reads it.
@@ -911,6 +923,7 @@ void loop()
             else if (failStreak >= 18)
             {
                 Log.println("WiFi: still no data after reconnecting, restarting");
+                Health::noteRestart("self-heal: no data on Wi-Fi");
                 delay(200);
                 ESP.restart();
             }
@@ -932,11 +945,13 @@ void loop()
                            (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
                 saveStats();
                 ImageCheck::keep("restart to recover from fragmentation");
+                Health::noteRestart("self-heal: memory fragmented");
                 delay(300);
                 ESP.restart();
             }
         }
         if (g_fetcher->lastFetchOk()) ImageCheck::keep("positions fetched");
+        Health::noteFetch(g_fetcher->lastFetchOk());
         noteHistory(g_states, g_flights);       // "SEEN 14 TIMES" on the cards
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
@@ -1032,6 +1047,24 @@ void loop()
         }
     }
 
+    // One-tap update from GitHub (8.2), asked for on the web page: the
+    // board restarts into it, or carries on (the reason in /api/status).
+    {
+        char tag[16];
+        if (Ota::takeRequest(tag, sizeof(tag)) && WiFi.status() == WL_CONNECTED)
+        {
+            saveStats();
+            // Every KB counts for the download (GitHub's certificates stay
+            // in memory while it runs): the aircraft lists come back with
+            // the next fetch.
+            g_states.clear();
+            g_flights.clear();
+            g_states.shrink_to_fit();
+            g_flights.shrink_to_fit();
+            Ota::installRelease(tag);
+        }
+    }
+
     // Phone notifications: one queued message per pass.
     if (WiFi.status() == WL_CONNECTED)
     {
@@ -1067,6 +1100,7 @@ void loop()
                          Weather::fetch(m, g_originIds, [](const Metar &o) { g_display.setOriginWeather(o); }, &g_taf);
         }
         heapCheckpoint("weather fetch");
+        Health::noteWeather(gotWeather);
         if (gotWeather)
         {
             const bool changed = strcmp(m.raw, g_metar.raw) != 0;
@@ -1159,6 +1193,7 @@ void loop()
         }
     }
     if (millis() > 5UL * 60 * 1000) ImageCheck::keep("5 minutes up");
+    Health::loop();
     StageTrace::mark(StageTrace::Main, StageTrace::MainIdle);
     delay(10);
 }

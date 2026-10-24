@@ -131,6 +131,30 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
     // landing or transition has the panel. The airfield's mood (8.2) the
     // same way, unless it has waited ten minutes (it is old news by then).
     if (_newsPending && _newsStyle && now - _newsQueuedMs > 600000UL) _newsPending = false;
+    if (s_moodDemo)
+    {
+        _newsStyle = s_moodDemo;
+        s_moodDemo = 0;
+        if (_newsStyle == 3)
+        {
+            // The other end of the runway in use (09 at Heathrow on westerlies).
+            const int now27 = atoi(_runwayInUse[0] ? _runwayInUse : "27");
+            snprintf(_news1, sizeof(_news1), "Runway change due");
+            snprintf(_news2, sizeof(_news2), "To %02d at 19:00", (now27 + 17) % 36 + 1);
+        }
+        else
+        {
+            Metar m;
+            m.visM = 300;
+            strlcpy(m.wx, "FG", sizeof(m.wx));
+            char l1[24], l2[28];
+            Weather::moodLines(_newsStyle == 1 ? Weather::LowVis : Weather::Storm, m, l1, sizeof(l1), l2, sizeof(l2));
+            strlcpy(_news1, l1, sizeof(_news1));
+            strlcpy(_news2, l2, sizeof(_news2));
+        }
+        _newsQueuedMs = now;
+        _newsPending = true;
+    }
     if (_newsPending && !_landingActive && !_inTransition && !_alertActive)
     {
         _newsPending = false;

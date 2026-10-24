@@ -55,12 +55,36 @@ CONFIG = {
     'mqtt_host': '192.168.1.20', 'mqtt_port': 1883, 'mqtt_user': 'glideslope', 'mqtt_pass': '***',
 }
 STATUS = {
-    'version': 'v6.0.0', 'built': 'Oct 20 2026 10:00:00', 'uptime_s': 86400, 'last_reset': 'power on',
+    'version': 'v8.1.0', 'built': 'Oct 24 2026 10:00:00', 'uptime_s': 86400, 'last_reset': 'power on',
     'heap_free': 84000, 'heap_max_block': 55000, 'heap_min_free': 18000, 'display_frames': 1700000,
     'web_requests': 5200, 'metar': 'METAR EGLL 071650Z 36011KT 9999 FEW030 12/06 Q1012 NOSIG',
     'airport': 'EGLL', 'airport_name': 'HEATHROW', 'airport_lat': 51.47, 'airport_lon': -0.4543, 'airport_pack': False,
     'runways_arr': '27L', 'runways_dep': '27R', 'holding': 'BNN 4 (9 min), OCK 3 (7 min)',
+    'mood': 'Low visibility', 'outlook': 'Runway 09 from about 19:00 (wind 070/12)', 'update_error': '',
 }
+# What GitHub's API says about the newest release (the page asks it directly).
+RELEASE = {
+    'tag_name': 'v8.2.0', 'published_at': '2026-10-26T10:00:00Z',
+    'body': 'Glideslope 8.2.0\n\nFog, storms and the runway outlook; updates at a tap and a health page.\n\n**New**\n- ...',
+}
+
+
+def health():
+    import math
+    free = [max(14, round(27 + 4 * math.sin(i / 7) - (6 if 40 < i < 46 else 0))) for i in range(96)]
+    block = [max(8, round(16 + 4 * math.sin(i / 5 + 1) - (5 if 40 < i < 46 else 0))) for i in range(96)]
+    return {
+        'version': 'v8.1.0', 'built': 'Oct 24 2026 10:00:00', 'uptime_s': 266400, 'boot': 'update to v8.1.0 (GitHub)',
+        'last_reset': 'restart', 'boot_count': 41,
+        'boots': [{'at': 1792846800, 'why': 'update to v8.1.0 (GitHub)'},
+                  {'at': 1792790400, 'why': 'restart from the web page'},
+                  {'at': 1792702200, 'why': 'self-heal: memory fragmented'},
+                  {'at': 1792444800, 'why': 'power on'}],
+        'heap': {'free': 26400, 'block': 15860, 'min_free': 6060, 'every_min': 15, 'free_kb': free, 'block_kb': block},
+        'feed': {'ok': 9874, 'failed': 112, 'last_ok_s': 4}, 'weather': {'ok': 444, 'failed': 3, 'last_ok_s': 312},
+        'wifi': {'rssi': -61, 'channel': 6}, 'storage': {'used': 401408, 'total': 1441792, 'logbook': 19456},
+        'temp_c': 47.5, 'tls': {'served': 1210, 'to_heap': 0},
+    }
 DISPLAY = {
     'active': True, 'ident': 'GSL101', 'flight': 'GS101', 'airline_name': 'Glideslope', 'origin': 'JFK',
     'dest': 'LHR', 'aircraft_name': 'A350-1000', 'registration': 'G-GSLP', 'altitude_ft': 1010,
@@ -129,6 +153,8 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/logos':          self.send(self.html.replace(b'</body>', b'<script>(function(){var t=document.getElementById("t-display");for(var e=t.firstElementChild;e&&e.textContent.indexOf("Airline logos")<0;e=e.nextElementSibling)e.style.display="none";})()</script></body>'), 'text/html; charset=utf-8')
         elif p == '/api/config':     self.send(CONFIG)
         elif p == '/api/status':     self.send(STATUS)
+        elif p == '/api/health':     self.send(health())
+        elif p == '/mock/release':   self.send(RELEASE)
         elif p == '/api/logos':      self.send({'count': 177, 'missing': [{'code': 'CTN', 'seen': 9}, {'code': 'LZB', 'seen': 4}, {'code': 'RBA', 'seen': 2}]})
         elif p == '/api/display':    self.send(DISPLAY)
         elif p == '/api/today':      self.send(TODAY)
@@ -239,7 +265,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--shots', action='store_true', help='write screenshots to docs/ and exit')
     a = ap.parse_args()
-    Handler.html = page_html().encode('utf-8')
+    Handler.html = page_html().replace('https://api.github.com/repos/SamHoughton/Glideslope/releases/latest',
+                                       '/mock/release').encode('utf-8')
     Handler.frame = sample_frame()
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     url = f'http://127.0.0.1:{PORT}/'
@@ -253,10 +280,12 @@ def main():
     shoot(url + '#spotter', str(ROOT / 'docs' / 'webui-spotter.png'), 1280, 820, 1)
     shoot(url + 'logos', str(ROOT / 'docs' / 'webui-logos.png'), 1280, 820, 1)
     shoot(url + '#history', str(ROOT / 'docs' / 'webui-history.png'), 1280, 1100, 1)
+    shoot(url + '#health', str(ROOT / 'docs' / 'webui-health.png'), 1280, 900, 1)
+    shoot(url + '#system', str(ROOT / 'docs' / 'webui-system.png'), 1280, 900, 1)
     today = ROOT / 'docs' / 'webui-today.png'
     shoot(url, str(today), 1280, 1240, 1)
     from PIL import Image
-    Image.open(today).crop((16, 526, 624, 982)).save(today)
+    Image.open(today).crop((16, 576, 624, 1032)).save(today)
     phone = ROOT / 'docs' / 'webui-phone.png'
     shoot(url + 'phone', str(phone), 600, 1100, 2)
     from PIL import Image

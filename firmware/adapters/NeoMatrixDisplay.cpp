@@ -69,6 +69,8 @@ void requestGoAroundDemo() { s_goAroundDemo = true; }
 
 void requestRareSpotDemo() { s_rareDemo = true; }
 
+void requestMoodDemo(uint8_t style) { s_moodDemo = style; }
+
 void requestLandingReplay() { s_landingReplay = true; }
 
 void requestFlyAcrossReplay(int forceDirection)

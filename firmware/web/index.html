@@ -73,8 +73,8 @@ details[open]>summary::before{content:"▾ "}
 details[open]>summary{margin-bottom:10px}
 
 /* Tabs */
-.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px}
-.tabs button{background:none;border:none;min-height:34px;padding:6px 12px;color:var(--muted);font-weight:600;font-size:13px;border-radius:8px}
+.tabs{display:flex;gap:2px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.tabs button{background:none;border:none;min-height:34px;padding:6px 9px;color:var(--muted);font-weight:600;font-size:13px;border-radius:8px}
 .tabs button.on{background:#1e2733;color:var(--amber)}
 .tab{display:none}.tab.on{display:block}
 
@@ -98,6 +98,14 @@ a.btn{display:inline-block;text-decoration:none;color:var(--text);border:1px sol
 .rwb i{display:block;height:6px;border-radius:3px;background:linear-gradient(90deg,#7a5414,var(--amber))}
 .rwb span:last-child{text-align:right;color:var(--muted)}
 .spots{list-style:none;margin:12px 0 0;padding:0;font-size:14px}
+.airf{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin:-2px 0 10px}
+.airf .k{font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:6px;background:#3a2e10;color:#ffc85a}
+.airf .k.storm{background:#4c1e18;color:#ff6e5a}
+.chart{width:100%;height:130px;display:block;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.chartkey{display:flex;gap:16px;font-size:12px;color:var(--muted);margin:6px 0 16px}.chartkey i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.boots{list-style:none;margin:6px 0 0;padding:0;font-size:14px}.boots li{display:flex;gap:12px;padding:6px 0;border-top:1px solid var(--line)}
+.boots .t{color:var(--faint);font-variant-numeric:tabular-nums;min-width:120px}
+.rel{font-size:14px;margin:4px 0 10px}.rel p{margin:6px 0;color:var(--muted)}
 .spots li{display:grid;grid-template-columns:44px 84px 1fr auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
 .spots .t{color:var(--faint);font-variant-numeric:tabular-nums}
 .spots .k{font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:6px;text-align:center}
@@ -160,6 +168,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
   <div class="card" id="today">
     <h2>Today</h2>
     <div class="tdy" id="tdyhead"><span class="idle">&nbsp;</span></div>
+    <div class="airf" id="airf" style="display:none"></div>
     <div id="tdyrw"></div>
     <ul class="spots" id="spots"></ul>
   </div>
@@ -188,6 +197,9 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="rare">Rare spot</button>
         <button data-demo="squawk">Emergency squawk</button>
         <button data-demo="runway">Runway change</button>
+        <button data-demo="mood?kind=runway">Runway change due</button>
+        <button data-demo="mood?kind=fog">Low visibility</button>
+        <button data-demo="mood?kind=storm">Thunderstorm</button>
         <button data-demo="sky?look=golden">Sky: golden hour</button>
         <button data-demo="sky?look=night">Sky: night</button>
         <button data-demo="sky?look=night+storm">Sky: storm</button>
@@ -213,6 +225,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <button data-tab="alerts">Alerts</button>
       <button data-tab="history">History</button>
       <button data-tab="system">System</button>
+      <button data-tab="health">Health</button>
       <button data-tab="log">Log</button>
     </div>
 
@@ -357,7 +370,10 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
 
     <section class="tab" id="t-system">
       <dl class="kv" id="sys"></dl>
-      <h3>Firmware update</h3>
+      <h3>Updates</h3>
+      <div class="rel"><div id="relst">Open this tab to check GitHub for a newer release.</div><p id="relnotes"></p></div>
+      <div class="btns"><button class="pri" id="relgo" style="display:none">Install</button><button id="relchk">Check again</button></div>
+      <h3>Firmware file</h3>
       <div class="f"><label for="fw">firmware.bin <small>&mdash; from a release or your own build</small></label><input type="file" id="fw" accept=".bin"></div>
       <div class="btns"><button class="pri" id="upd">Install update</button><span class="msg" id="ust"></span></div>
       <h3>Settings</h3>
@@ -365,6 +381,16 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button id="rst" class="warn">Reset to defaults</button></div>
       <h3>Board</h3>
       <div class="btns"><button id="reboot">Restart</button><button id="wifi" class="warn">Change Wi-Fi network&hellip;</button></div>
+    </section>
+
+    <section class="tab" id="t-health">
+      <p class="hint">How the board is keeping: its memory over the last day (the largest free block is what the feed's secure connection needs), how the feed and the weather are doing, and why it last restarted.</p>
+      <div class="recs" id="hlcards"></div>
+      <h3>Memory, last 24 hours</h3>
+      <svg class="chart" id="hlchart" viewBox="0 0 400 130" preserveAspectRatio="none"></svg>
+      <div class="chartkey"><span><i style="background:var(--amber)"></i>free</span><span><i style="background:var(--blue)"></i>largest block</span><span><i style="background:var(--red)"></i>8 KB: a secure connection needs this</span></div>
+      <h3>Starts</h3>
+      <ul class="boots" id="hlboots"></ul>
     </section>
 
     <section class="tab" id="t-log">
@@ -396,9 +422,11 @@ function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;r
 // Tabs (remembered for next time).
 function showTab(n){document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.tab===n);});
   document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('on',t.id==='t-'+n);});
-  $('savebar').style.display=(n==='system'||n==='log'||n==='history')?'none':'';
+  $('savebar').style.display=(n==='system'||n==='log'||n==='history'||n==='health')?'none':'';
   try{localStorage.setItem('gs-tab',n);}catch(e){}
-  if(n==='history'&&window.loadHistory)loadHistory();}
+  if(n==='history'&&window.loadHistory)loadHistory();
+  if(n==='health'&&window.loadHealth)loadHealth();
+  if(n==='system'&&window.checkUpdates&&!window.relChecked)checkUpdates();}
 document.querySelectorAll('#tabs button').forEach(function(b){b.addEventListener('click',function(){showTab(b.dataset.tab);});});
 try{var lt=location.hash.slice(1)||localStorage.getItem('gs-tab');if(lt&&$('t-'+lt))showTab(lt);}catch(e){}
 
@@ -460,6 +488,51 @@ function upload(f,u,retried,unsigned){var x=new XMLHttpRequest();x.open('POST','
   x.onerror=function(){u.textContent='Upload failed (connection lost)';};var h=hdrs('application/octet-stream');if(unsigned)h['X-Glideslope-Unsigned']='1';
   Object.keys(h).forEach(function(k){x.setRequestHeader(k,h[k]);});x.send(f);}
 
+// One-tap updates (8.2): the browser asks GitHub for the newest release (the
+// board spends nothing on it); the board downloads and installs it itself,
+// signed releases only, and this page waits for it to come back.
+var RELAPI='https://api.github.com/repos/SamHoughton/Glideslope/releases/latest',REL=null;
+function vnum(v){var m=/^v?(\d+)\.(\d+)\.(\d+)/.exec(v||'');return m?[+m[1],+m[2],+m[3]]:null;}
+function newer(a,b){for(var i=0;i<3;i++)if(a[i]!==b[i])return a[i]>b[i];return false;}
+function relSummary(b){var ls=(b||'').split('\n');for(var i=1;i<ls.length;i++){var l=ls[i].trim();if(l&&l.charAt(0)!=='!'&&l.charAt(0)!=='*'&&l.charAt(0)!=='#')return l;}return '';}
+window.checkUpdates=function(){var u=$('relst');if(!st.version){setTimeout(checkUpdates,1000);return;}window.relChecked=true;u.textContent='Checking GitHub\u2026';
+  fetch(RELAPI,{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(r){REL=r;var cur=vnum(st.version),lat=vnum(r.tag_name);
+    var when=r.published_at?new Date(r.published_at).toLocaleDateString(undefined,{day:'numeric',month:'short'}):'';
+    if(cur&&lat&&!newer(lat,cur)){u.textContent='Up to date: '+st.version+' is the newest release.';$('relgo').style.display='none';$('relnotes').textContent='';return;}
+    u.textContent=cur?'Glideslope '+r.tag_name+' is out'+(when?' ('+when+')':'')+'. This board runs '+st.version+'.':'This board runs its own build ('+st.version+'). The newest release is '+r.tag_name+'.';
+    $('relnotes').textContent=relSummary(r.body);$('relgo').textContent='Install '+r.tag_name;$('relgo').style.display='';
+  }).catch(function(){u.textContent='Could not reach GitHub to check.';});};
+$('relchk').addEventListener('click',function(){checkUpdates();});
+$('relgo').addEventListener('click',function(){if(!REL)return;var tag=REL.tag_name,u=$('relst');
+  if(!confirm('Download '+tag+' from GitHub and install it? The board restarts into it, in a minute or two.'))return;
+  post('/api/update/github?tag='+encodeURIComponent(tag)).then(function(r){return r.json();}).then(function(j){
+    if(!j.ok){u.textContent='Not started: '+(j.error||'no answer');return;}
+    $('relgo').style.display='none';u.textContent='Downloading on the board (the panel shows the progress)\u2026';var t0=Date.now();
+    (function wait(){setTimeout(function(){if(Date.now()-t0>300000){u.textContent='No word from the board yet: see what the panel says.';return;}
+      fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json();}).then(function(s){
+        if(s.version===tag){u.textContent='Updated to '+tag+'. Reloading\u2026';setTimeout(function(){location.reload();},2000);return;}
+        if(s.update_error){u.textContent='Failed: '+s.update_error;$('relgo').style.display='';return;}wait();}).catch(wait);},4000);})();
+  }).catch(function(){u.textContent='Could not reach the board';});});
+
+function ago(s){return s<0?'never':s<90?s+' s':s<5400?Math.round(s/60)+' min':Math.round(s/3600)+' h';}
+var HT=null;
+window.loadHealth=function(){fetch('/api/health').then(function(r){return r.json();}).then(function(h){
+  var f=h.feed.ok+h.feed.failed,q=h.wifi.rssi>-60?'strong':h.wifi.rssi>-70?'good':h.wifi.rssi>-80?'weak':'very weak';
+  var tiles=[[fmtUp(h.uptime_s),'up since: '+h.boot],[Math.round(h.heap.free/1024)+' KB','free now; largest block '+Math.round(h.heap.block/1024)+' KB'],
+    [Math.round(h.heap.min_free/1024)+' KB','free at the lowest since the start'],[ago(h.feed.last_ok_s),'since the last positions'+(f?' ('+Math.round(h.feed.ok*100/f)+'% of fetches answered)':'')],
+    [ago(h.weather.last_ok_s),'since the last weather report'],[h.wifi.rssi+' dBm','Wi-Fi signal, '+q],
+    [Math.round(h.storage.used/1024)+' KB','of '+Math.round(h.storage.total/1024)+' KB stored (logbook '+Math.round(h.storage.logbook/1024)+' KB)'],
+    [Math.round(h.temp_c)+'\u00b0C','the chip\u2019s temperature'],[h.boot_count,'starts logged']];
+  $('hlcards').innerHTML=tiles.map(function(t){return '<div><b>'+esc(t[0])+'</b><span>'+esc(t[1])+'</span></div>';}).join('');
+  // The chart: free (amber) and the largest block (blue), KB, oldest on the left.
+  var fr=h.heap.free_kb,bk=h.heap.block_kb,n=fr.length,top=Math.max(48,Math.max.apply(null,fr)+4),W=400,H=130;
+  function px(i){return n<2?W:i*W/(n-1);}function py(v){return H-6-(v/top)*(H-12);}
+  function line(v,c){return '<polyline fill="none" stroke="'+c+'" stroke-width="2" vector-effect="non-scaling-stroke" points="'+v.map(function(x,i){return px(i).toFixed(1)+','+py(x).toFixed(1);}).join(' ')+'"/>';}
+  $('hlchart').innerHTML='<line x1="0" x2="'+W+'" y1="'+py(8)+'" y2="'+py(8)+'" stroke="#ff5f50" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke"/>'+line(fr,'#ffb93c')+line(bk,'#5aaaff');
+  $('hlboots').innerHTML=h.boots.map(function(b){var d=new Date(b.at*1000);
+    return '<li><span class="t">'+d.toLocaleDateString(undefined,{day:'numeric',month:'short'})+' '+d.toTimeString().slice(0,5)+'</span><span>'+esc(b.why)+'</span></li>';}).join('')||'<li>None logged yet (the board logs a start once it knows the time).</li>';
+}).catch(function(){}).finally(function(){clearTimeout(HT);HT=setTimeout(function(){if($('t-health').classList.contains('on')&&!document.hidden)loadHealth();},30000);});};
+
 // Airline logos: the board lists airlines it has seen without one; an image
 // is fitted into 32x32 here and sent as RGB565 (magenta = transparent).
 var LOGO=null;
@@ -515,6 +588,8 @@ function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
       (s.holding?'<dt>Holding</dt><dd>'+esc(s.holding)+'</dd>':'')+
       '<dt>Up</dt><dd>'+fmtUp(s.uptime_s)+'</dd><dt>Memory</dt><dd>'+Math.round(s.heap_free/1024)+' KB free, low '+Math.round(s.heap_min_free/1024)+' KB</dd>'+
       (s.metar?'<dt>Weather</dt><dd class="mono" style="font-size:12px">'+esc(s.metar)+'</dd>':'');
+    var a='';if(s.mood)a+='<span class="k'+(s.mood.indexOf('Thunder')===0?' storm':'')+'">'+esc(s.mood)+'</span>';
+    if(s.outlook)a+='<span>'+esc(s.outlook)+'</span>';$('airf').innerHTML=a;$('airf').style.display=a?'':'none';
     $('livedot').className='dot on';$('livetxt').textContent='live';
   }).catch(function(){$('livedot').className='dot';$('livetxt').textContent='offline';})
   .finally(function(){setTimeout(pollStatus,10000);});}
@@ -653,6 +728,8 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
     }).catch(function(){}).then(function(){loading=false;});
   };
   if($('t-history').classList.contains('on'))loadHistory();   // opened straight onto it
+  if($('t-health').classList.contains('on'))loadHealth();
+  if($('t-system').classList.contains('on'))checkUpdates();
 })();
 </script>
 </body>

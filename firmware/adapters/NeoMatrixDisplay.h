@@ -55,6 +55,8 @@ void requestGoAroundDemo();
 
 // Show the rare-spot flourish on the current card (demo).
 void requestRareSpotDemo();
+// The airfield's mood banners (8.2): 1 low visibility, 2 thunderstorm, 3 runway change due.
+void requestMoodDemo(uint8_t style);
 
 // Play the take-off scene for the current card (demo).
 void requestTakeoffDemo();

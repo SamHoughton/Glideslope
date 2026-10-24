@@ -10,7 +10,8 @@ WebServer library to avoid framework include-path issues.
 #include "utils/WifiProvisioner.h"
 #include "utils/StageTrace.h"
 #include "utils/ImageCheck.h"
-#include "utils/FirmwareSig.h"
+#include "utils/Ota.h"
+#include "utils/Health.h"
 #include "config/RuntimeConfig.h"
 #include "config/Airport.h"
 #include <LittleFS.h>
@@ -70,7 +71,7 @@ bool WebConfig::hostAllowed(const String &hostPort)
 
 bool WebConfig::needsToken(const String &p)
 {
-    return p == "/api/update" || p == "/api/airport" || p == "/api/logo" || p == "/api/airport/reset" || p == "/api/config" ||
+    return p == "/api/update" || p == "/api/update/github" || p == "/api/airport" || p == "/api/logo" || p == "/api/airport/reset" || p == "/api/config" ||
            p == "/api/config/reset" || p == "/api/restart" || p == "/api/wifi/reset" ||
            p == "/api/coredump/erase" || p == "/api/notify/test";
 }
@@ -206,7 +207,14 @@ void WebConfig::loop()
     else if (r.path == "/api/display"       && r.method == "GET")  handleGetDisplay(client);
     else if (r.path == "/api/frame"         && r.method == "GET")  handleGetFrame(client, r);
     else if (r.path == "/api/status"        && r.method == "GET")  handleGetStatus(client);
+    else if (r.path == "/api/health"        && r.method == "GET")  { String body; Health::json(body); sendHttp(client, 200, "application/json", body); }
     else if (r.path == "/api/update"        && r.method == "POST") handleUpdate(client, r.contentLength, r.allowUnsigned);
+    else if (r.path == "/api/update/github" && r.method == "POST")
+    {
+        // One tap (8.2): the main loop downloads and installs it.
+        const bool ok = Ota::request(qparam(r.query, "tag").c_str());
+        sendHttp(client, ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"not a release tag\"}");
+    }
     else if (r.path == "/api/airport"       && r.method == "POST") handleAirport(client, r.contentLength);
     else if (r.path == "/api/airport/reset" && r.method == "POST") handleAirportReset(client);
     else if (r.path == "/api/demo/showcase" && r.method == "POST") { requestShowcase(qparam(r.query, "look").c_str()); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -277,6 +285,12 @@ void WebConfig::loop()
     }
     else if (r.path == "/api/demo/landing"  && r.method == "POST") { requestLandingReplay(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/rare"     && r.method == "POST") { requestRareSpotDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/mood"     && r.method == "POST")
+    {
+        const String k = qparam(r.query, "kind");
+        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : 1);
+        sendHttp(client, 200, "application/json", "{\"ok\":true}");
+    }
     else if (r.path == "/api/demo/goaround" && r.method == "POST") { requestGoAroundDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/flyacross" && r.method == "POST")
     {
@@ -571,6 +585,7 @@ void WebConfig::handleRestart(WiFiClient &c)
     c.stop();
     delay(200);
     ImageCheck::keep("restart requested");
+    Health::noteRestart("restart from the web page");
     ESP.restart();
 }
 
@@ -583,6 +598,7 @@ void WebConfig::handleWifiReset(WiFiClient &c)
     delay(200);
     WifiProvisioner::clearCredentials();
     ImageCheck::keep("restart requested");
+    Health::noteRestart("Wi-Fi forgotten");
     ESP.restart();
 }
 
@@ -635,6 +651,7 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["uptime_s"]       = millis() / 1000;
     doc["last_reset"]     = StageTrace::lastReset();
     doc["image"]          = ImageCheck::state();
+    doc["update_error"]   = Ota::lastError();
     doc["heap_free"]      = ESP.getFreeHeap();
     doc["heap_max_block"] = ESP.getMaxAllocHeap();
     doc["heap_min_free"]  = ESP.getMinFreeHeap();
@@ -713,8 +730,8 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
         sendHttp(c, 400, "application/json", body);
     };
     if (length <= 0) { fail("empty upload"); return; }
-    if ((uint32_t)length > ESP.getFreeSketchSpace()) { fail("file too large for the app slot"); return; }
-    if (!Update.begin(length, U_FLASH)) { fail(Update.errorString()); return; }
+    Ota::Writer &w = Ota::writer();
+    if (const char *e = w.begin(length)) { fail(e); return; }
     Log.printf("Update: receiving %d bytes\n", length);
     struct Updating { Updating() { g_updating = true; } ~Updating() { g_updating = false; g_feedPaused = false; } } updating;
     // Wait (up to 8 s) for the main loop to finish any fetch and close the
@@ -726,9 +743,6 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
         delay(20);
     }
     requestPanelMessage("UPDATING");
-    // Signature check as the image streams in (utils/FirmwareSig.h).
-    static FirmwareSig sig;   // ~200 bytes: not on the web task's stack
-    sig.begin(length);
 
     uint8_t buf[1024];
     int got = 0, lastTenth = -1;
@@ -737,7 +751,7 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
     {
         esp_task_wdt_reset();
         const int avail = c.available();
-        // The first read must hold the image header (checked below).
+        // The first read must hold the image header (checked by the writer).
         if (avail <= 0 || (got == 0 && avail < 36 && length >= 36))
         {
             if (!c.connected() || millis() - lastData > 20000) break;
@@ -746,31 +760,7 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
         }
         const int n = c.read(buf, min((int)sizeof(buf), min(avail, length - got)));
         if (n <= 0) continue;
-        if (got == 0)
-        {
-            // ESP32 image: magic 0xE9, chip id at byte 12 (9 = ESP32-S3), and an
-            // application (not a bootloader or merged image): the app
-            // description's magic word 0xABCD5432 at byte 32.
-            const uint16_t chip = buf[12] | (buf[13] << 8);
-            const uint32_t appMagic = buf[32] | (buf[33] << 8) | (buf[34] << 16) | ((uint32_t)buf[35] << 24);
-            const char *why = n < 36 || buf[0] != 0xE9 ? "not a firmware image"
-                            : chip != 9                ? "firmware is for a different chip"
-                            : appMagic != 0xABCD5432   ? "not an app image (use firmware.bin, not the full image)"
-                            : nullptr;
-            if (why)
-            {
-                Update.abort();
-                fail(why);
-                return;
-            }
-        }
-        sig.update(buf, n);
-        if (Update.write(buf, n) != (size_t)n)
-        {
-            Update.abort();
-            fail(Update.errorString());
-            return;
-        }
+        if (const char *e = w.write(buf, n)) { w.abort(); fail(e); return; }
         got += n;
         lastData = millis();
         const int tenth = (int)((int64_t)got * 10 / length);
@@ -782,19 +772,17 @@ void WebConfig::handleUpdate(WiFiClient &c, int length, bool allowUnsigned)
             requestPanelMessage(msg);
         }
     }
-    if (got != length) { Update.abort(); fail("upload interrupted"); return; }
-    const FirmwareSig::Result verdict = sig.finish();
-    if (verdict == FirmwareSig::Bad) { Update.abort(); fail("signature does not match: not a genuine release"); return; }
-    if (verdict == FirmwareSig::Unsigned && !allowUnsigned) { Update.abort(); fail("unsigned"); return; }
-    if (!Update.end(true)) { fail(Update.errorString()); return; }
+    bool signedRelease = false;
+    if (const char *e = w.finish(allowUnsigned, signedRelease)) { fail(e); return; }
 
-    Log.printf("Update: installed (%s), restarting\n", verdict == FirmwareSig::Signed ? "signed release" : "unsigned build");
+    Log.printf("Update: installed (%s), restarting\n", signedRelease ? "signed release" : "unsigned build");
     requestPanelMessage("RESTARTING");
     sendHttp(c, 200, "application/json", "{\"ok\":true}");
     c.flush();
     c.stop();
     delay(500);
     ImageCheck::keep("restart requested");
+    Health::noteRestart("update uploaded");
     ESP.restart();
 }
 
@@ -861,6 +849,7 @@ void WebConfig::handleAirport(WiFiClient &c, int length)
     c.stop();
     delay(500);
     ImageCheck::keep("restart requested");
+    Health::noteRestart("airport pack installed");
     ESP.restart();
 }
 
@@ -873,6 +862,7 @@ void WebConfig::handleAirportReset(WiFiClient &c)
     c.stop();
     delay(500);
     ImageCheck::keep("restart requested");
+    Health::noteRestart("back to the built-in airport");
     ESP.restart();
 }
 
