@@ -11,7 +11,8 @@ namespace
 {
     struct Msg
     {
-        uint8_t kind, priority;
+        uint16_t kind;
+        uint8_t  priority;
         char    title[48];
         char    body[160];
         char    tags[28];
@@ -20,10 +21,10 @@ namespace
     Msg           s_q[kQueue];
     int           s_head = 0, s_count = 0;
     portMUX_TYPE  s_mux = portMUX_INITIALIZER_UNLOCKED;
-    unsigned long s_lastMs[8] = {};   // per kind bit
+    unsigned long s_lastMs[9] = {};   // per kind bit
     const FrameCanvas *s_frame = nullptr;
 
-    int bitOf(uint8_t kind) { for (int i = 0; i < 8; ++i) if (kind == (1u << i)) return i; return 7; }
+    int bitOf(uint16_t kind) { for (int i = 0; i < 9; ++i) if (kind == (1u << i)) return i; return 7; }
 }
 
 namespace

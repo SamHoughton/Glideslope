@@ -125,6 +125,88 @@ void test_metar_calm_and_garbage()
     TEST_ASSERT_FALSE(Weather::parse("", bad));
 }
 
+// ── The airfield's mood and the TAF (8.2) ──────────────────────────────────
+void test_metar_mood()
+{
+    Metar m;
+    TEST_ASSERT_TRUE(Weather::parse("METAR EGLL 240620Z 00000KT 0300 FG VV001 06/06 Q1025", m));
+    TEST_ASSERT_EQUAL(300, m.visM);
+    TEST_ASSERT_EQUAL(100, m.ceilingFt);
+    TEST_ASSERT_EQUAL(Weather::LowVis, Weather::mood(m));
+    char l1[24], l2[24];
+    Weather::moodLines(Weather::LowVis, m, l1, sizeof(l1), l2, sizeof(l2));
+    TEST_ASSERT_EQUAL_STRING("Low visibility", l1);
+    TEST_ASSERT_EQUAL_STRING("Fog 300 m", l2);
+
+    // Lifting: 1,200 m and cloud at 400 ft stays low only once it has been.
+    TEST_ASSERT_TRUE(Weather::parse("METAR EGLL 240850Z 05004KT 1200 BR BKN004 08/07 Q1025", m));
+    TEST_ASSERT_EQUAL(400, m.ceilingFt);
+    TEST_ASSERT_EQUAL(Weather::Calm, Weather::mood(m));
+    TEST_ASSERT_EQUAL(Weather::LowVis, Weather::mood(m, Weather::LowVis));
+
+    TEST_ASSERT_TRUE(Weather::parse("METAR EGLL 241720Z 24015G35KT 4000 +TSRA BKN014CB 18/16 Q1002", m));
+    TEST_ASSERT_TRUE(m.thunder);
+    TEST_ASSERT_TRUE(m.cb);
+    TEST_ASSERT_EQUAL(1400, m.ceilingFt);
+    TEST_ASSERT_EQUAL(Weather::Storm, Weather::mood(m, Weather::LowVis));
+    Weather::moodLines(Weather::Storm, m, l1, sizeof(l1), l2, sizeof(l2));
+    TEST_ASSERT_EQUAL_STRING("Thunderstorm", l1);
+    TEST_ASSERT_EQUAL_STRING("Over Heathrow", l2);
+
+    TEST_ASSERT_TRUE(Weather::parse("METAR EGLL 241750Z 22010KT 9999 -RA VCTS FEW020 SCT030CB 17/15 Q1003", m));
+    TEST_ASSERT_FALSE(m.thunder);
+    TEST_ASSERT_EQUAL(-1, m.ceilingFt);   // few and scattered: no ceiling
+    TEST_ASSERT_EQUAL(Weather::StormNear, Weather::mood(m));
+}
+
+void test_taf_and_runway_outlook()
+{
+    const time_t day = 1792800000;            // 24 Oct 2026 00:00 UTC
+    const time_t now = day + 11 * 3600 + 20 * 60;
+    // Heathrow's TAF that morning, as aviationweather.gov sends it (a line at a time).
+    static const char *const kLines[] = {
+        "TAF EGLL 241053Z 2412/2518 20010KT 9999 SCT030", "BECMG 2412/2415 20020G32KT",
+        "TEMPO 2412/2423 6000 RA BKN012", "PROB40", "TEMPO 2412/2422 2500 +RA BKN009", "PROB30",
+        "TEMPO 2415/2421 21024G42KT", "BECMG 2420/2423 25018G30KT", "BECMG 2504/2507 28022G33KT",
+        "PROB30", "TEMPO 2509/2515 27026G43KT", "BECMG 2516/2518 24013KT", "PROB40", "TEMPO 2516/2518 25015G26KT",
+    };
+    Taf t;
+    Weather::tafBegin(t);
+    for (const char *l : kLines) Weather::tafFeed(t, l, now);
+    TEST_ASSERT_TRUE(t.valid);
+    TEST_ASSERT_EQUAL(5, t.n);                 // the base and four BECMGs; no TEMPO or PROB
+    TEST_ASSERT_EQUAL((long)(day + 12 * 3600), (long)t.from);
+    TEST_ASSERT_EQUAL((long)(day + 86400 + 18 * 3600), (long)t.to);
+    TEST_ASSERT_EQUAL((long)(day + 13 * 3600 + 1800), (long)t.w[1].at);   // halfway through 12-15
+    TEST_ASSERT_EQUAL(20, t.w[1].kt);
+    TEST_ASSERT_EQUAL(32, t.w[1].gust);
+    Taf::Wind w;
+    TEST_ASSERT_TRUE(Weather::tafWindAt(t, day + 86400 + 6 * 3600, w));
+    TEST_ASSERT_EQUAL(280, w.dir);
+    Weather::Outlook o;
+    TEST_ASSERT_TRUE(Weather::runwayOutlook(t, 270, now, o));
+    TEST_ASSERT_FALSE(o.change);               // south-westerlies all day: no change
+
+    // The wind going round to the east this evening.
+    Weather::tafBegin(t);
+    Weather::tafFeed(t, "TAF EGLL 240500Z 2406/2512 24008KT 9999 FEW030 BECMG 2414/2416 VRB03KT "
+                        "FM241900 07012KT 9999 BKN020", now);
+    TEST_ASSERT_EQUAL(3, t.n);
+    TEST_ASSERT_TRUE(Weather::runwayOutlook(t, 270, now, o));
+    TEST_ASSERT_TRUE(o.change);
+    TEST_ASSERT_EQUAL((long)(day + 19 * 3600), (long)o.at);
+    TEST_ASSERT_EQUAL_STRING("09", o.to);
+    TEST_ASSERT_EQUAL(70, o.windDir);
+    // On easterlies already, Heathrow goes back west as soon as the tailwind
+    // on 27 is under 5 kt: now, with the south-westerly.
+    TEST_ASSERT_TRUE(Weather::runwayOutlook(t, 90, now, o));
+    TEST_ASSERT_TRUE(o.change);
+    TEST_ASSERT_EQUAL((long)now, (long)o.at);
+    TEST_ASSERT_EQUAL_STRING("27", o.to);
+    // A day later the TAF has run out.
+    TEST_ASSERT_FALSE(Weather::runwayOutlook(t, 270, now + 3 * 86400, o));
+}
+
 // ── Approach model ─────────────────────────────────────────────────────────
 void test_approach_on_final_27L()
 {
@@ -731,5 +813,7 @@ int main(int, char **)
     RUN_TEST(test_logbook);
     RUN_TEST(test_airport_time_zones);
     RUN_TEST(test_http_request);
+    RUN_TEST(test_metar_mood);
+    RUN_TEST(test_taf_and_runway_outlook);
     return UNITY_END();
 }

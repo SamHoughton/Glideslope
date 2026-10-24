@@ -337,6 +337,14 @@ int main(int argc, char **argv)
         InfoScreens::renderHeadings(c, dep, 3, 5000);                                        save(c, "headings_cities");
         g_config.route_cities = false;
         InfoScreens::renderWeather(c, m, "27L", 2000, Sky::at(m, 1792350900));               save(c, "weather_evening_rain");
+        {
+            Metar fog;
+            Weather::parse("METAR EGLL 240620Z 00000KT 0300 FG VV001 06/06 Q1025", fog);
+            InfoScreens::renderWeather(c, fog, "27L", 6000, Sky::at(fog, 1792820000), Weather::LowVis, "To 09 at 19:00");
+            save(c, "weather_fog_outlook");
+            InfoScreens::renderWeather(c, fog, "27L", 2000, Sky::at(fog, 1792820000), Weather::LowVis, "To 09 at 19:00");
+            save(c, "weather_fog_outlook_b");
+        }
         HoldTracker::Row rows[] = {{"BNN", 4, 9}, {"LAM", 2, 5}, {"BIG", 0, 0}, {"OCK", 3, 7}};
         InfoScreens::renderHolding(c, rows, 4, 2000);                                         save(c, "holding");
         InfoScreens::renderClock(c, 2000, wxLine);                              save(c, "clock_night");
@@ -376,6 +384,10 @@ int main(int argc, char **argv)
         InfoScreens::renderNightScene(c, 12000, wxLine, Sky::preview("night+christmas")); save(c, "night_scene_weather");
         InfoScreens::renderAlert(c, "7700", "EMERGENCY", "GS101 DEMO", "4200FT 12KM E", 600);  save(c, "alert_squawk");
         InfoScreens::renderRareBanner(c, "RARE SPOT", "A380", 900);                           save(c, "banner_rare");
+        InfoScreens::renderMoodBanner(c, 1, "Low visibility", "Fog 300 m", 2500);            save(c, "banner_fog");
+        InfoScreens::renderMoodBanner(c, 2, "Thunderstorm", "Over Heathrow", 1750);          save(c, "banner_storm");
+        InfoScreens::renderMoodBanner(c, 2, "Thunderstorm", "Over Heathrow", 900);           save(c, "banner_storm_dark");
+        InfoScreens::renderMoodBanner(c, 3, "Runway change due", "To 09 at 19:00", 900);     save(c, "banner_runway");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 600);                                save(c, "runway_change_a");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 1900);                               save(c, "runway_change_b");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 2600);                               save(c, "runway_change_c");

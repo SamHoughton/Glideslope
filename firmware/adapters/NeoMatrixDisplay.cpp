@@ -446,7 +446,26 @@ void NeoMatrixDisplay::showNews(const char *line1, const char *line2)
     Lock l(_lock);
     strlcpy(_news1, line1, sizeof(_news1));
     strlcpy(_news2, line2 ? line2 : "", sizeof(_news2));
+    _newsStyle = 0;
     _newsPending = true;
+}
+
+void NeoMatrixDisplay::showMood(uint8_t style, const char *line1, const char *line2)
+{
+    if (!line1 || !line1[0]) return;
+    Lock l(_lock);
+    strlcpy(_news1, line1, sizeof(_news1));
+    strlcpy(_news2, line2 ? line2 : "", sizeof(_news2));
+    _newsStyle = style;
+    _newsQueuedMs = millis();
+    _newsPending = true;
+}
+
+void NeoMatrixDisplay::setAirfield(uint8_t mood, const char *outlook)
+{
+    Lock l(_lock);
+    _mood = mood;
+    strlcpy(_outlook, outlook ? outlook : "", sizeof(_outlook));
 }
 
 // Today beating the all-time bests, as it happens (once each a day): the
@@ -464,6 +483,7 @@ void NeoMatrixDisplay::checkRecords()
         snprintf(l2, sizeof(l2), "%d today", moves);
         strlcpy(_news1, "Busiest day ever", sizeof(_news1));
         strlcpy(_news2, l2, sizeof(_news2));
+        _newsStyle = 0;
         _newsPending = true;
         Log.printf("Logbook: today is the busiest day yet (%d, was %u)\n", moves, _records.bestDay);
     }
@@ -473,6 +493,7 @@ void NeoMatrixDisplay::checkRecords()
         snprintf(l2, sizeof(l2), "%d go-arounds", _stats.goArounds());
         strlcpy(_news1, "Most in a day", sizeof(_news1));
         strlcpy(_news2, l2, sizeof(_news2));
+        _newsStyle = 0;
         _newsPending = true;
     }
     const int gap = _stats.tightestGapSec();
@@ -482,6 +503,7 @@ void NeoMatrixDisplay::checkRecords()
         snprintf(l2, sizeof(l2), "%d:%02d apart", gap / 60, gap % 60);
         strlcpy(_news1, "Tightest gap ever", sizeof(_news1));
         strlcpy(_news2, l2, sizeof(_news2));
+        _newsStyle = 0;
         _newsPending = true;
     }
 }

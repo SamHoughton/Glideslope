@@ -647,6 +647,8 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["runways_arr"]    = _rwyArr;
     doc["runways_dep"]    = _rwyDep;
     doc["holding"]        = _holding;
+    doc["mood"]           = _mood;
+    doc["outlook"]        = _outlook;
     doc["airport"]        = g_airport.icao;
     doc["airport_name"]   = g_airport.name;
     doc["airport_lat"]    = g_airport.lat;
@@ -670,6 +672,14 @@ void WebConfig::setHolding(const char *summary)
 {
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
     strlcpy(_holding, summary, sizeof(_holding));
+    if (_displayMutex) xSemaphoreGive(_displayMutex);
+}
+
+void WebConfig::setAirfield(const char *mood, const char *outlook)
+{
+    if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
+    strlcpy(_mood, mood, sizeof(_mood));
+    strlcpy(_outlook, outlook, sizeof(_outlook));
     if (_displayMutex) xSemaphoreGive(_displayMutex);
 }
 

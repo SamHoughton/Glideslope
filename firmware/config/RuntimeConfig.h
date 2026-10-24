@@ -80,7 +80,7 @@ struct RuntimeConfig
     uint16_t mqtt_port;
     char     mqtt_user[32];
     char     mqtt_pass[48];
-    uint8_t  notify_mask;
+    uint16_t notify_mask;            // Notify::Kind bits (16-bit since 8.2: the weather)
 
     // Route lookup source priority
     // false (default): hexdb → AeroAPI → OpenSky

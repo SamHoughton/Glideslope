@@ -54,6 +54,8 @@ public:
     void setWeather(const char *metar);
     void setRunways(const char *arrivals, const char *departures);
     void setHolding(const char *summary);
+    // The airfield's mood and the runway outlook in words (8.2), for /api/status.
+    void setAirfield(const char *mood, const char *outlook);
     // /api/today: filled by the display (7.1).
     void setTodaySource(void (*fill)(String &out)) { _today = fill; }
 
@@ -71,6 +73,7 @@ private:
     String                  _metar;               // guarded by _displayMutex
     char                    _rwyArr[12] = "", _rwyDep[12] = "";   // guarded by _displayMutex
     char                    _holding[96] = "";                     // guarded by _displayMutex
+    char                    _mood[32] = "", _outlook[48] = "";     // guarded by _displayMutex
     SemaphoreHandle_t       _displayMutex = nullptr;
     volatile uint32_t       _requests = 0;
 

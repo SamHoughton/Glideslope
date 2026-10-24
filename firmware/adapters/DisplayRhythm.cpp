@@ -128,7 +128,9 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
     _nwBase = -1;
 
     // Logbook news (a record, a milestone): a short gold banner, when no
-    // landing or transition has the panel.
+    // landing or transition has the panel. The airfield's mood (8.2) the
+    // same way, unless it has waited ten minutes (it is old news by then).
+    if (_newsPending && _newsStyle && now - _newsQueuedMs > 600000UL) _newsPending = false;
     if (_newsPending && !_landingActive && !_inTransition && !_alertActive)
     {
         _newsPending = false;
@@ -141,7 +143,8 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
         const uint32_t t = now - _newsMs;
         if (t < 6000)
         {
-            InfoScreens::renderRareBanner(g_workFrame, _news1, _news2, t);
+            if (_newsStyle) InfoScreens::renderMoodBanner(g_workFrame, _newsStyle, _news1, _news2, t);
+            else            InfoScreens::renderRareBanner(g_workFrame, _news1, _news2, t);
             present();
             { wait = kCardFrameMs; return true; }
         }
@@ -752,7 +755,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
         }
         case Screen::Weather:
             InfoScreens::renderWeather(g_workFrame, _metar, _runwayInUse, now,
-                                       s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky);
+                                       s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky, _mood, _outlook);
             return;
         case Screen::Lineup:
         {

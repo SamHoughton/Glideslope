@@ -84,6 +84,8 @@ static bool   g_wasNightSuppressed = false;  // tracks night-mode suppression fo
 static String g_wifiSsid;                   // active SSID  (NVS > compile-time)
 static String g_wifiPass;                   // active password
 static Metar  g_metar;                      // Heathrow weather, refreshed every few minutes
+static Taf    g_taf;                        // and its forecast (8.2: the runway outlook)
+static uint8_t g_mood = Weather::Calm;      // the airfield's mood from the METAR (8.2)
 static unsigned long g_lastMetarMs = 0;
 static constexpr unsigned long kMetarEveryMs = 10UL * 60 * 1000;
 static char g_originIds[24] = "";   // where the next arrivals came from, for the weather fetch
@@ -249,6 +251,96 @@ static void spotterCheck(const std::vector<StateVector> &states, const std::vect
 // there is one. The feed's connection is never closed for it: once closed,
 // a fragmented heap can leave no room to reopen it (5.1's soak sat without
 // positions for 25 minutes that way); a skipped save tries again in 5 minutes.
+// The airfield's mood and the runway outlook (8.2), after each weather
+// report: what the weather screen and web page say, and a banner and a
+// phone alert when fog or a storm sets in, or a runway change is due
+// within three hours.
+static void airfieldCheck()
+{
+    const time_t now = time(nullptr);
+    // Mood: announced as it sets in, each kind at most every three hours
+    // (a report either side of the line would otherwise flap).
+    const uint8_t mood = Weather::mood(g_metar, (Weather::Mood)g_mood);
+    if (mood != g_mood)
+    {
+        Log.printf("Weather: mood %u -> %u (%s)\n", (unsigned)g_mood, (unsigned)mood, g_metar.raw);
+        g_mood = mood;
+        static unsigned long announcedMs[4] = {};
+        if (mood != Weather::Calm && (!announcedMs[mood] || millis() - announcedMs[mood] > 3UL * 3600 * 1000))
+        {
+            announcedMs[mood] = millis();
+            char l1[24], l2[28], what[24];
+            Weather::moodLines((Weather::Mood)mood, g_metar, l1, sizeof(l1), l2, sizeof(l2));
+            g_display.showMood(mood == Weather::LowVis ? 1 : 2, l1, l2);
+            Weather::describe(g_metar.wx, what, sizeof(what));
+            char extra[24] = "";
+            if (mood == Weather::LowVis)
+            {
+                if (g_metar.ceilingFt >= 0 && g_metar.visM >= 0 && g_metar.visM < 1500)
+                    snprintf(extra, sizeof(extra), ", cloud at %d ft", g_metar.ceilingFt);
+                Notify::post(Notify::Weather, 3, "fog", l1, "%s%s. Expect wider gaps between arrivals.", l2, extra);
+            }
+            else
+            {
+                if (g_metar.gustKt) snprintf(extra, sizeof(extra), " gusting %d", g_metar.gustKt);
+                Notify::post(Notify::Weather, 4, "zap", l1, "%s: %s, wind %03d/%d%s.", l2, what[0] ? what : "thunder",
+                             g_metar.windDir < 0 ? 0 : g_metar.windDir, g_metar.windKt, extra);
+            }
+        }
+    }
+
+    // The landing course in use (the last one seen, overnight too).
+    static float course = NAN;
+    {
+        char arr[12], dep[12];
+        g_display.runwaysInUse(arr, sizeof(arr), dep, sizeof(dep));
+        char *sp = strchr(arr, ' ');
+        if (sp) *sp = 0;
+        for (int i = 0; arr[0] && i < g_airport.runwayCount; ++i)
+            if (!strcmp(g_airport.runways[i].name, arr)) course = g_airport.runways[i].course;
+    }
+    Weather::Outlook o;
+    char shortText[20] = "", longText[48] = "";
+    static char lastTo[4] = "";
+    static time_t lastAt = 0;
+    if (Weather::runwayOutlook(g_taf, course, now, o) && o.change)
+    {
+        struct tm lt, today;
+        localtime_r(&o.at, &lt);
+        localtime_r(&now, &today);
+        if (o.at <= now + 600)                 snprintf(shortText, sizeof(shortText), "To %s due now", o.to);
+        else if (lt.tm_yday == today.tm_yday)  snprintf(shortText, sizeof(shortText), "To %s at %02d:%02d", o.to, lt.tm_hour, lt.tm_min);
+        else                                   snprintf(shortText, sizeof(shortText), "To %s tmrw %02d:%02d", o.to, lt.tm_hour, lt.tm_min);
+        snprintf(longText, sizeof(longText), "Runway %s %s%02d:%02d (wind %03d/%d)", o.to,
+                 o.at <= now + 600 ? "due now, " : lt.tm_yday == today.tm_yday ? "from about " : "tomorrow from ",
+                 lt.tm_hour, lt.tm_min, o.windDir < 0 ? 0 : o.windDir, o.windKt);
+        if (o.at <= now + 600) snprintf(longText, sizeof(longText), "Runway %s due now (wind %03d/%d)", o.to,
+                                        o.windDir < 0 ? 0 : o.windDir, o.windKt);
+        // A change within three hours: announce it once (again only if the
+        // forecast moves it by more than 90 minutes, or to another runway).
+        const bool soon = o.at - now <= 3 * 3600;
+        const bool news = strcmp(o.to, lastTo) != 0 || (o.at > now + 600 && labs((long)(o.at - lastAt)) > 5400);
+        if (soon && news)
+        {
+            strlcpy(lastTo, o.to, sizeof(lastTo));
+            lastAt = o.at;
+            char l2[24];
+            if (o.at <= now + 600) snprintf(l2, sizeof(l2), "To %s soon", o.to);
+            else                   snprintf(l2, sizeof(l2), "To %s at %02d:%02d", o.to, lt.tm_hour, lt.tm_min);
+            g_display.showMood(3, "Runway change due", l2);
+            Notify::post(Notify::Runway, 3, "arrows_counterclockwise", "Runway change expected",
+                         "The forecast wind (%03d/%d kt) should turn %s's arrivals onto %s %s %02d:%02d.",
+                         o.windDir < 0 ? 0 : o.windDir, o.windKt, g_airport.name, o.to,
+                         o.at <= now + 600 ? "any time from" : "around", lt.tm_hour, lt.tm_min);
+            Log.printf("Weather: runway outlook: %s\n", longText);
+        }
+    }
+    else lastTo[0] = 0;
+    static const char *const kMoodNames[] = {"", "Low visibility", "Thunderstorm", "Thunder nearby"};
+    g_display.setAirfield(g_mood, shortText);
+    g_webConfig.setAirfield(kMoodNames[g_mood & 3], longText);
+}
+
 static void saveStats()
 {
     StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
@@ -972,7 +1064,7 @@ void loop()
             NetBusy busy;
             StageTrace::mark(StageTrace::Main, StageTrace::MainWeather);
             gotWeather = tlsAffordable("weather") &&
-                         Weather::fetch(m, g_originIds, [](const Metar &o) { g_display.setOriginWeather(o); });
+                         Weather::fetch(m, g_originIds, [](const Metar &o) { g_display.setOriginWeather(o); }, &g_taf);
         }
         heapCheckpoint("weather fetch");
         if (gotWeather)
@@ -984,6 +1076,7 @@ void loop()
             g_display.setWeather(g_metar);
             g_webConfig.setWeather(g_metar.raw);
             if (changed) Log.printf("Weather: %s -> \"%s\"\n", g_metar.raw, line);
+            airfieldCheck();
         }
         else
             g_lastMetarMs = millis() - kMetarEveryMs + 60000;   // retry in a minute
