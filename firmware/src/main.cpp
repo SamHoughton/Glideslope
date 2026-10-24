@@ -1108,6 +1108,7 @@ void loop()
             char line[24];
             Weather::line(g_metar, line, sizeof(line));
             g_display.setWeather(g_metar);
+            Weather::setQnh(g_metar.qnh);   // real heights near the airport (8.3)
             g_webConfig.setWeather(g_metar.raw);
             if (changed) Log.printf("Weather: %s -> \"%s\"\n", g_metar.raw, line);
             airfieldCheck();

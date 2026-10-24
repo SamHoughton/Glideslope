@@ -159,6 +159,21 @@ void test_metar_mood()
     TEST_ASSERT_EQUAL(Weather::StormNear, Weather::mood(m));
 }
 
+void test_qnh_heights()
+{
+    // 991 hPa: a pressure altitude of 684 ft on the runway is really 83 ft.
+    Weather::setQnh(991);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 83.0, Weather::qnhAltitudeM(684 / 3.28084) * 3.28084);
+    // A flight level stays a flight level; halfway through the fade, half.
+    TEST_ASSERT_FLOAT_WITHIN(1.0, 35000.0, Weather::qnhAltitudeM(35000 / 3.28084) * 3.28084);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 6500.0 - 300.4, Weather::qnhAltitudeM(6500 / 3.28084) * 3.28084);
+    // High pressure lifts them; no report, no change.
+    Weather::setQnh(1030);
+    TEST_ASSERT_FLOAT_WITHIN(2.0, 1453.0, Weather::qnhAltitudeM(1000 / 3.28084) * 3.28084);
+    Weather::setQnh(0);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 1000.0, Weather::qnhAltitudeM(1000 / 3.28084) * 3.28084);
+}
+
 void test_taf_and_runway_outlook()
 {
     const time_t day = 1792800000;            // 24 Oct 2026 00:00 UTC
@@ -815,5 +830,6 @@ int main(int, char **)
     RUN_TEST(test_http_request);
     RUN_TEST(test_metar_mood);
     RUN_TEST(test_taf_and_runway_outlook);
+    RUN_TEST(test_qnh_heights);
     return UNITY_END();
 }

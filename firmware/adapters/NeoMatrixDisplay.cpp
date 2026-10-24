@@ -66,6 +66,7 @@ void requestPanelMessage(const char *text, uint32_t ms)
 }
 
 void requestGoAroundDemo() { s_goAroundDemo = true; }
+void requestGoAroundAlertDemo() { s_gaAlertDemo = true; }
 
 void requestRareSpotDemo() { s_rareDemo = true; }
 
@@ -286,6 +287,27 @@ void NeoMatrixDisplay::noteTraffic(const std::vector<StateVector> &states)
             Log.printf("Traffic: %s GO-AROUND%s%s (%d ft)\n", id, rwy[0] ? " off " : "", rwy, alt);
             Notify::post(Notify::GoAround, 4, "arrows_counterclockwise", "Go-around",
                          "%s went around at %d ft%s%s", id, alt, rwy[0] ? " off " : "", rwy);
+            // On the panel too (8.3). The card's own aircraft only skips it
+            // when its go-around scene has already started; otherwise the
+            // card is told (GO AROUND, no landing) and the alert plays. (The
+            // card's own check works from its telemetry, which can lag:
+            // BA7Y went around on the card and nothing showed.)
+            const bool onCard = _hasCurrent && (_current.flight.ident_icao.equalsIgnoreCase(id) ||
+                                                _current.flight.ident.equalsIgnoreCase(id));
+            if (onCard && !_current.goAround)
+            {
+                _current.goAround = true;
+                _current.goAroundMs = now;
+                _current.goAroundAnimPending = false;
+            }
+            if (!(onCard && _landingActive && _sceneKind == LandingScene::GoAround))
+            {
+                strlcpy(_gaIdent, id, sizeof(_gaIdent));
+                strlcpy(_gaRwy, rwy, sizeof(_gaRwy));
+                _gaAlt = alt;
+                _gaQueuedMs = now;
+                _gaPending = true;
+            }
         }
     }
     _holds.noteStates(states, now);

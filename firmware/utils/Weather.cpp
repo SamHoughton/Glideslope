@@ -281,6 +281,20 @@ void Weather::pressure(const Metar &m, char *out, size_t len)
     else if (len)      out[0] = '\0';
 }
 
+namespace { volatile int s_qnh = 0; }
+
+void Weather::setQnh(int hPa) { s_qnh = (hPa >= 900 && hPa <= 1080) ? hPa : 0; }
+
+double Weather::qnhAltitudeM(double pressureAltM)
+{
+    const int qnh = s_qnh;
+    if (!qnh || isnan(pressureAltM)) return pressureAltM;
+    const double ft = pressureAltM * 3.28084;
+    const double full = (qnh - 1013.25) * 27.0;   // ft
+    const double k = ft <= 6000 ? 1.0 : ft >= 7000 ? 0.0 : (7000 - ft) / 1000.0;
+    return (ft + full * k) / 3.28084;
+}
+
 void Weather::components(const Metar &m, int runwayDeg, int &crossKt, int &tailKt)
 {
     crossKt = tailKt = 0;

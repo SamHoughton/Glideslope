@@ -7,6 +7,37 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 8.3.0 (24 Oct 2026)
+
+**New**
+- **Go-arounds you can't miss**: one anywhere in range now takes over the
+  panel for ten seconds: a flashing amber frame, GO-AROUND, the flight, the
+  runway and height, and its track climbing away. (Before, only the
+  aircraft on the card played its scene; the rest went to the spotter log
+  and your phone.) Day and night, after any landing already playing. A
+  demo under Animations, More.
+- **A route memory**: every route the board learns is kept in its flash
+  (about 5,000 of them), and fills in when the online sources come up
+  empty: a regular like VIR156T (Las Vegas, almost daily), which adsb.im
+  doesn't know, only has to be found once.
+- **More rare spots**: the A340, MD-11, DC-10, 757, A318, A300/A310,
+  BAe 146 and Avro RJ, Il-76 and Il-96, Beluga XL and Dreamlifter, with the
+  A380, 747, An-124 and Concorde.
+
+**Fixes**
+- **Real heights near the airport**: aircraft report their height against
+  standard pressure, so on a low-pressure day they seemed to land at 500 ft
+  or more (at 991 hPa, Heathrow's runway reads about 680 ft). Below 6,000 ft
+  heights are now corrected to the airport's pressure from the METAR, as a
+  pilot's altimeter is; flight levels above stay as they are.
+- The next aircraft to land always gets the card: one no route database
+  knew (VIR156T) was dropped and a later arrival shown instead. Without a
+  route its card shows the airline.
+- A go-around by the aircraft on the card could go unshown; it now always
+  gets the alert.
+- The next to land without a route is looked up again after 30 seconds
+  rather than 5 minutes.
+
 ## 8.2.1 (24 Oct 2026)
 
 **Fixes**

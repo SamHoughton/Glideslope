@@ -1246,6 +1246,60 @@ void InfoScreens::renderRareBanner(FrameCanvas &c, const char *line1, const char
     centredL(c, 28, line2, kGold, big);
 }
 
+namespace
+{
+    // 1200 -> "1,200"
+    void thousandsFt(int v, char *out, size_t len)
+    {
+        if (v >= 1000) snprintf(out, len, "%d,%03d", v / 1000, v % 1000);
+        else           snprintf(out, len, "%d", v);
+    }
+}
+
+void InfoScreens::renderGoAroundAlert(FrameCanvas &c, const char *ident, const char *runway, int altFt, uint32_t tMs)
+{
+    c.clear();
+    const Rgb amber{255, 170, 30};
+    // The frame: flashing for four seconds, then steady.
+    const bool flashing = tMs < 4000;
+    const bool on = !flashing || (tMs / 250) % 2 == 0;
+    const Rgb frame = on ? amber : Rgb{80, 50, 8};
+    for (int i = 0; i < 2; ++i)
+    {
+        for (int x = 0; x < FrameCanvas::W; ++x) { c.set(x, i, frame); c.set(x, FrameCanvas::H - 1 - i, frame); }
+        for (int y = 0; y < FrameCanvas::H; ++y) { c.set(i, y, frame); c.set(FrameCanvas::W - 1 - i, y, frame); }
+    }
+    centredL(c, 5, "Go-around", flashing && !on ? Rgb{255, 255, 255} : amber, Fonts::Large);
+    centredL(c, 22, ident, kTitle, Fonts::Medium);
+    char detail[32];
+    char alt[12];
+    thousandsFt(altFt, alt, sizeof(alt));
+    if (runway && runway[0]) snprintf(detail, sizeof(detail), "Off %s, at %s ft", runway, alt);
+    else                     snprintf(detail, sizeof(detail), "At %s ft", alt);
+    centred(c, 37, detail, Rgb{200, 205, 215});
+
+    // The track: down the approach, then up and away, drawn on over two seconds.
+    const float drawn = fminf(1.0f, tMs / 2000.0f);
+    constexpr int kSteps = 60;
+    int hx = 0, hy = 0;
+    for (int i = 0; i <= kSteps; ++i)
+    {
+        const float f = (float)i / kSteps;
+        if (f > drawn) break;
+        const float x = 8 + f * 112;
+        const float d = x - 46;   // the lowest point, where it went around
+        const float y = 58 - 0.0018f * d * d * (d < 0 ? 1.0f : 2.4f) + (d < 0 ? 0 : 0);
+        hx = (int)lroundf(x);
+        hy = (int)lroundf(fmaxf(46, fminf(60, y)));
+        if (i % 2 == 0) c.set(hx, hy, d < 0 ? Rgb{90, 100, 120} : amber);
+    }
+    // The aircraft at the head of the track.
+    c.set(hx, hy, Rgb{255, 255, 255});
+    c.set(hx - 1, hy, Rgb{255, 255, 255});
+    c.set(hx, hy - 1, Rgb{200, 200, 210});
+    c.set(hx - 1, hy + 1, Rgb{200, 200, 210});
+}
+
 void InfoScreens::renderMoodBanner(FrameCanvas &c, uint8_t style, const char *line1, const char *line2, uint32_t tMs)
 {
     c.clear();

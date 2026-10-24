@@ -292,6 +292,7 @@ void WebConfig::loop()
         sendHttp(client, 200, "application/json", "{\"ok\":true}");
     }
     else if (r.path == "/api/demo/goaround" && r.method == "POST") { requestGoAroundDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/goaround-alert" && r.method == "POST") { requestGoAroundAlertDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/flyacross" && r.method == "POST")
     {
         const String dir = qparam(r.query, "dir");

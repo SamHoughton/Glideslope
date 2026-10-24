@@ -10,6 +10,10 @@ Output: Returns displayable flight count; fills outStates/outFlights.
 */
 #include <algorithm>
 #include "core/FlightDataFetcher.h"
+#include "config/Airport.h"
+#include "config/Airports.h"
+#include "utils/RouteBook.h"
+#include "utils/Weather.h"
 #include "config/RuntimeConfig.h"
 #include "adapters/FlightWallFetcher.h"
 #include "utils/TelnetLogger.h"
@@ -105,6 +109,9 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
 
     const RuntimeConfig cfg = configSnapshot();   // centre and radius from the same settings
     bool ok = _stateFetcher->fetchStateVectors(cfg.center_lat, cfg.center_lon, cfg.radius_km, outStates);
+    // Real heights near the airport (8.3): corrected to the airport's
+    // pressure, before anything uses them (utils/Weather.h).
+    for (StateVector &s : outStates) s.baro_altitude = Weather::qnhAltitudeM(s.baro_altitude);
     _lastFetchOk = ok;
     heapCheckpoint("position fetch");
     if (!ok)
@@ -175,8 +182,25 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             // Cache miss — fetch from hexdb (primary) / AeroAPI (fallback)
             Log.printf("FlightDataFetcher: [%u/%u] fetching %s\n",
                        stateIdx, totalStates, s.callsign.c_str());
-            const bool fetchOk = _flightFetcher->fetchFlightInfo(s.callsign, s.icao24, info);
+            bool fetchOk = _flightFetcher->fetchFlightInfo(s.callsign, s.icao24, info);
             heapCheckpoint("route lookup");
+            // The route book (8.3): every route learned is kept in flash, and
+            // fills in when the online sources come up empty.
+            {
+                char o[5], d[5];
+                if (info.origin.code_icao.length() && info.destination.code_icao.length())
+                    RouteBook::remember(s.callsign.c_str(), info.origin.code_icao.c_str(), info.destination.code_icao.c_str());
+                else if (RouteBook::find(s.callsign.c_str(), o, d))
+                {
+                    char iata[4];
+                    info.origin.code_icao = o;
+                    info.destination.code_icao = d;
+                    info.origin.code_iata = Airports::icaoToIata(o, iata) ? iata : "";
+                    info.destination.code_iata = Airports::icaoToIata(d, iata) ? iata : "";
+                    fetchOk = true;
+                    Log.printf("FlightDataFetcher: %s from the route book: %s>%s\n", s.callsign.c_str(), o, d);
+                }
+            }
 
             if (info.ident.length() == 0)
                 info.ident = s.callsign;
@@ -201,9 +225,12 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             {
                 const bool hasRoute = info.origin.code_icao.length() > 0 &&
                                       info.destination.code_icao.length() > 0;
-                const unsigned long ttlMs = hasRoute
+                unsigned long ttlMs = hasRoute
                     ? cacheTtlMs
                     : (unsigned long)g_config.aeroapi_fail_cache_ttl_seconds * 1000UL;
+                // The next to land without a route: look again in 30 s, not
+                // minutes (it will have landed by then).
+                if (!hasRoute && statePriority(s) < 1000.0f && ttlMs > 30000UL) ttlMs = 30000UL;
                 // The same call sign's slot, else a free one, else the one
                 // closest to expiry.
                 CachedFlightEntry *slot = cacheFind(s.callsign);
@@ -269,6 +296,15 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         // AeroAPI values always take priority since they are more authoritative.
         if (info.registration.length() == 0 && s.registration.length() > 0)
             info.registration = s.registration;
+        // On final here, it is landing here, route or no route (8.3: a
+        // Virgin tour flight, VIR156T, that no route database knew was
+        // dropped and a later BA got the card). Where it came from stays
+        // unknown; the card shows the airline instead of the route.
+        if (info.destination.code_icao.length() == 0 && statePriority(s) < 1000.0f)
+        {
+            info.destination.code_icao = g_airport.icao;
+            info.destination.code_iata = g_airport.iata;
+        }
         if (info.aircraft_code.length() == 0 && s.aircraft_type.length() > 0)
             info.aircraft_code = s.aircraft_type;
 
@@ -278,8 +314,8 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         // have one routed result so distant aircraft don't consume hexdb calls.
         if (g_config.display_nearest_only)
         {
-            const bool hasRoute = info.origin.code_icao.length() > 0 &&
-                                  info.destination.code_icao.length() > 0;
+            const bool hasRoute = info.destination.code_icao.length() > 0 &&
+                                  (info.origin.code_icao.length() > 0 || info.destination.code_icao == g_airport.icao);
             if (hasRoute)
             {
                 Log.printf("FlightDataFetcher: nearest routed flight (%s) — stopping early\n",
@@ -289,13 +325,14 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         }
     }
 
-    // Filter: discard flights without a complete route (general aviation, unidentified)
+    // Filter: discard flights without a complete route (general aviation,
+    // unidentified), except those landing here (no origin needed).
     const size_t beforeFilter = outFlights.size();
     outFlights.erase(
         std::remove_if(outFlights.begin(), outFlights.end(),
             [](const FlightInfo &f) {
-                return f.origin.code_icao.length() == 0 ||
-                       f.destination.code_icao.length() == 0;
+                return f.destination.code_icao.length() == 0 ||
+                       (f.origin.code_icao.length() == 0 && f.destination.code_icao != g_airport.icao);
             }),
         outFlights.end());
     Log.printf("FlightDataFetcher: %u flights before filter, %u after\n",
