@@ -7,6 +7,14 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 8.2.1 (24 Oct 2026)
+
+**Fixes**
+- Updates at a tap could stop part-way on a board that had been up for an
+  hour or two (its memory too fragmented for a 1.7 MB download). The board
+  now restarts first and downloads the update straight after, before
+  anything else starts; it is installed in well under a minute.
+
 ## 8.2.0 (24 Oct 2026)
 
 The airfield's moods, and a board that looks after itself.
