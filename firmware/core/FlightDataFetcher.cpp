@@ -11,6 +11,8 @@ Output: Returns displayable flight count; fills outStates/outFlights.
 #include <algorithm>
 #include "core/FlightDataFetcher.h"
 #include "config/Airport.h"
+#include "config/Airports.h"
+#include "utils/RouteBook.h"
 #include "config/RuntimeConfig.h"
 #include "adapters/FlightWallFetcher.h"
 #include "utils/TelnetLogger.h"
@@ -176,8 +178,25 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             // Cache miss — fetch from hexdb (primary) / AeroAPI (fallback)
             Log.printf("FlightDataFetcher: [%u/%u] fetching %s\n",
                        stateIdx, totalStates, s.callsign.c_str());
-            const bool fetchOk = _flightFetcher->fetchFlightInfo(s.callsign, s.icao24, info);
+            bool fetchOk = _flightFetcher->fetchFlightInfo(s.callsign, s.icao24, info);
             heapCheckpoint("route lookup");
+            // The route book (8.3): every route learned is kept in flash, and
+            // fills in when the online sources come up empty.
+            {
+                char o[5], d[5];
+                if (info.origin.code_icao.length() && info.destination.code_icao.length())
+                    RouteBook::remember(s.callsign.c_str(), info.origin.code_icao.c_str(), info.destination.code_icao.c_str());
+                else if (RouteBook::find(s.callsign.c_str(), o, d))
+                {
+                    char iata[4];
+                    info.origin.code_icao = o;
+                    info.destination.code_icao = d;
+                    info.origin.code_iata = Airports::icaoToIata(o, iata) ? iata : "";
+                    info.destination.code_iata = Airports::icaoToIata(d, iata) ? iata : "";
+                    fetchOk = true;
+                    Log.printf("FlightDataFetcher: %s from the route book: %s>%s\n", s.callsign.c_str(), o, d);
+                }
+            }
 
             if (info.ident.length() == 0)
                 info.ident = s.callsign;
@@ -202,9 +221,12 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
             {
                 const bool hasRoute = info.origin.code_icao.length() > 0 &&
                                       info.destination.code_icao.length() > 0;
-                const unsigned long ttlMs = hasRoute
+                unsigned long ttlMs = hasRoute
                     ? cacheTtlMs
                     : (unsigned long)g_config.aeroapi_fail_cache_ttl_seconds * 1000UL;
+                // The next to land without a route: look again in 30 s, not
+                // minutes (it will have landed by then).
+                if (!hasRoute && statePriority(s) < 1000.0f && ttlMs > 30000UL) ttlMs = 30000UL;
                 // The same call sign's slot, else a free one, else the one
                 // closest to expiry.
                 CachedFlightEntry *slot = cacheFind(s.callsign);

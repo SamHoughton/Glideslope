@@ -16,6 +16,13 @@ namespace
         {"B74",  true,  "747"},
         {"A124", false, "AN-124"}, {"A225", false, "AN-225"},
         {"CONC", false, "CONCORDE"},
+        // 8.3: types that have become unusual at Heathrow.
+        {"A34",  true,  "A340"},   {"MD11", false, "MD-11"},  {"DC10", false, "DC-10"},
+        {"B75",  true,  "757"},    {"A318", false, "A318"},
+        {"A306", false, "A300"},   {"A30B", false, "A300"},   {"A310", false, "A310"},
+        {"B46",  true,  "BAE 146"}, {"RJ",  true,  "AVRO RJ"},
+        {"IL76", false, "IL-76"},  {"IL96", false, "IL-96"},
+        {"A337", false, "BELUGA XL"}, {"BLCF", false, "DREAMLIFTER"},
     };
     // Military types (any operator).
     const char *const kMilitaryTypes[] = {

@@ -16,6 +16,22 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   aircraft on the card played its scene; the rest went to the spotter log
   and your phone.) Day and night, after any landing already playing. A
   demo under Animations, More.
+- **A route memory**: every route the board learns is kept in its flash
+  (about 5,000 of them), and fills in when the online sources come up
+  empty: a regular like VIR156T (Las Vegas, almost daily), which adsb.im
+  doesn't know, only has to be found once.
+- **More rare spots**: the A340, MD-11, DC-10, 757, A318, A300/A310,
+  BAe 146 and Avro RJ, Il-76 and Il-96, Beluga XL and Dreamlifter, with the
+  A380, 747, An-124 and Concorde.
+
+**Fixes**
+- The next aircraft to land always gets the card: one no route database
+  knew (VIR156T) was dropped and a later arrival shown instead. Without a
+  route its card shows the airline.
+- A go-around by the aircraft on the card could go unshown; it now always
+  gets the alert.
+- The next to land without a route is looked up again after 30 seconds
+  rather than 5 minutes.
 
 ## 8.2.1 (24 Oct 2026)
 
