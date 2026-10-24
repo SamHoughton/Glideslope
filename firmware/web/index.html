@@ -48,6 +48,8 @@ h3{font-size:13px;color:var(--text);margin:16px 0 8px;font-weight:600}
 h3:first-child{margin-top:0}
 
 /* The panel */
+.liverow{display:flex;align-items:center;gap:12px;margin-top:10px;font-size:13px;color:var(--muted)}
+.liverow button{padding:6px 14px}
 .bezel{background:#05070a;border:1px solid #1e2631;border-radius:12px;padding:12px;box-shadow:inset 0 0 0 1px #0d1117,0 10px 30px rgba(0,0,0,.45)}
 #dmp{display:block;width:100%;height:auto;aspect-ratio:2/1;border-radius:4px;background:#05070a}
 .now{margin-top:14px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;min-height:30px}
@@ -152,6 +154,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
   <div class="card">
     <h2>On the panel</h2>
     <div class="bezel"><canvas id="dmp" width="768" height="384"></canvas></div>
+    <div class="liverow"><button id="livebtn" class="pri">&#9654; Live</button><span id="livest">A still of the panel. Live shows it moving for two minutes.</span></div>
     <div class="now" id="now"><span class="idle">&nbsp;</span></div>
   </div>
   <div class="card" id="today">
@@ -437,7 +440,7 @@ $('ntt').addEventListener('click',function(){var t=$('ntfy_topic').value.trim();
   .catch(function(){$('ntst').textContent='Could not reach the board';});});
 var bt;$('display_brightness').addEventListener('input',function(e){$('bv').textContent=e.target.value;clearTimeout(bt);
   bt=setTimeout(function(){post('/api/config',{display_brightness:parseInt(e.target.value)});},250);});
-document.querySelectorAll('[data-demo]').forEach(function(b){b.addEventListener('click',function(){post('/api/demo/'+b.dataset.demo);});});
+document.querySelectorAll('[data-demo]').forEach(function(b){b.addEventListener('click',function(){post('/api/demo/'+b.dataset.demo);startLive(60000);});});   // a demo: watch it
 
 // System.
 $('rst').addEventListener('click',function(){if(!confirm('Reset all settings to the firmware defaults?'))return;post('/api/config/reset').then(function(){load();status('Reset to defaults',3000);});});
@@ -545,12 +548,24 @@ function draw(px){var a=img.data;
   g.globalCompositeOperation='source-over';g.globalAlpha=1;}
 var lastPx=null,still=0;
 function same(a,b){if(!b)return false;for(var i=0;i<8192;i+=1)if(a[i]!==b[i])return false;return true;}
-function pollFrame(){if(document.hidden){setTimeout(pollFrame,3000);return;}
+// The panel's picture (8.1): one still when the page opens, and moving
+// only while asked for (two minutes from the Live button or a demo), never
+// while the page is hidden: each frame is a new connection to the board.
+var liveUntil=0,liveRunning=false,liveTimer=null;
+function liveOn(){return liveUntil>Date.now()&&!document.hidden;}
+function liveLabel(){var b=$('livebtn'),s=$('livest');
+  if(liveOn()){var left=Math.ceil((liveUntil-Date.now())/1000);b.innerHTML='&#9632; Stop';s.textContent='Live, '+Math.floor(left/60)+':'+('0'+left%60).slice(-2)+' left';}
+  else{b.innerHTML='&#9654; Live';s.textContent='A still of the panel. Live shows it moving for two minutes.';}}
+function startLive(ms){liveUntil=Date.now()+(ms||120000);liveLabel();if(!liveRunning){liveRunning=true;pollFrame();}
+  if(!liveTimer)liveTimer=setInterval(function(){liveLabel();if(!liveOn()){clearInterval(liveTimer);liveTimer=null;}},1000);}
+$('livebtn').addEventListener('click',function(){if(liveOn()){liveUntil=0;liveLabel();}else startLive();});
+document.addEventListener('visibilitychange',function(){liveLabel();});
+function pollFrame(){
   fetch('/api/frame?z=1',{cache:'no-store'}).then(function(r){return r.arrayBuffer();}).then(function(ab){var u=new Uint8Array(ab),px=new Uint16Array(8192),o=0;
     for(var j=0;j+2<u.length&&o<8192;j+=3){var v=u[j+1]|(u[j+2]<<8);for(var k=u[j];k>0&&o<8192;k--)px[o++]=v;}
     if(o<8192)return;
     if(same(px,lastPx)){still++;return;}still=0;lastPx=px;requestAnimationFrame(function(){draw(px);});})
-  .catch(function(){}).finally(function(){setTimeout(pollFrame,still>3?3000:1000);});}   // each frame is a new connection: gently
+  .catch(function(){}).finally(function(){if(liveOn())setTimeout(pollFrame,still>3?1500:500);else liveRunning=false;});}
 
 // Log, timestamps in amber.
 function poll(){if(document.hidden||!$('t-log').classList.contains('on')){setTimeout(poll,3000);return;}
@@ -562,7 +577,7 @@ function poll(){if(document.hidden||!$('t-log').classList.contains('on')){setTim
       cur=d.cursor;if(atEnd)lb.scrollTop=lb.scrollHeight;}
   }).catch(function(){}).finally(function(){setTimeout(poll,1500);});}
 
-load();pollStatus();pollNow();pollFrame();poll();
+load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one still (the loop ends unless Live is on)
 
 // Today (7.1): the runway rhythm and the spotter log.
 (function(){
