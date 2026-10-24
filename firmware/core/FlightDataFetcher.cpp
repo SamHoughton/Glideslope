@@ -10,6 +10,7 @@ Output: Returns displayable flight count; fills outStates/outFlights.
 */
 #include <algorithm>
 #include "core/FlightDataFetcher.h"
+#include "config/Airport.h"
 #include "config/RuntimeConfig.h"
 #include "adapters/FlightWallFetcher.h"
 #include "utils/TelnetLogger.h"
@@ -269,6 +270,15 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         // AeroAPI values always take priority since they are more authoritative.
         if (info.registration.length() == 0 && s.registration.length() > 0)
             info.registration = s.registration;
+        // On final here, it is landing here, route or no route (8.3: a
+        // Virgin tour flight, VIR156T, that no route database knew was
+        // dropped and a later BA got the card). Where it came from stays
+        // unknown; the card shows the airline instead of the route.
+        if (info.destination.code_icao.length() == 0 && statePriority(s) < 1000.0f)
+        {
+            info.destination.code_icao = g_airport.icao;
+            info.destination.code_iata = g_airport.iata;
+        }
         if (info.aircraft_code.length() == 0 && s.aircraft_type.length() > 0)
             info.aircraft_code = s.aircraft_type;
 
@@ -278,8 +288,8 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         // have one routed result so distant aircraft don't consume hexdb calls.
         if (g_config.display_nearest_only)
         {
-            const bool hasRoute = info.origin.code_icao.length() > 0 &&
-                                  info.destination.code_icao.length() > 0;
+            const bool hasRoute = info.destination.code_icao.length() > 0 &&
+                                  (info.origin.code_icao.length() > 0 || info.destination.code_icao == g_airport.icao);
             if (hasRoute)
             {
                 Log.printf("FlightDataFetcher: nearest routed flight (%s) — stopping early\n",
@@ -289,13 +299,14 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
         }
     }
 
-    // Filter: discard flights without a complete route (general aviation, unidentified)
+    // Filter: discard flights without a complete route (general aviation,
+    // unidentified), except those landing here (no origin needed).
     const size_t beforeFilter = outFlights.size();
     outFlights.erase(
         std::remove_if(outFlights.begin(), outFlights.end(),
             [](const FlightInfo &f) {
-                return f.origin.code_icao.length() == 0 ||
-                       f.destination.code_icao.length() == 0;
+                return f.destination.code_icao.length() == 0 ||
+                       (f.origin.code_icao.length() == 0 && f.destination.code_icao != g_airport.icao);
             }),
         outFlights.end());
     Log.printf("FlightDataFetcher: %u flights before filter, %u after\n",
