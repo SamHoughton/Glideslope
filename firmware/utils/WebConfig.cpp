@@ -12,6 +12,7 @@ WebServer library to avoid framework include-path issues.
 #include "utils/ImageCheck.h"
 #include "utils/Ota.h"
 #include "utils/Health.h"
+#include "utils/Liveries.h"
 #include "config/RuntimeConfig.h"
 #include "config/Airport.h"
 #include <LittleFS.h>
@@ -71,7 +72,7 @@ bool WebConfig::hostAllowed(const String &hostPort)
 
 bool WebConfig::needsToken(const String &p)
 {
-    return p == "/api/update" || p == "/api/update/github" || p == "/api/airport" || p == "/api/logo" || p == "/api/airport/reset" || p == "/api/config" ||
+    return p == "/api/update" || p == "/api/update/github" || p == "/api/liveries" || p == "/api/airport" || p == "/api/logo" || p == "/api/airport/reset" || p == "/api/config" ||
            p == "/api/config/reset" || p == "/api/restart" || p == "/api/wifi/reset" ||
            p == "/api/coredump/erase" || p == "/api/notify/test";
 }
@@ -268,9 +269,18 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/clock"    && r.method == "POST") { requestScreenPreview(2, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/nightwatch" && r.method == "POST") { requestScreenPreview(9, 20000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/summary"  && r.method == "POST") { requestScreenPreview(7, 15000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/year"     && r.method == "POST") { requestScreenPreview(10, 20000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/history/days"       && r.method == "GET") Logbook::writeDaysCsv(client);
     else if (r.path == "/api/history/events"     && r.method == "GET") Logbook::writeEventsCsv(client);
     else if (r.path == "/api/history/collection" && r.method == "GET") Logbook::writeCollectionCsv(client);
+    else if (r.path == "/api/history/airframes"  && r.method == "GET") Logbook::writeAirframesCsv(client);
+    else if (r.path == "/api/liveries"           && r.method == "GET") { String t; Liveries::read(t); sendHttp(client, 200, "text/plain; charset=utf-8", t); }
+    else if (r.path == "/api/liveries"           && r.method == "POST")
+    {
+        const bool ok = Liveries::write(r.body);
+        sendHttp(client, ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"too long (4 KB at most)\"}");
+    }
+    else if (r.path == "/api/logo"               && r.method == "GET") handleGetLogo(client, r);
     else if (r.path == "/api/history/records"    && r.method == "GET")
     {
         String body;
@@ -288,7 +298,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/mood"     && r.method == "POST")
     {
         const String k = qparam(r.query, "kind");
-        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : 1);
+        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : k == "livery" ? 4 : 1);
         sendHttp(client, 200, "application/json", "{\"ok\":true}");
     }
     else if (r.path == "/api/demo/goaround" && r.method == "POST") { requestGoAroundDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -952,6 +962,30 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
 // An airline logo from the web page (converted to 32x32 RGB565 in the
 // browser): POST /api/logo?code=CTN with exactly 2,048 bytes; &delete=1
 // removes one.
+// A logo's 2 KB of RGB565 (9.0: the sticker book draws them), streamed
+// from its file; 404 if the board has none.
+void WebConfig::handleGetLogo(WiFiClient &c, const Req &r)
+{
+    String code = qparam(r.query, "code");
+    code.toUpperCase();
+    bool ok = code.length() >= 2 && code.length() <= 4;
+    for (size_t i = 0; ok && i < code.length(); ++i) ok = isalnum((unsigned char)code[i]);
+    File f;
+    if (ok) f = LittleFS.open(String("/logos/") + code + ".bin", "r");
+    if (!f || f.size() != LogoBook::kBytes)
+    {
+        if (f) f.close();
+        sendHttp(c, 404, "text/plain", "no logo");
+        return;
+    }
+    c.printf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %u\r\n"
+             "Cache-Control: max-age=86400\r\nConnection: close\r\n\r\n", (unsigned)LogoBook::kBytes);
+    uint8_t buf[256];
+    size_t n;
+    while ((n = f.read(buf, sizeof(buf))) > 0 && c.connected()) c.write(buf, n);
+    f.close();
+}
+
 void WebConfig::handleLogo(WiFiClient &c, const Req &r)
 {
     String code = qparam(r.query, "code");

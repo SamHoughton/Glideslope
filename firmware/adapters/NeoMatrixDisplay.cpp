@@ -485,6 +485,12 @@ void NeoMatrixDisplay::showMood(uint8_t style, const char *line1, const char *li
     _newsPending = true;
 }
 
+void NeoMatrixDisplay::setYear(const Logbook::Year &y)
+{
+    Lock l(_lock);
+    _year = y;
+}
+
 void NeoMatrixDisplay::setAirfield(uint8_t mood, const char *outlook)
 {
     Lock l(_lock);

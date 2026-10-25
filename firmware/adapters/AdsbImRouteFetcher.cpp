@@ -58,6 +58,14 @@ bool AdsbImRouteFetcher::fetchFlightInfo(const String &callsign, const String &i
         return false;
     }
     splitPair(r["_airport_codes_iata"] | "", fromIata, toIata);
+    // A route adsb.im itself calls implausible (DLH7KX "Munich to Bremen"
+    // while landing at Heathrow) is no route: the next source is asked,
+    // and the route book never learns it (9.0).
+    if (!(r["plausible"] | true))
+    {
+        Log.printf("AdsbImRouteFetcher: %s %s>%s implausible, asking elsewhere\n", callsign.c_str(), fromIcao.c_str(), toIcao.c_str());
+        return false;
+    }
     outInfo.origin.code_icao = fromIcao;
     outInfo.destination.code_icao = toIcao;
     outInfo.origin.code_iata = fromIata;
@@ -71,8 +79,7 @@ bool AdsbImRouteFetcher::fetchFlightInfo(const String &callsign, const String &i
         if (fw.getAirlineName(outInfo.operator_icao, name) && name.length())
             outInfo.airline_display_name_full = name;
     }
-    Log.printf("AdsbImRouteFetcher: %s %s>%s%s\n", callsign.c_str(),
-               (fromIata.length() ? fromIata : fromIcao).c_str(), (toIata.length() ? toIata : toIcao).c_str(),
-               (r["plausible"] | true) ? "" : " (implausible)");
+    Log.printf("AdsbImRouteFetcher: %s %s>%s\n", callsign.c_str(),
+               (fromIata.length() ? fromIata : fromIcao).c_str(), (toIata.length() ? toIata : toIcao).c_str());
     return true;
 }

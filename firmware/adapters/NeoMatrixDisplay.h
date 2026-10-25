@@ -56,7 +56,8 @@ void requestGoAroundAlertDemo();   // 8.3: the alert for one in range
 
 // Show the rare-spot flourish on the current card (demo).
 void requestRareSpotDemo();
-// The airfield's mood banners (8.2): 1 low visibility, 2 thunderstorm, 3 runway change due.
+// The airfield's mood banners (8.2): 1 low visibility, 2 thunderstorm, 3 runway change due;
+// 4 a special livery (9.0).
 void requestMoodDemo(uint8_t style);
 
 // Play the take-off scene for the current card (demo).
@@ -138,6 +139,9 @@ public:
     // screen says (mood: Weather::Mood; outlook: "To 09 at 19:00" or "").
     void showMood(uint8_t style, const char *line1, const char *line2);
     void setAirfield(uint8_t mood, const char *outlook);
+    // The year so far (9.0), from the logbook: on the stats screen from 26
+    // December to 2 January (and on demand).
+    void setYear(const Logbook::Year &y);
     bool hasOriginWeather(const char *icao);
 
     // Today's stats from every aircraft in range (call once per fetch), and
@@ -256,6 +260,8 @@ private:
     uint8_t              _newsStyle = 0;              // 0 gold (logbook), else a mood banner
     unsigned long        _newsQueuedMs = 0;
     uint8_t              _mood = 0;
+    Logbook::Year        _year;
+    bool                 yearSeason() const;
     // A go-around anywhere in range (8.3): taken over the panel once.
     char                 _gaIdent[10] = "", _gaRwy[4] = "";
     int                  _gaAlt = 0;
@@ -271,7 +277,7 @@ private:
     struct OriginWx { char icao[5]; int8_t tempC; uint8_t cloud; char wx[8]; int16_t visM; uint32_t atMs; };
     OriginWx             _origins[6] = {};
     bool                 originMetar(const char *icao, Metar &out) const;   // under the lock
-    int                  statsPageList(uint8_t *out) const;   // out: room for 5
+    int                  statsPageList(uint8_t *out) const;   // out: room for 10
     // On final: the card alternates with the route globe and the aircraft
     // page, back to the card for good 40 s out (renderLanding comes first
     // every frame, so a landing always plays).

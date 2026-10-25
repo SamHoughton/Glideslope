@@ -99,6 +99,7 @@ private:
     static String header(const String &raw, const char *name);
     static bool hostAllowed(const String &host);
     static bool needsToken(const String &path);
+    void handleGetLogo(WiFiClient &c, const Req &r);
     void handleLogo(WiFiClient &c, const Req &r);
 
     // Helpers

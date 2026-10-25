@@ -26,6 +26,7 @@ unsigned long g_fakeMillis = 1000;
 #include <LittleFS.h>
 #include <algorithm>
 #include "utils/Weather.h"
+#include "utils/Airframes.h"
 #include "adapters/ReadsbParser.h"
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -94,6 +95,9 @@ void test_metar_uk()
     TEST_ASSERT_EQUAL(17, m.tempC);
     TEST_ASSERT_EQUAL(1019, m.qnh);
     TEST_ASSERT_EQUAL_STRING("EGLL", m.station);   // which airport the report is from (8.0)
+    TEST_ASSERT_EQUAL(15, m.obsDay);                 // observed 151720Z (9.0)
+    TEST_ASSERT_EQUAL(17, m.obsHour);
+    TEST_ASSERT_EQUAL(20, m.obsMin);
     TEST_ASSERT_EQUAL_STRING("-RA", m.wx);
     char line[40];
     Weather::friendly(m, line, sizeof(line));
@@ -172,6 +176,37 @@ void test_qnh_heights()
     TEST_ASSERT_FLOAT_WITHIN(2.0, 1453.0, Weather::qnhAltitudeM(1000 / 3.28084) * 3.28084);
     Weather::setQnh(0);
     TEST_ASSERT_FLOAT_WITHIN(0.01, 1000.0, Weather::qnhAltitudeM(1000 / 3.28084) * 3.28084);
+}
+
+// -- The airframe collection (9.0) -----------------------------------------
+void test_airframes()
+{
+    struct Mem : Airframes::Store
+    {
+        std::vector<Airframes::Slot> slots = std::vector<Airframes::Slot>(Airframes::kSlots);
+        bool read(uint32_t i, Airframes::Slot &s) override { s = slots[i]; return true; }
+        bool write(uint32_t i, const Airframes::Slot &s) override { slots[i] = s; return true; }
+    } m;
+    TEST_ASSERT_EQUAL(Airframes::New, Airframes::visit(m, 0x406B62, 2490, "G-XWBA", nullptr, "BAW"));
+    TEST_ASSERT_EQUAL(Airframes::AgainToday, Airframes::visit(m, 0x406B62, 2490, "G-XWBA", nullptr, "BAW"));
+    // The type turns up later (from another feed): filled in, same day.
+    TEST_ASSERT_EQUAL(Airframes::Known, Airframes::visit(m, 0x406B62, 2490, "G-XWBA", "A35K", "BAW"));
+    TEST_ASSERT_EQUAL(Airframes::Known, Airframes::visit(m, 0x406B62, 2492, "G-XWBA", "A35K", "BAW"));
+    int found = 0;
+    for (const Airframes::Slot &s : m.slots)
+        if (s.key)
+        {
+            ++found;
+            TEST_ASSERT_EQUAL(2490, s.firstDay);
+            TEST_ASSERT_EQUAL(2492, s.lastDay);
+            TEST_ASSERT_EQUAL(2, s.days);
+            TEST_ASSERT_EQUAL_STRING_LEN("G-XWBA", s.reg, 6);
+            TEST_ASSERT_EQUAL_STRING_LEN("A35K", s.type, 4);
+            TEST_ASSERT_EQUAL_STRING_LEN("BAW", s.op, 3);
+        }
+    TEST_ASSERT_EQUAL(1, found);
+    // A seven-letter registration fills the field with no terminator.
+    TEST_ASSERT_EQUAL(Airframes::New, Airframes::visit(m, 0x780A3B, 2492, "B-18901", "A359", "CAL"));
 }
 
 void test_taf_and_runway_outlook()
@@ -486,6 +521,17 @@ void test_logbook()
     TEST_ASSERT_TRUE(events.sent.find(",go-around,BA117,27L") != std::string::npos);
     TEST_ASSERT_TRUE(coll.sent.find("airline,BA,2026-10-20,2026-10-21,2,610") != std::string::npos);
     TEST_ASSERT_TRUE(coll.sent.find("airline,VS,2026-10-21,2026-10-21,1,20") != std::string::npos);
+    // The year so far (9.0).
+    Logbook::Year y;
+    TEST_ASSERT_TRUE(Logbook::year(2026, y));
+    TEST_ASSERT_EQUAL(2, y.days);
+    TEST_ASSERT_EQUAL(1240, (int)y.arrivals);
+    TEST_ASSERT_EQUAL(1250, y.bestDay);
+    TEST_ASSERT_EQUAL(20261021, (int)y.bestDayDate);
+    TEST_ASSERT_EQUAL(2, y.goArounds);                // one each day (d2 is a copy of d1)
+    TEST_ASSERT_EQUAL(64, y.tightest);
+    TEST_ASSERT_EQUAL(2, y.newAirlines);
+    TEST_ASSERT_FALSE(Logbook::year(2025, y));
     LittleFS.wipe();
 }
 
@@ -831,5 +877,6 @@ int main(int, char **)
     RUN_TEST(test_metar_mood);
     RUN_TEST(test_taf_and_runway_outlook);
     RUN_TEST(test_qnh_heights);
+    RUN_TEST(test_airframes);
     return UNITY_END();
 }

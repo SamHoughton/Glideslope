@@ -35,6 +35,7 @@ struct Metar
     bool  cb      = false;    // cumulonimbus or towering cumulus reported
     char  raw[112] = "";
     char  station[5] = "";    // ICAO, e.g. "EGLL"
+    uint8_t obsDay = 0, obsHour = 0, obsMin = 0;   // when it was observed ("241150Z"); day 0 = unknown
 };
 
 // The forecast wind through a TAF's validity: the prevailing wind from each
@@ -81,6 +82,10 @@ namespace Weather
         uint8_t windKt = 0;
     };
     bool runwayOutlook(const Taf &t, float currentCourse, time_t now, Outlook &out);
+
+    // When a report was observed (UTC, placed in the month around now); 0 if
+    // it didn't say (9.0: the next fetch is timed to the next report).
+    time_t observedAt(const Metar &m, time_t now);
 
     // Fetch and parse the airport's METAR; false on a network or parse
     // failure. others: more ICAO codes for the same request ("OMDB,KJFK"),
