@@ -675,6 +675,106 @@ void InfoScreens::renderDaySummary(FrameCanvas &c, const DailyStats &stats, uint
     }
 }
 
+namespace
+{
+    void withCommas(uint32_t v, char *out, size_t len)
+    {
+        if (v >= 1000000)   snprintf(out, len, "%u,%03u,%03u", (unsigned)(v / 1000000), (unsigned)(v / 1000 % 1000), (unsigned)(v % 1000));
+        else if (v >= 1000) snprintf(out, len, "%u,%03u", (unsigned)(v / 1000), (unsigned)(v % 1000));
+        else                snprintf(out, len, "%u", (unsigned)v);
+    }
+    void dayMonth(uint32_t ymd, char *out, size_t len)
+    {
+        static const char *const kMon[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        const int m = (int)(ymd / 100 % 100);
+        if (m < 1 || m > 12) { if (len) out[0] = 0; return; }
+        snprintf(out, len, "%u %s", (unsigned)(ymd % 100), kMon[m - 1]);
+    }
+}
+
+void InfoScreens::renderYear(FrameCanvas &c, const Logbook::Year &y, int page, uint32_t shownMs)
+{
+    c.clear();
+    char title[24], big[16], a[24], b[24];
+    snprintf(title, sizeof(title), "%u at %s", (unsigned)y.year, "the airport");
+    {
+        char name[20];
+        strlcpy(name, g_airport.name, sizeof(name));
+        Fonts::titleCase(name);
+        snprintf(title, sizeof(title), "%u at %s", (unsigned)y.year, name);
+    }
+    centred(c, 2, title, kGold);
+    for (int x = 20; x < FrameCanvas::W - 20; ++x) c.set(x, 12, Rgb{60, 50, 20});
+    // Numbers count up as the page opens.
+    const float k = fminf(1.0f, shownMs / 900.0f);
+    switch (page)
+    {
+        case 0:
+            withCommas((uint32_t)lroundf((y.arrivals + y.departures) * k), big, sizeof(big));
+            centredL(c, 20, big, kTitle, Fonts::Large);   // (the huge digits have no comma)
+            withCommas(y.arrivals, a, sizeof(a));
+            withCommas(y.departures, b, sizeof(b));
+            {
+                char line[40];
+                snprintf(line, sizeof(line), "%s in, %s out", a, b);
+                centred(c, 46, "movements", kDim);
+                centred(c, 55, line, Rgb{150, 160, 180});
+            }
+            break;
+        case 1:
+            dayMonth(y.bestDayDate, a, sizeof(a));
+            snprintf(b, sizeof(b), "Busiest day, %s", a);
+            centred(c, 15, b, Rgb{150, 160, 180});
+            withCommas(y.bestDay, big, sizeof(big));
+            {
+                char line[24];
+                snprintf(line, sizeof(line), "%s moves", big);
+                centredL(c, 23, line, kTitle, Fonts::Medium);
+            }
+            if (y.tightest)
+            {
+                dayMonth(y.tightDate, a, sizeof(a));
+                snprintf(b, sizeof(b), "Tightest %d:%02d, %s", y.tightest / 60, y.tightest % 60, a);
+                centred(c, 42, b, Rgb{150, 160, 180});
+            }
+            snprintf(b, sizeof(b), "Busiest hour %02u:00", y.busiestHour);
+            centred(c, 53, b, kDim);
+            break;
+        case 2:
+            snprintf(big, sizeof(big), "%u", (unsigned)lroundf(y.goArounds * k));
+            c.print(Fonts::Huge, 10, 18, big, Rgb{255, 120, 90});
+            c.print(Fonts::Label, 10, 50, "go-arounds", Rgb{150, 160, 180});
+            snprintf(big, sizeof(big), "%u", (unsigned)lroundf(y.rares * k));
+            c.print(Fonts::Huge, 72, 18, big, kGold);
+            c.print(Fonts::Label, 72, 50, "rare spots", Rgb{150, 160, 180});
+            break;
+        case 3:
+        {
+            centred(c, 15, "New this year", Rgb{150, 160, 180});
+            const struct { uint16_t n; const char *what; } rows[] = {
+                {y.newAirlines, "airlines"}, {y.newTypes, "aircraft types"}, {y.newAirports, "airports"}, {y.newAirframes, "aircraft"}};
+            for (int i = 0; i < 4; ++i)
+            {
+                withCommas((uint32_t)lroundf(rows[i].n * k), big, sizeof(big));
+                const int yy = 25 + i * 9;
+                c.print(Fonts::Label, 44 - FrameCanvas::width(Fonts::Label, big), yy, big, kTitle);
+                c.print(Fonts::Label, 50, yy, rows[i].what, Rgb{150, 160, 180});
+            }
+            break;
+        }
+        default:
+            centred(c, 16, "Seen most", Rgb{150, 160, 180});
+            if (y.topReg[0])
+            {
+                centredL(c, 25, y.topReg, kTitle, Fonts::Large);
+                snprintf(b, sizeof(b), "%s%son %u days", y.topType, y.topType[0] ? ", " : "", (unsigned)y.topDays);
+                centred(c, 46, b, kGold);
+            }
+            else centred(c, 32, "Not enough yet", kDim);
+            break;
+    }
+}
+
 void InfoScreens::renderClock(FrameCanvas &c, uint32_t animMs, const char *weather)
 {
     c.clear();

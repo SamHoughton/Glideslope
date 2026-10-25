@@ -43,6 +43,24 @@ namespace Logbook
         uint16_t n;
     };
 
+    // A year at the airport (9.0), worked out from the logbook for the
+    // panel's year screen and the web page. Not kept on disk.
+    struct Year
+    {
+        uint16_t year = 0, days = 0;          // days logged
+        uint32_t arrivals = 0, departures = 0;
+        uint32_t bestDayDate = 0;             // YYYYMMDD
+        uint16_t bestDay = 0;
+        uint16_t goArounds = 0, rares = 0;
+        uint16_t tightest = 0;                // seconds (0: none)
+        uint32_t tightDate = 0;
+        uint8_t  busiestHour = 0;             // local hour with the most movements over the year
+        uint16_t newAirlines = 0, newTypes = 0, newAirports = 0, newAirframes = 0;   // first seen this year
+        char     topReg[8] = "";              // the airframe seen on the most days
+        char     topType[5] = "";
+        uint16_t topDays = 0;
+    };
+
     // The all-time bests, /log/records.bin.
     struct Records
     {

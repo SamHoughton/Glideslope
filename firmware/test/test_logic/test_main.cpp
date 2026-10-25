@@ -521,6 +521,17 @@ void test_logbook()
     TEST_ASSERT_TRUE(events.sent.find(",go-around,BA117,27L") != std::string::npos);
     TEST_ASSERT_TRUE(coll.sent.find("airline,BA,2026-10-20,2026-10-21,2,610") != std::string::npos);
     TEST_ASSERT_TRUE(coll.sent.find("airline,VS,2026-10-21,2026-10-21,1,20") != std::string::npos);
+    // The year so far (9.0).
+    Logbook::Year y;
+    TEST_ASSERT_TRUE(Logbook::year(2026, y));
+    TEST_ASSERT_EQUAL(2, y.days);
+    TEST_ASSERT_EQUAL(1240, (int)y.arrivals);
+    TEST_ASSERT_EQUAL(1250, y.bestDay);
+    TEST_ASSERT_EQUAL(20261021, (int)y.bestDayDate);
+    TEST_ASSERT_EQUAL(2, y.goArounds);                // one each day (d2 is a copy of d1)
+    TEST_ASSERT_EQUAL(64, y.tightest);
+    TEST_ASSERT_EQUAL(2, y.newAirlines);
+    TEST_ASSERT_FALSE(Logbook::year(2025, y));
     LittleFS.wipe();
 }
 

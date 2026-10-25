@@ -43,5 +43,8 @@ namespace Logbook
     void writeCollectionCsv(WiFiClient &c);
     void writeAirframesCsv(WiFiClient &c);
     void recordsJson(String &out);        // small
+    // The year's summary (9.0): a pass over each file (a few hundred ms);
+    // false if nothing was logged that year.
+    bool year(uint16_t year, Year &out);
     size_t bytesUsed();
 }

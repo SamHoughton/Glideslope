@@ -1,4 +1,5 @@
 #pragma once
+#include "display/LogbookTypes.h"
 /*
 Purpose: The smaller full-panel screens: daily stats, the next-arrivals
 board, the quiet-hours clock, the rare-spot banner, the emergency-squawk
@@ -92,6 +93,10 @@ namespace InfoScreens
     void renderSpots(FrameCanvas &c, const DailyStats &stats, uint32_t shownMs);
     // Overnight, in turn with the clock: the day in one card.
     void renderDaySummary(FrameCanvas &c, const DailyStats &stats, uint32_t animMs);
+    // The year at the airport (9.0), page 0-4: the movements; the busiest
+    // day and tightest gap; go-arounds and rare spots; new in the
+    // collection; the aircraft seen most.
+    void renderYear(FrameCanvas &c, const Logbook::Year &y, int page, uint32_t shownMs);
     // weather: optional dim line under the date ("" for none).
     void renderClock(FrameCanvas &c, uint32_t animMs, const char *weather = "");
     // The night screen (7.2): the skyline under the real sky, a row of

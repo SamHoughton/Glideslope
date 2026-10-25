@@ -417,6 +417,22 @@ static void airfieldCheck()
     g_webConfig.setAirfield(kMoodNames[g_mood & 3], longText);
 }
 
+// The year so far (9.0), for the panel's year pages: after each day is
+// logged, and at the start.
+static void refreshYear()
+{
+    const time_t now = time(nullptr);
+    if (now < 1600000000) return;
+    struct tm lt;
+    localtime_r(&now, &lt);
+    // In the first days of January it is still last year's that's shown.
+    const uint16_t yr = lt.tm_mon == 0 && lt.tm_mday <= 2 ? lt.tm_year + 1899 : lt.tm_year + 1900;
+    Logbook::Year y;
+    Logbook::year(yr, y);
+    g_display.setYear(y);
+    Log.printf("Logbook: %u so far: %u days, %u movements\n", (unsigned)yr, y.days, (unsigned)(y.arrivals + y.departures));
+}
+
 static void saveStats()
 {
     StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
@@ -1228,6 +1244,8 @@ void loop()
         {
             lastLogbookMs = millis();
             LogoBook::saveMissingIfChanged();
+            static bool yearDone = false;   // once the clock is set after a restart
+            if (!yearDone && time(nullptr) > 1600000000) { yearDone = true; refreshYear(); }
             Logbook::Event ev[4];
             const int n = g_display.takeLogbookEvents(ev, 4);
             for (int i = 0; i < n; ++i) Logbook::addEvent(ev[i]);
@@ -1239,6 +1257,7 @@ void loop()
                 Logbook::addDay(day, tallies, l1, sizeof(l1), l2, sizeof(l2));
                 g_display.setRecords(Logbook::records());
                 if (l1[0]) g_display.showNews(l1, l2);
+                refreshYear();
             }
         }
     }

@@ -380,6 +380,77 @@ void Logbook::writeAirframesCsv(WiFiClient &c)
     f.close();
 }
 
+bool Logbook::year(uint16_t yr, Year &y)
+{
+    y = Year();
+    y.year = yr;
+    uint32_t hours[24] = {};
+    {
+        File f = LittleFS.open(kDays, "r");
+        Day d;
+        while (f && f.read((uint8_t *)&d, sizeof(d)) == sizeof(d))
+        {
+            if (d.date / 10000 != yr) continue;
+            ++y.days;
+            y.arrivals += d.arrivals;
+            y.departures += d.departures;
+            const uint16_t moves = d.arrivals + d.departures;
+            if (moves > y.bestDay) { y.bestDay = moves; y.bestDayDate = d.date; }
+            y.goArounds += d.goArounds;
+            if (d.tightestSec && (!y.tightest || d.tightestSec < y.tightest)) { y.tightest = d.tightestSec; y.tightDate = d.date; }
+            for (int h = 0; h < 24; ++h) hours[h] += d.hours[h];
+        }
+        if (f) f.close();
+    }
+    for (int h = 1; h < 24; ++h)
+        if (hours[h] > hours[y.busiestHour]) y.busiestHour = (uint8_t)h;
+    const uint16_t from = dayNumber((uint32_t)yr * 10000 + 101), to = dayNumber((uint32_t)yr * 10000 + 1231);
+    {
+        File f = LittleFS.open(kEvents, "r");
+        Event e;
+        while (f && f.read((uint8_t *)&e, sizeof(e)) == sizeof(e))
+        {
+            const time_t t = e.at;
+            struct tm lt;
+            localtime_r(&t, &lt);
+            if (lt.tm_year + 1900 == yr && e.kind == 0) ++y.rares;
+        }
+        if (f) f.close();
+    }
+    {
+        File f = LittleFS.open(kCollection, "r");
+        Item it;
+        while (f && f.read((uint8_t *)&it, sizeof(it)) == sizeof(it))
+        {
+            if (it.firstDay < from || it.firstDay > to) continue;
+            if (it.kind == 0) ++y.newAirlines;
+            else if (it.kind == 1) ++y.newTypes;
+            else if (it.kind == 2) ++y.newAirports;
+        }
+        if (f) f.close();
+    }
+    {
+        File f = LittleFS.open(Airframes::kPath, "r");
+        Airframes::Slot chunk[16];
+        size_t got;
+        while (f && (got = f.read((uint8_t *)chunk, sizeof(chunk))) >= sizeof(Airframes::Slot))
+            for (size_t i = 0; i < got / sizeof(Airframes::Slot); ++i)
+            {
+                const Airframes::Slot &s = chunk[i];
+                if (!s.key || s.lastDay < from || s.firstDay > to) continue;
+                if (s.firstDay >= from) ++y.newAirframes;
+                if (s.days > y.topDays && s.reg[0])
+                {
+                    y.topDays = s.days;
+                    memcpy(y.topReg, s.reg, 7); y.topReg[7] = 0;
+                    memcpy(y.topType, s.type, 4); y.topType[4] = 0;
+                }
+            }
+        if (f) f.close();
+    }
+    return y.days > 0;
+}
+
 void Logbook::recordsJson(String &out)
 {
     char a[12] = "", b[12] = "", t[12] = "", s[12] = "";

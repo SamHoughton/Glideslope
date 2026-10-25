@@ -716,6 +716,13 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
     if      (s_screenPreview == 1) s = Screen::Stats;
     else if (s_screenPreview == 2) { InfoScreens::renderNightScene(g_workFrame, now, _weather, s_skyPreviewUntil ? Sky::preview(s_skyPreview) : _sky); return; }
     else if (s_screenPreview == 7) { InfoScreens::renderDaySummary(g_workFrame, _stats, shownFor(Screen::Map, now)); return; }
+    else if (s_screenPreview == 10)
+    {
+        // The year (9.0): its five pages, four seconds each.
+        const uint32_t t = shownFor(Screen::Map, now);
+        InfoScreens::renderYear(g_workFrame, _year, (int)(t / 4000) % 5, t % 4000);
+        return;
+    }
     else if (s_screenPreview == 3) s = Screen::Arrivals;
     else if (s_screenPreview == 4) s = Screen::Weather;
     else if (s_screenPreview == 5) s = Screen::Holding;
@@ -788,7 +795,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
                 page = 1 + min((int)((t - kScreenDwellMs) / kStatsPageMs), pages - 2);
                 t = (t - kScreenDwellMs) - (page - 1) * kStatsPageMs;
             }
-            uint8_t list[5];
+            uint8_t list[10];
             statsPageList(list);
             switch (list[page])
             {
@@ -796,7 +803,8 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
                 case 1: InfoScreens::renderRhythm(g_workFrame, _stats, _runwayArr, t); break;
                 case 2: InfoScreens::renderTopAirlines(g_workFrame, _stats, t); break;
                 case 3: InfoScreens::renderTopTypes(g_workFrame, _stats, t); break;
-                default: InfoScreens::renderSpots(g_workFrame, _stats, t); break;
+                case 4: InfoScreens::renderSpots(g_workFrame, _stats, t); break;
+                default: InfoScreens::renderYear(g_workFrame, _year, list[page] - 5, t); break;   // 5-9: the year (9.0)
             }
             return;
         }
@@ -859,7 +867,7 @@ void NeoMatrixDisplay::renderAmbient(unsigned long now)
 
 int NeoMatrixDisplay::statsPages() const
 {
-    uint8_t list[5];
+    uint8_t list[10];
     return statsPageList(list);
 }
 
@@ -873,7 +881,20 @@ int NeoMatrixDisplay::statsPageList(uint8_t *out) const
     if (_stats.airlineCount() >= 3) out[n++] = 2;
     if (_stats.typeCount() >= 3) out[n++] = 3;
     if (_stats.spotCount()) out[n++] = 4;
+    if (yearSeason())
+        for (uint8_t p = 5; p <= 9; ++p) out[n++] = p;
     return n;
+}
+
+// 26 December to 2 January, with a year logged (9.0).
+bool NeoMatrixDisplay::yearSeason() const
+{
+    if (!_year.days) return false;
+    const time_t t = time(nullptr);
+    if (t < 1600000000) return false;
+    struct tm lt;
+    localtime_r(&t, &lt);
+    return (lt.tm_mon == 11 && lt.tm_mday >= 26) || (lt.tm_mon == 0 && lt.tm_mday <= 2);
 }
 
 // Night watch is on: the setting, the night hours, the board in its normal

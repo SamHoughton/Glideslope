@@ -269,6 +269,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/clock"    && r.method == "POST") { requestScreenPreview(2, 10000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/nightwatch" && r.method == "POST") { requestScreenPreview(9, 20000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/summary"  && r.method == "POST") { requestScreenPreview(7, 15000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/demo/year"     && r.method == "POST") { requestScreenPreview(10, 20000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/history/days"       && r.method == "GET") Logbook::writeDaysCsv(client);
     else if (r.path == "/api/history/events"     && r.method == "GET") Logbook::writeEventsCsv(client);
     else if (r.path == "/api/history/collection" && r.method == "GET") Logbook::writeCollectionCsv(client);

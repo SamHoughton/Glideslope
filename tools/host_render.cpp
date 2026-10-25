@@ -115,6 +115,14 @@ int main(int argc, char **argv)
     InfoScreens::renderSpots(c, stats, 1500);             save(c, "stats_spots");
     InfoScreens::renderSpots(c, stats, 5500);             save(c, "stats_spots_page2");
     InfoScreens::renderDaySummary(c, stats, 5000);        save(c, "night_summary");
+    {
+        Logbook::Year y;
+        y.year = 2026; y.days = 68; y.arrivals = 39120; y.departures = 38870;
+        y.bestDay = 1312; y.bestDayDate = 20260814; y.tightest = 58; y.tightDate = 20260802; y.busiestHour = 7;
+        y.goArounds = 46; y.rares = 31; y.newAirlines = 74; y.newTypes = 38; y.newAirports = 162; y.newAirframes = 3114;
+        strcpy(y.topReg, "G-EUYB"); strcpy(y.topType, "A320"); y.topDays = 61;
+        for (int p = 0; p < 5; ++p) { InfoScreens::renderYear(c, y, p, 3000); save(c, (std::string("year_") + char('0' + p)).c_str()); }
+    }
 
     const time_t evening = 1792281600 + 19 * 3600 + 48 * 60;   // 18 Oct 2026, 19:48 UTC
     Globe::Route r;
