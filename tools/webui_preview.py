@@ -162,6 +162,8 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/api/history/days':       self.send(hist_days().encode(), 'text/csv')
         elif p == '/api/history/events':     self.send(HIST_EVENTS.encode(), 'text/csv')
         elif p == '/api/history/collection': self.send(HIST_COLLECTION.encode(), 'text/csv')
+        elif p == '/api/history/airframes':  self.send(HIST_AIRFRAMES.encode(), 'text/csv')
+        elif p == '/api/logo':       self.send_error(404)   # no airline logos in the docs (trademarks)
         elif p == '/api/frame':      self.send(rle(self.frame) if 'z=1' in self.path else self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
         elif p.startswith('/packs/') and (ROOT / p.lstrip('/')).is_file():
@@ -226,7 +228,40 @@ HIST_EVENTS = """time,kind,flight,detail
 2026-10-22 21:03,go-around,VS4,27R
 2026-10-23 18:36,rare,EK4CK,A388
 """
+HIST_AIRFRAMES = "registration,type,airline,first_seen,last_seen,days\n" + "".join(
+    f"G-X{i:03d},{t},{op},2026-10-25,2026-10-25,1\n" for i, (t, op) in enumerate(
+        [("A320", "BAW")] * 40 + [("A20N", "BAW")] * 25 + [("A35K", "BAW")] * 12 + [("B789", "VIR")] * 9 +
+        [("A388", "UAE")] * 7 + [("B77W", "UAE")] * 5 + [("A359", "SIA")] * 3))
+
 HIST_COLLECTION = """kind,code,first_seen,last_seen,days,count
+airline,AF,2026-06-27,2026-10-23,110,2210
+airline,KL,2026-06-25,2026-10-23,118,2050
+airline,SQ,2026-07-02,2026-10-23,90,480
+airline,UA,2026-06-25,2026-10-23,120,1500
+airline,DL,2026-06-26,2026-10-23,119,1300
+airline,QF,2026-07-14,2026-10-23,80,160
+airline,B6,2026-08-03,2026-10-23,70,140
+airline,NH,2026-09-12,2026-10-20,20,40
+airline,KQ,2026-10-02,2026-10-22,12,24
+airline,BG,2026-10-24,2026-10-24,1,1
+type,A388,2026-06-25,2026-10-23,120,3200
+type,B744,2026-07-30,2026-10-22,15,20
+type,A306,2026-10-24,2026-10-24,1,1
+type,B38M,2026-06-28,2026-10-23,110,900
+type,A359,2026-06-25,2026-10-23,120,1200
+type,BCS3,2026-06-26,2026-10-23,118,1500
+airport,KJFK,2026-10-25,2026-10-25,1,6
+airport,OMDB,2026-10-25,2026-10-25,1,5
+airport,WSSS,2026-10-25,2026-10-25,1,3
+airport,YSSY,2026-10-25,2026-10-25,1,1
+airport,LFPG,2026-10-25,2026-10-25,1,9
+airport,EDDF,2026-10-25,2026-10-25,1,8
+airport,KLAS,2026-10-25,2026-10-25,1,1
+airport,HKJK,2026-10-25,2026-10-25,1,1
+airport,VGHS,2026-10-25,2026-10-25,1,1
+airport,RJTT,2026-10-25,2026-10-25,1,2
+airport,CYYZ,2026-10-25,2026-10-25,1,2
+airport,EIDW,2026-10-25,2026-10-25,1,7
 airline,BA,2026-06-25,2026-10-23,120,61840
 airline,VS,2026-06-25,2026-10-23,120,6120
 airline,EI,2026-06-25,2026-10-23,118,4410
@@ -281,6 +316,7 @@ def main():
     shoot(url + 'logos', str(ROOT / 'docs' / 'webui-logos.png'), 1280, 820, 1)
     shoot(url + '#history', str(ROOT / 'docs' / 'webui-history.png'), 1280, 1100, 1)
     shoot(url + '#health', str(ROOT / 'docs' / 'webui-health.png'), 1280, 900, 1)
+    shoot(url + '#stickers', str(ROOT / 'docs' / 'webui-stickers.png'), 1280, 1300, 1)
     shoot(url + '#system', str(ROOT / 'docs' / 'webui-system.png'), 1280, 900, 1)
     today = ROOT / 'docs' / 'webui-today.png'
     shoot(url, str(today), 1280, 1240, 1)

@@ -74,7 +74,7 @@ details[open]>summary{margin-bottom:10px}
 
 /* Tabs */
 .tabs{display:flex;gap:2px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px}
-.tabs button{background:none;border:none;min-height:34px;padding:6px 9px;color:var(--muted);font-weight:600;font-size:13px;border-radius:8px}
+.tabs button{background:none;border:none;min-height:34px;padding:6px 6px;color:var(--muted);font-weight:600;font-size:13px;border-radius:8px}
 .tabs button.on{background:#1e2733;color:var(--amber)}
 .tab{display:none}.tab.on{display:block}
 
@@ -87,6 +87,16 @@ details[open]>summary{margin-bottom:10px}
 .heat i{border-radius:3px;background:var(--line)}
 .heatkey{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--faint);margin:6px 0 4px}
 .heatkey i{display:block;width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,#3a2c12,#ffb93c)}
+.stks{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;margin:8px 0 18px}
+.stk{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:10px 8px;text-align:center;
+  filter:grayscale(1);opacity:.38;transition:opacity .2s}
+.stk.got{filter:none;opacity:1;border-style:solid;border-color:#3a4658;box-shadow:0 2px 0 #0006}
+.stk .art{height:48px;display:flex;align-items:center;justify-content:center;margin-bottom:6px;position:relative}
+.stk canvas{width:48px;height:48px;image-rendering:pixelated;display:none}.stk.got .art.logo canvas,.stk .art.logo canvas{display:block}
+.stk .art.logo i{display:none}.stk .art i{font-style:normal;font-weight:800;font-size:18px;letter-spacing:.04em;color:var(--amber)}
+.stk .flag{font-size:38px;line-height:1}.stk .tc{font-weight:800;font-size:19px;color:var(--cyan);letter-spacing:.03em}
+.stk b{display:block;font-size:12px;font-weight:600;line-height:1.25}.stk span{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.stkh{display:flex;justify-content:space-between;align-items:baseline}.stkh span{font-size:12px;color:var(--muted)}
 .coll{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media(max-width:480px){.coll{grid-template-columns:1fr}}
 .coll h4{margin:0 0 6px;font-size:13px;color:var(--muted);font-weight:500}
 .coll ol{margin:0;padding-left:22px;font-size:13px;max-height:320px;overflow:auto}.coll li{padding:2px 0}.coll li span{color:var(--faint);float:right}
@@ -225,6 +235,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <button data-tab="spotter">Spotter</button>
       <button data-tab="alerts">Alerts</button>
       <button data-tab="history">History</button>
+      <button data-tab="stickers">Stickers</button>
       <button data-tab="system">System</button>
       <button data-tab="health">Health</button>
       <button data-tab="log">Log</button>
@@ -369,6 +380,13 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <div class="btns"><a class="btn" href="/api/history/days" download>Every day (CSV)</a><a class="btn" href="/api/history/events" download>Moments (CSV)</a><a class="btn" href="/api/history/collection" download>Collection (CSV)</a></div>
     </section>
 
+    <section class="tab" id="t-stickers">
+      <p class="hint">The sticker book: every airline, country and aircraft type that comes to Heathrow, grey until the board first sees it. Countries come from where arrivals took off (collected from 9.0 on); airlines and types from the logbook.</p>
+      <div class="stkh"><h3>Airlines</h3><span id="staln"></span></div><div class="stks" id="stal"></div>
+      <div class="stkh"><h3>Countries</h3><span id="stcon"></span></div><div class="stks" id="stco"></div>
+      <div class="stkh"><h3>Aircraft types</h3><span id="sttyn"></span></div><div class="stks" id="stty"></div>
+    </section>
+
     <section class="tab" id="t-system">
       <dl class="kv" id="sys"></dl>
       <h3>Updates</h3>
@@ -423,10 +441,11 @@ function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;r
 // Tabs (remembered for next time).
 function showTab(n){document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.tab===n);});
   document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('on',t.id==='t-'+n);});
-  $('savebar').style.display=(n==='system'||n==='log'||n==='history'||n==='health')?'none':'';
+  $('savebar').style.display=(n==='system'||n==='log'||n==='history'||n==='health'||n==='stickers')?'none':'';
   try{localStorage.setItem('gs-tab',n);}catch(e){}
   if(n==='history'&&window.loadHistory)loadHistory();
   if(n==='health'&&window.loadHealth)loadHealth();
+  if(n==='stickers'&&window.loadStickers)loadStickers();
   if(n==='system'&&window.checkUpdates&&!window.relChecked)checkUpdates();}
 document.querySelectorAll('#tabs button').forEach(function(b){b.addEventListener('click',function(){showTab(b.dataset.tab);});});
 try{var lt=location.hash.slice(1)||localStorage.getItem('gs-tab');if(lt&&$('t-'+lt))showTab(lt);}catch(e){}
@@ -678,6 +697,113 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
     }).catch(function(){});
   }
   load();setInterval(load,30000);
+})();
+
+// The sticker book (9.0): airlines, countries and aircraft types, grey until
+// the board first sees them, then in colour with the date. The lists are
+// what flies to Heathrow; anything else the board sees joins the end.
+(function(){
+  // [ICAO (the logo), IATA (the logbook's code), name]
+  var AIRLINES=[['AAL','AA','American'],['ACA','AC','Air Canada'],['AEE','A3','Aegean'],['AFR','AF','Air France'],
+    ['AHY','J2','Azerbaijan Airlines'],['AIC','AI','Air India'],['ALK','UL','SriLankan'],['AMX','AM','Aeroméxico'],
+    ['ANA','NH','ANA'],['ASL','JU','Air Serbia'],['AUA','OS','Austrian'],['AVA','AV','Avianca'],['BAW','BA','British Airways'],
+    ['BBC','BG','Biman'],['BCS','QY','DHL'],['BEL','SN','Brussels Airlines'],['CCA','CA','Air China'],
+    ['CES','MU','China Eastern'],['CPA','CX','Cathay Pacific'],['CSN','CZ','China Southern'],['CTN','OU','Croatia Airlines'],
+    ['DAH','AH','Air Algérie'],['DAL','DL','Delta'],['DLH','LH','Lufthansa'],['EIN','EI','Aer Lingus'],['ELY','LY','El Al'],
+    ['ETD','EY','Etihad'],['ETH','ET','Ethiopian'],['EVA','BR','EVA Air'],['EWG','EW','Eurowings'],['FIN','AY','Finnair'],
+    ['GFA','GF','Gulf Air'],['GTI','5Y','Atlas Air'],['HVN','VN','Vietnam Airlines'],['IBE','IB','Iberia'],
+    ['ICE','FI','Icelandair'],['IGO','6E','IndiGo'],['ITY','AZ','ITA Airways'],['JAL','JL','Japan Airlines'],
+    ['JBU','B6','JetBlue'],['KAC','KU','Kuwait Airways'],['KAL','KE','Korean Air'],['KLM','KL','KLM'],['KMM','KM','KM Malta'],
+    ['KQA','KQ','Kenya Airways'],['KZR','KC','Air Astana'],['LOG','LM','Loganair'],['LOT','LO','LOT'],
+    ['LZB','FB','Bulgaria Air'],['MAS','MH','Malaysia Airlines'],['MAU','MK','Air Mauritius'],
+    ['MEA','ME','Middle East Airlines'],['MSR','MS','EgyptAir'],['OMA','WY','Oman Air'],['QFA','QF','Qantas'],
+    ['QTR','QR','Qatar Airways'],['RAM','AT','Royal Air Maroc'],['RBA','BI','Royal Brunei'],['RJA','RJ','Royal Jordanian'],
+    ['ROT','RO','TAROM'],['RWD','WB','RwandAir'],['SAA','SA','South African'],['SAS','SK','SAS'],
+    ['SIA','SQ','Singapore Airlines'],['SVA','SV','Saudia'],['SWR','LX','Swiss'],['TAM','JJ','LATAM'],['TAP','TP','TAP'],
+    ['TAR','TU','Tunisair'],['THA','TG','Thai'],['THY','TK','Turkish Airlines'],['UAE','EK','Emirates'],['UAL','UA','United'],
+    ['UZB','HY','Uzbekistan Airways'],['VIR','VS','Virgin Atlantic'],['WJA','WS','WestJet']];
+  var TYPES=[['A19N','A319neo'],['A20N','A320neo'],['A21N','A321neo'],['A306','A300'],['A319','A319'],['A320','A320'],['A321','A321'],
+    ['A332','A330-200'],['A333','A330-300'],['A338','A330-800'],['A339','A330-900'],['A343','A340-300'],['A346','A340-600'],
+    ['A359','A350-900'],['A35K','A350-1000'],['A388','A380'],['AT76','ATR 72'],['B38M','737 MAX 8'],['B39M','737 MAX 9'],
+    ['B737','737-700'],['B738','737-800'],['B739','737-900'],['B744','747-400'],['B748','747-8'],['B752','757-200'],
+    ['B763','767-300'],['B764','767-400'],['B772','777-200'],['B77L','777-200LR'],['B77W','777-300ER'],['B788','787-8'],
+    ['B789','787-9'],['B78X','787-10'],['BCS1','A220-100'],['BCS3','A220-300'],['DH8D','Dash 8 Q400'],['E170','E170'],
+    ['E190','E190'],['E195','E195'],['E290','E190-E2'],['E295','E195-E2']];
+  var COUNTRIES=['AE','AG','AR','AT','AU','AZ','BB','BD','BE','BG','BH','BM','BN','BR','BS','CA','CH','CN','CO','CY','CZ','DE','DK',
+    'DZ','EG','ES','ET','FI','FR','GB','GE','GH','GR','HK','HR','HU','IE','IL','IN','IS','IT','JM','JO','JP','KE','KR','KW','KZ',
+    'LB','LC','LK','LU','MA','MT','MU','MV','MX','MY','NG','NL','NO','OM','PK','PL','PT','QA','RO','RS','RW','SA','SE','SG','SI',
+    'TH','TN','TR','TT','TW','TZ','UG','US','UZ','VN','ZA'];
+  // ICAO airport prefixes to countries: two letters, else the first.
+  var PFX={EG:'GB',EI:'IE',LF:'FR',ED:'DE',ET:'DE',EH:'NL',EB:'BE',EL:'LU',LS:'CH',LO:'AT',LI:'IT',LE:'ES',GC:'ES',GE:'ES',
+    LP:'PT',EK:'DK',EN:'NO',ES:'SE',EF:'FI',BI:'IS',BG:'GL',EP:'PL',LK:'CZ',LZ:'SK',LH:'HU',LR:'RO',LB:'BG',LG:'GR',LC:'CY',
+    LM:'MT',LD:'HR',LY:'RS',LJ:'SI',LQ:'BA',LW:'MK',LA:'AL',LU:'MD',LT:'TR',EV:'LV',EY:'LT',EE:'EE',LX:'GI',LN:'MC',LL:'IL',
+    OJ:'JO',OL:'LB',OS:'SY',OR:'IQ',OI:'IR',OE:'SA',OM:'AE',OT:'QA',OB:'BH',OK:'KW',OO:'OM',OY:'YE',OA:'AF',OP:'PK',VI:'IN',
+    VA:'IN',VE:'IN',VO:'IN',VG:'BD',VC:'LK',VR:'MV',VN:'NP',VQ:'BT',VT:'TH',VV:'VN',VL:'LA',VD:'KH',VY:'MM',WS:'SG',WM:'MY',
+    WB:'MY',WI:'ID',WA:'ID',WR:'ID',RP:'PH',RC:'TW',RK:'KR',RJ:'JP',RO:'JP',VH:'HK',VM:'MO',NZ:'NZ',NF:'FJ',PH:'US',PA:'US',
+    TJ:'PR',MM:'MX',MG:'GT',MH:'HN',MR:'CR',MP:'PA',MK:'JM',MD:'DO',MU:'CU',MY:'BS',MB:'TC',MW:'KY',TB:'BB',TA:'AG',TT:'TT',
+    TG:'GD',TL:'LC',TK:'KN',TV:'VC',TX:'BM',TN:'AW',SB:'BR',SD:'BR',SN:'BR',SW:'BR',SA:'AR',SC:'CL',SP:'PE',SK:'CO',SE:'EC',
+    SV:'VE',SU:'UY',FA:'ZA',FB:'BW',FV:'ZW',FL:'ZM',FW:'MW',FQ:'MZ',FM:'MG',FI:'MU',FS:'SC',FN:'AO',HA:'ET',HK:'KE',HU:'UG',
+    HT:'TZ',HR:'RW',HE:'EG',HL:'LY',HS:'SD',DA:'DZ',DT:'TN',DN:'NG',DG:'GH',DI:'CI',GM:'MA',GO:'SN',GV:'CV',UA:'KZ',UB:'AZ',
+    UC:'KG',UD:'AM',UG:'GE',UK:'UA',UM:'BY',UT:'UZ',ZK:'KP',ZM:'MN'};
+  var ONE={K:'US',C:'CA',Y:'AU',Z:'CN',U:'RU'};
+  function country(icao){if(icao.slice(0,3)==='WBS')return 'BN';if(icao.slice(0,4)==='UMKK')return 'RU';
+    return PFX[icao.slice(0,2)]||ONE[icao[0]]||'';}
+  function flag(cc){return cc.replace(/./g,function(c){return String.fromCodePoint(127397+c.charCodeAt(0));});}
+  var names=null;try{names=new Intl.DisplayNames(['en-GB'],{type:'region'});}catch(e){}
+  function cname(cc){try{return names?names.of(cc):cc;}catch(e){return cc;}}
+  function csv(t){return t.trim().split('\n').slice(1).filter(function(l){return l;}).map(function(l){return l.split(',');});}
+  function nice(d){if(!d)return '';var p=d.split('-');return (+p[2])+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1]+' '+p[0];}
+  function e(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+  // Logos, one at a time (each is a request to the board), drawn from their RGB565.
+  var queue=[],busy=false;
+  function nextLogo(){if(busy||!queue.length)return;busy=true;var cv=queue.shift();
+    fetch('/api/logo?code='+cv.dataset.code).then(function(r){if(!r.ok)throw 0;return r.arrayBuffer();}).then(function(b){
+      var v=new DataView(b),x=cv.getContext('2d'),img=x.createImageData(32,32);
+      for(var i=0;i<1024;i++){var p=v.getUint16(i*2,true),o=i*4;if(p===0xF81F){img.data[o+3]=0;continue;}
+        img.data[o]=(p>>11&31)*255/31;img.data[o+1]=(p>>5&63)*255/63;img.data[o+2]=(p&31)*255/31;img.data[o+3]=255;}
+      x.putImageData(img,0,0);cv.parentNode.classList.add('logo');
+    }).catch(function(){}).then(function(){busy=false;setTimeout(nextLogo,60);});}
+
+  function album(id,items,count){
+    var got=items.filter(function(i){return i.first;}).length;
+    $(id+'n').textContent=got+' of '+items.length+(count?' · '+count:'');
+    $(id).innerHTML=items.map(function(i){
+      return '<div class="stk'+(i.first?' got':'')+'" title="'+e(i.title||i.name)+'"><div class="art">'+i.art+'</div><b>'+e(i.name)+'</b>'+
+        '<span>'+(i.first?'First '+nice(i.first)+(i.note?' · '+e(i.note):''):'Not yet')+'</span></div>';}).join('');}
+
+  var loading=false;
+  window.loadStickers=function(){if(loading)return;loading=true;
+    Promise.all([fetch('/api/history/collection').then(function(r){return r.text();}).catch(function(){return '';}),
+                 fetch('/api/history/airframes').then(function(r){return r.text();}).catch(function(){return '';})])
+    .then(function(res){
+      var col=csv(res[0]),frames=csv(res[1]),seen={airline:{},type:{},airport:{}};
+      col.forEach(function(r){if(seen[r[0]])seen[r[0]][r[1]]={first:r[2],days:+r[4],count:+r[5]};});
+      var perType={},perOp={};
+      frames.forEach(function(f){if(f[1])perType[f[1]]=(perType[f[1]]||0)+1;if(f[2])perOp[f[2]]=(perOp[f[2]]||0)+1;});
+      // Airlines: the list, then any others seen.
+      var al=AIRLINES.slice(),known={};al.forEach(function(a){known[a[1]]=1;});
+      Object.keys(seen.airline).sort().forEach(function(c){if(!known[c])al.push(['',c,c]);});
+      al.sort(function(x,y){return x[2].localeCompare(y[2]);});
+      album('stal',al.map(function(a){var s=seen.airline[a[1]]||{},n=a[0]?perOp[a[0]]:0;
+        return {name:a[2],title:a[2]+' ('+(a[0]||a[1])+')',first:s.first,note:n?n+' aircraft':'',
+                art:(a[0]?'<canvas width="32" height="32" data-code="'+a[0]+'"></canvas>':'')+'<i>'+a[1]+'</i>'};}));
+      // Countries, from the airports arrivals came from.
+      var cf={},ca={};Object.keys(seen.airport).forEach(function(icao){var cc=country(icao),s=seen.airport[icao];if(!cc)return;
+        if(!cf[cc]||s.first<cf[cc])cf[cc]=s.first;ca[cc]=(ca[cc]||0)+1;});
+      var cl=COUNTRIES.slice();Object.keys(cf).sort().forEach(function(c){if(cl.indexOf(c)<0)cl.push(c);});
+      cl.sort(function(a,b){return cname(a).localeCompare(cname(b));});
+      album('stco',cl.map(function(c){return {name:cname(c),first:cf[c],note:ca[c]?ca[c]+(ca[c]==1?' airport':' airports'):'',
+        art:'<span class="flag">'+flag(c)+'</span>'};}),Object.keys(seen.airport).length+' airports');
+      // Types, with how many different aircraft of each.
+      var tl=TYPES.slice(),kt={};tl.forEach(function(t){kt[t[0]]=1;});
+      Object.keys(seen.type).sort().forEach(function(c){if(!kt[c])tl.push([c,c]);});
+      album('stty',tl.map(function(t){var s=seen.type[t[0]]||{},n=perType[t[0]];
+        return {name:t[1],title:t[1]+' ('+t[0]+')',first:s.first,note:n?n+(n==1?' aircraft':' aircraft'):'',art:'<span class="tc">'+t[0]+'</span>'};}),
+        frames.length+' aircraft in all');
+      queue=[].slice.call(document.querySelectorAll('#stal canvas'));nextLogo();
+    }).finally(function(){loading=false;});};
+  if($('t-stickers').classList.contains('on'))loadStickers();
 })();
 
 // History (8.1): the logbook, read as CSV and drawn here (the board just streams its files).
