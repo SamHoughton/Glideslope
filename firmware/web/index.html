@@ -380,7 +380,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <h3>The collection</h3>
       <div class="coll"><div><h4 id="hairl">Airlines</h4><ol id="hairlines"></ol></div><div><h4 id="htyp">Aircraft types</h4><ol id="htypes"></ol></div></div>
       <h3>Download</h3>
-      <div class="btns"><a class="btn" href="/api/history/days" download>Every day (CSV)</a><a class="btn" href="/api/history/events" download>Moments (CSV)</a><a class="btn" href="/api/history/collection" download>Collection (CSV)</a></div>
+      <div class="btns"><a class="btn" href="/api/history/days" download>Every day (CSV)</a><a class="btn" href="/api/history/events" download>Moments (CSV)</a><a class="btn" href="/api/history/collection" download>Collection (CSV)</a><a class="btn" href="/api/history/airframes" download>Every aircraft (CSV)</a></div>
     </section>
 
     <section class="tab" id="t-stickers">
@@ -830,6 +830,7 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
       if(r.best_go_arounds)card(r.best_go_arounds,'most go-arounds, '+nice(r.best_go_arounds_date));
       if(r.tightest)card(ms(r.tightest),'tightest gap, '+nice(r.tightest_date));
       card(r.airlines||0,'airlines seen');card(r.types||0,'aircraft types');
+      if(r.airframes)card(r.airframes.toLocaleString(),'aircraft seen');if(r.airports)card(r.airports,'airports arrivals came from');
       card(r.events||0,'moments');
       $('hrecs').innerHTML=h;
       if(r.since)$('hsince').textContent='Kept on the board since '+nice(r.since)+' ('+Math.round((r.bytes||0)/1024)+' KB of its storage).';

@@ -7,6 +7,39 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.0.0 (in progress)
+
+The collection: everything the board has seen, and a sticker book to show it.
+
+**New**
+- **The sticker book**: a Stickers tab with three albums (airlines,
+  countries and aircraft types) of what flies to Heathrow, grey until the
+  board first sees each, then in colour with the date. Airlines show your
+  board's own logos and how many of their aircraft it has seen; countries
+  come from where arrivals took off; types show how many different
+  aircraft of each. Anything else it sees joins the end.
+- **Every aircraft**: the board now keeps every airframe it sees (every
+  aircraft in range with a registration, not just the one on the card):
+  registration, type, airline, first and last day, days seen. In the
+  History tab as a count and as CSV.
+- **Every origin**: the airport each arrival came from joins the
+  collection; a first arrival from a new one gets a gold banner (once the
+  collection is a fortnight old).
+- **Special liveries**: a list on the Spotter tab (registration and name);
+  one in range for the first time in a day gets a rainbow banner and an
+  alert on your phone.
+- **Your year at the airport**: the year's movements, busiest day and hour,
+  tightest gap, go-arounds, rare spots, what is new in the collection and
+  the aircraft seen most, on the panel from 26 December to 2 January (and
+  any time from Animations, More: Year so far).
+
+**Changes**
+- Fewer secure-connection reopens (where the memory goes lowest): the
+  weather is fetched two minutes after each new report is due (about every
+  30 minutes, not 10), and learned routes are used before the lookups that
+  need a secure connection.
+- The log keeps 32 lines (36); it is far quieter since 8.4.
+
 ## 8.4.0 (in progress)
 
 **New**
