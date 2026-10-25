@@ -17,7 +17,7 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   round, and any other route keeps its far end with this airport at the
   near one.
 
-## 9.0.1 (in progress)
+## 9.0.1 (25 Oct 2026)
 
 **Fixes**
 - Fewer secure-connection reopens: an arrival whose origin is known but not
