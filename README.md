@@ -91,10 +91,10 @@ are the board's own frames.
 
 Every board serves a page at `http://glideslope.local/`: the panel drawn as
 glowing LEDs (a still, or live for two minutes from the **Live** button),
-what's on it now, the animations on demand, the board's history and health,
-every setting in tabs (display with a switch for each screen, airport, night,
-data, spotter, phone alerts and Home Assistant, history, system, health,
-log), updates at a tap and a log.
+what's on it now, the animations on demand, the board's history, sticker book
+and health, every setting in tabs (display with a switch for each screen,
+airport, night, data, spotter, phone alerts and Home Assistant, history,
+stickers, system, health, log), updates at a tap and a log.
 
 | Desktop | Phone |
 | --- | --- |
@@ -111,6 +111,14 @@ go-arounds and rare sightings, every airline and type ever seen, and the lot
 as CSV.
 
 <img src="docs/webui-history.png" alt="The History tab: records, a heatmap of busy days, the moments and the collection" width="560">
+
+The **Stickers** tab: the sticker book. Every airline, country and aircraft
+type that comes to Heathrow, grey until the board first sees it, then in
+colour with the date: airlines with your board's own logos and how many of
+their aircraft it has seen, countries from where arrivals took off, types
+with how many different aircraft of each.
+
+<img src="docs/webui-stickers.png" alt="The Stickers tab: albums of airlines, countries and aircraft types, the ones seen in colour with the date" width="560">
 
 The **Health** tab: memory over the last day (the free heap and the largest
 free block, which the feed's secure connection needs), every start and its
@@ -223,12 +231,22 @@ reason, the feed, the weather, Wi-Fi, storage and temperature. The
   record (busiest day, most go-arounds, tightest gap) or every 25th airline
   or type gets a short gold banner; today becoming the busiest day yet is
   announced as it happens. Read it on the web page's History tab, or as CSV.
+- **Every aircraft** (9.0): every airframe in range with a registration,
+  not just the one on the card: its type, airline, the day it was first and
+  last seen and on how many days, kept in flash (room for 8,192). And the
+  airport every arrival came from; a first arrival from a new one gets a
+  gold banner.
+- **Your year at Heathrow**: from 26 December to 2 January the stats pages
+  add the year: its movements, busiest day and hour, tightest gap,
+  go-arounds, rare spots, what is new in the collection, and the aircraft
+  seen on the most days.
 - **Go-arounds** are spotted from every aircraft in range: one that was on
   final and climbs away is counted, logged with its runway, and sent to
   your phone.
-- **Rare spots**: an A380, 747, An-124, military traffic or any type not seen
-  before gets a gold banner before it flies in (seen types are logged on the
-  board).
+- **Rare spots**: an A380, 747, A340, MD-11, 757, A318, A300, BAe 146 or
+  Avro RJ, Il-76 or Il-96, a Beluga XL or Dreamlifter, An-124, military
+  traffic or any type not seen before gets a gold banner before it flies in
+  (seen types are logged on the board).
 - **Today's stats**: the day's arrivals and departures as two big
   counting figures, an hourly chart of the day's movements, and the busiest airline (in its colours), rarest
   type, go-arounds and the day against yesterday in turn, then two more
@@ -285,7 +303,8 @@ reason, the feed, the weather, Wi-Fi, storage and temperature. The
 - **Route globe**: after a card, the flight's route on a globe turned to face
   it, from the offline airport table and a world map in 8 KB: solid where it
   has been and dashed ahead, the aircraft on the line, the night side shaded
-  from the real sun, with the cities, a progress bar, distance flown and
+  from the real sun, with the cities, a progress bar, distance flown (in
+  turn with how long it has been flying: `13h 50m flying`) and
   the ETA (or when it landed).
 - **Overhead**: an aircraft passing within a set distance of the home marker
   (2 km by default) crosses the panel under the real sky, big when low,
@@ -295,6 +314,9 @@ reason, the feed, the weather, Wi-Fi, storage and temperature. The
 - **Watchlist**: registrations, call signs, aircraft types or hex codes
   (`G-CIVA, B74*, A388, RRR*`; `*` matches the start). One anywhere in range
   gets the same pass with a gold `WATCHLIST` label, and a phone alert.
+- **Special liveries**: your own list on the Spotter tab (a registration and
+  a name a line: `G-VPRD Pride`); one in range for the first time in a day
+  gets a rainbow banner and a phone alert.
 - **Phone alerts** through [ntfy](https://ntfy.sh) (free, no account): emergency
   squawks, rare spots, the watchlist, go-arounds, runway changes (and ones
   the forecast says are coming), busy stacks, fog and thunderstorms, and
@@ -557,7 +579,7 @@ Aircraft positions, first to answer wins:
    over one connection kept open between fetches (a TLS handshake every few
    seconds is more memory than the board can spare), with the reply read one
    aircraft at a time; it is closed briefly whenever something else needs
-   HTTPS (the weather every 10 minutes, a route lookup adsb.im can't
+   HTTPS (the weather when a new report is due, a route lookup adsb.im can't
    answer). adsb.lol is the backup: since October 2026 it allows 500
    requests a day per address. Can be switched off in the settings.
 3. [OpenSky Network](https://opensky-network.org/), every 30 s.
@@ -567,7 +589,8 @@ Aircraft positions, first to answer wins:
 - [hexdb.io](https://hexdb.io/) (HTTPS) for routes adsb.im doesn't know,
   then OpenSky and AeroAPI if configured.
 - [aviationweather.gov](https://aviationweather.gov/) (NOAA) for Heathrow's
-  METAR and TAF every 10 minutes, and in the same request the reports from
+  METAR and TAF when a new report is due (about every 30 minutes), and in
+  the same request the reports from
   where the next arrivals came from.
 - [GitHub](https://github.com/SamHoughton/Glideslope/releases) for updates:
   the web page asks GitHub's API for the newest release, and the board
