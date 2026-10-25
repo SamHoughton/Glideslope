@@ -14,6 +14,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/ImageCheck.h"
 #include <WiFi.h>
 #include <Preferences.h>
+#include <LittleFS.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
