@@ -301,7 +301,8 @@ def main():
     ap.add_argument('--shots', action='store_true', help='write screenshots to docs/ and exit')
     a = ap.parse_args()
     Handler.html = page_html().replace('https://api.github.com/repos/SamHoughton/Glideslope/releases/latest',
-                                       '/mock/release').encode('utf-8')
+                                       '/mock/release').replace(
+        'https://api.planespotters.net/pub/photos/reg/', '/mock/photo/').encode('utf-8')   # no real photos in the docs
     Handler.frame = sample_frame()
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     url = f'http://127.0.0.1:{PORT}/'

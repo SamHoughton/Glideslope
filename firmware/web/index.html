@@ -57,6 +57,9 @@ h3:first-child{margin-top:0}
 .now .rt{font-size:15px;color:var(--text)}
 .now .meta{width:100%;font-size:13px;color:var(--muted)}
 .now .idle{color:var(--muted)}
+.pic{margin-top:12px;display:none}.pic.on{display:block}
+.pic img{display:block;width:100%;max-width:420px;aspect-ratio:3/2;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:#0b0f15}
+.pic span{display:block;font-size:11px;color:var(--faint);margin-top:4px}.pic a{color:inherit}
 
 /* Buttons */
 button{font:inherit;font-size:14px;cursor:pointer;border-radius:10px;padding:9px 14px;min-height:40px;
@@ -174,6 +177,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
     <div class="bezel"><canvas id="dmp" width="768" height="384"></canvas></div>
     <div class="liverow"><button id="livebtn" class="pri">&#9654; Live</button><span id="livest">A still of the panel. Live shows it moving for two minutes.</span></div>
     <div class="now" id="now"><span class="idle">&nbsp;</span></div>
+    <div class="pic" id="nowpic"></div>
   </div>
   <div class="card" id="today">
     <h2>Today</h2>
@@ -620,8 +624,21 @@ function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
   .finally(function(){setTimeout(pollStatus,10000);});}
 
 // What is on the card.
+// A photo of the aircraft itself (9.1), from Planespotters.net by its
+// registration, credited as they ask; the browser fetches it, not the board.
+var PSAPI='https://api.planespotters.net/pub/photos/reg/',PHOTOS={},picReg='';
+function showPhoto(reg){var el=$('nowpic');if(reg===picReg)return;picReg=reg;
+  function put(p){if(picReg!==reg)return;if(!p){el.className='pic';el.innerHTML='';return;}
+    el.innerHTML='<a href="'+esc(p.link)+'" target="_blank" rel="noopener"><img alt="'+esc(reg)+'" src="'+esc(p.src)+'"></a>'+
+      '<span>'+esc(reg)+' · photo '+esc(p.by)+' · <a href="'+esc(p.link)+'" target="_blank" rel="noopener">Planespotters.net</a></span>';el.className='pic on';}
+  if(!reg){put(null);return;}
+  if(reg in PHOTOS){put(PHOTOS[reg]);return;}
+  fetch(PSAPI+encodeURIComponent(reg)).then(function(r){return r.ok?r.json():{};}).then(function(j){
+    var x=(j.photos||[])[0];PHOTOS[reg]=x?{src:x.thumbnail_large.src,link:x.link,by:x.photographer}:null;put(PHOTOS[reg]);
+  }).catch(function(){PHOTOS[reg]=null;put(null);});}
 function pollNow(){if(document.hidden){setTimeout(pollNow,3000);return;}
   fetch('/api/display').then(function(r){return r.json();}).then(function(d){var n=$('now');
+    showPhoto(d.active&&d.registration&&d.registration!=='GSLP'&&d.registration!=='G-GSLP'?d.registration:'');
     if(!d.active){n.innerHTML='<span class="idle">Between planes: map, arrivals, stats and weather in turn</span>';return;}
     n.innerHTML='<span class="fl">'+esc(d.flight)+'</span><span class="rt">'+esc(d.origin||'?')+' &rarr; '+esc(d.dest||'?')+'</span>'+
       '<span class="meta">'+[d.airline_name,d.aircraft_name,d.registration,d.altitude_ft+' ft',d.speed_kt+' kt'].filter(Boolean).map(esc).join(' · ')+'</span>';
