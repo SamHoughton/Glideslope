@@ -1,4 +1,6 @@
 #include "utils/Logbook.h"
+#include "utils/Airframes.h"
+#include "utils/SeenLog.h"
 #include "utils/TelnetLogger.h"
 #include <LittleFS.h>
 #include <WiFiClient.h>
@@ -285,8 +287,9 @@ void Logbook::writeCollectionCsv(WiFiClient &c)
         clean(it.code, code, sizeof(code));
         dayText(it.firstDay, first, sizeof(first));
         dayText(it.lastDay, last, sizeof(last));
-        snprintf(line, sizeof(line), "%s,%s,%s,%s,%u,%lu\n", it.kind ? "type" : "airline", code, first, last, it.days,
-                 (unsigned long)it.count);
+        static const char *const kItemKinds[] = {"airline", "type", "airport"};
+        snprintf(line, sizeof(line), "%s,%s,%s,%s,%u,%lu\n", kItemKinds[it.kind < 3 ? it.kind : 1], code, first, last,
+                 it.days, (unsigned long)it.count);
         w.line(line);
     }
     f.close();
@@ -295,9 +298,86 @@ void Logbook::writeCollectionCsv(WiFiClient &c)
 size_t Logbook::bytesUsed()
 {
     size_t n = 0;
-    for (const char *p : {kDays, kEvents, kCollection, kRecords})
+    for (const char *p : {kDays, kEvents, kCollection, kRecords, Airframes::kPath})
         if (LittleFS.exists(p)) { File f = LittleFS.open(p, "r"); n += f.size(); f.close(); }
     return n;
+}
+
+bool Logbook::noteOrigin(const char *icao, const char *ident)
+{
+    if (!icao || strlen(icao) != 4 || !ident || !ident[0]) return false;
+    const time_t now = time(nullptr);
+    if (now < 1600000000) return false;
+    // Each flight once (the card's flight comes round every fetch).
+    static char recent[12][9] = {};
+    static uint8_t next = 0;
+    for (const auto &r : recent)
+        if (!strncmp(r, ident, 8)) return false;
+    strlcpy(recent[next], ident, sizeof(recent[next]));
+    next = (next + 1) % 12;
+
+    const uint16_t today = SeenLog::dayNumber(now);
+    File f = LittleFS.open(kCollection, LittleFS.exists(kCollection) ? "r+" : "w");
+    if (!f) return false;
+    Item it;
+    size_t pos = 0;
+    uint16_t firstAirportDay = today;   // when the board started collecting airports
+    while (f.read((uint8_t *)&it, sizeof(it)) == sizeof(it))
+    {
+        if (it.kind == 2 && it.firstDay < firstAirportDay) firstAirportDay = it.firstDay;
+        if (it.kind == 2 && !strncmp(it.code, icao, 4))
+        {
+            if (it.lastDay != today) { ++it.days; it.lastDay = today; }
+            ++it.count;
+            f.seek(pos);
+            f.write((const uint8_t *)&it, sizeof(it));
+            f.close();
+            return false;
+        }
+        pos += sizeof(it);
+    }
+    it = Item{};
+    strlcpy(it.code, icao, sizeof(it.code));
+    it.kind = 2;
+    it.firstDay = it.lastDay = today;
+    it.days = 1;
+    it.count = 1;
+    f.seek(pos);
+    f.write((const uint8_t *)&it, sizeof(it));
+    f.close();
+    ++s_rec.airports;
+    saveRecords();
+    Log.printf("Logbook: a first arrival from %s (%s)\n", icao, ident);
+    // For the first fortnight nearly every airport is new: no news then.
+    return today - firstAirportDay >= 14;
+}
+
+void Logbook::writeAirframesCsv(WiFiClient &c)
+{
+    csvHeader(c, "airframes");
+    Writer w(c);
+    w.line("registration,type,airline,first_seen,last_seen,days\n");
+    File f = LittleFS.open(Airframes::kPath, "r");
+    if (!f) return;
+    Airframes::Slot chunk[16];
+    char line[80], reg[8], type[5], op[4], first[12], last[12];
+    size_t got;
+    while (w.ok && (got = f.read((uint8_t *)chunk, sizeof(chunk))) >= sizeof(Airframes::Slot))
+        for (size_t i = 0; i < got / sizeof(Airframes::Slot) && w.ok; ++i)
+        {
+            const Airframes::Slot &s = chunk[i];
+            if (!s.key) continue;
+            memcpy(reg, s.reg, 7); reg[7] = 0;
+            memcpy(type, s.type, 4); type[4] = 0;
+            memcpy(op, s.op, 3); op[3] = 0;
+            char r2[8], t2[5], o2[4];
+            clean(reg, r2, sizeof(r2)); clean(type, t2, sizeof(t2)); clean(op, o2, sizeof(o2));
+            dayText(s.firstDay, first, sizeof(first));
+            dayText(s.lastDay, last, sizeof(last));
+            snprintf(line, sizeof(line), "%s,%s,%s,%s,%s,%u\n", r2, t2, o2, first, last, s.days);
+            w.line(line);
+        }
+    f.close();
 }
 
 void Logbook::recordsJson(String &out)
@@ -314,8 +394,8 @@ void Logbook::recordsJson(String &out)
     snprintf(buf, sizeof(buf),
              "{\"since\":\"%s\",\"days\":%u,\"events\":%u,\"bytes\":%u,\"best_day\":%u,\"best_day_date\":\"%s\","
              "\"best_go_arounds\":%u,\"best_go_arounds_date\":\"%s\",\"tightest\":%u,\"tightest_date\":\"%s\","
-             "\"airlines\":%u,\"types\":%u}",
+             "\"airlines\":%u,\"types\":%u,\"airports\":%u,\"airframes\":%u}",
              s, (unsigned)days, (unsigned)events, (unsigned)bytesUsed(), s_rec.bestDay, a, s_rec.bestGa, b,
-             s_rec.tightest, t, s_rec.airlines, s_rec.types);
+             s_rec.tightest, t, s_rec.airlines, s_rec.types, s_rec.airports, (unsigned)Airframes::count());
     out = buf;
 }

@@ -49,6 +49,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/HomeAssistant.h"
 #include "utils/Ota.h"
 #include "utils/Health.h"
+#include "utils/Airframes.h"
 #include "utils/TlsArena.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
@@ -193,6 +194,50 @@ static void noteHistory(const std::vector<StateVector> &states, std::vector<Flig
 }
 
 // Overhead and watchlist: the pass on the panel, and a phone alert for the watchlist.
+// The collection (9.0): every airframe in range with a registration, and
+// the airport each arrival came from (a gold banner for a new one).
+static void noteCollection(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
+{
+    const time_t now = time(nullptr);
+    if (now < 1600000000) return;
+    const uint16_t today = SeenLog::dayNumber(now);
+    static uint32_t recent[40] = {};   // visited today, so not looked up again every fetch
+    static uint16_t recentDay = 0;
+    static uint8_t next = 0;
+    if (recentDay != today) { memset(recent, 0, sizeof(recent)); recentDay = today; }
+    int visits = 0;
+    for (const StateVector &s : states)
+    {
+        if (!s.registration.length() || visits >= 6) continue;   // a few a fetch: the rest next time
+        const uint32_t icao = (uint32_t)strtoul(s.icao24.c_str(), nullptr, 16);
+        if (!icao) continue;
+        bool seen = false;
+        for (uint32_t r : recent) if (r == icao) { seen = true; break; }
+        if (seen) continue;
+        char op[4] = "";
+        if (s.callsign.length() >= 4 && isalpha((unsigned char)s.callsign[0]) && isalpha((unsigned char)s.callsign[1]) &&
+            isalpha((unsigned char)s.callsign[2]) && isdigit((unsigned char)s.callsign[3]))
+            strlcpy(op, s.callsign.c_str(), sizeof(op));
+        ++visits;
+        if (Airframes::visit(Airframes::fileStore(), icao, today, s.registration.c_str(), s.aircraft_type.c_str(), op) != Airframes::Failed)
+        {
+            recent[next] = icao;
+            next = (next + 1) % 40;
+        }
+    }
+    for (const FlightInfo &f : flights)
+    {
+        if (f.destination.code_icao != g_airport.icao || f.origin.code_icao.length() != 4) continue;
+        if (Logbook::noteOrigin(f.origin.code_icao.c_str(), f.ident.c_str()))
+        {
+            const char *city = Airports::city(f.origin.code_icao.c_str());
+            char l2[24];
+            snprintf(l2, sizeof(l2), "%s", city && city[0] ? city : f.origin.code_icao.c_str());
+            g_display.showNews("First arrival from", l2);
+        }
+    }
+}
+
 static void spotterCheck(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
 {
     const RuntimeConfig cfg = configSnapshot();
@@ -976,6 +1021,7 @@ void loop()
         if (g_fetcher->lastFetchOk()) ImageCheck::keep("positions fetched");
         Health::noteFetch(g_fetcher->lastFetchOk());
         noteHistory(g_states, g_flights);       // "SEEN 14 TIMES" on the cards
+        noteCollection(g_states, g_flights);    // every airframe, every origin (9.0)
         g_display.displayFlights(g_flights);   // queues new contacts, refreshes telemetry
         g_display.updateTraffic(trafficFromStates(g_states));   // everything in range, for the map
         heapCheckpoint("fetch cycle");

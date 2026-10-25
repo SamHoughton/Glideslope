@@ -50,7 +50,8 @@ namespace Logbook
         uint16_t bestDay = 0;            // movements
         uint8_t  bestGa = 0, spare0 = 0;
         uint32_t bestGaDate = 0;
-        uint16_t tightest = 0, spare1 = 0;   // seconds (0: none yet)
+        uint16_t tightest = 0;           // seconds (0: none yet)
+        uint16_t airports = 0;           // origin airports in the collection (9.0; a spare before)
         uint32_t tightDate = 0;
         uint16_t airlines = 0, types = 0;    // in the collection
         uint32_t since = 0;              // YYYYMMDD of the first day logged

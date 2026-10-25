@@ -271,6 +271,8 @@ void WebConfig::loop()
     else if (r.path == "/api/history/days"       && r.method == "GET") Logbook::writeDaysCsv(client);
     else if (r.path == "/api/history/events"     && r.method == "GET") Logbook::writeEventsCsv(client);
     else if (r.path == "/api/history/collection" && r.method == "GET") Logbook::writeCollectionCsv(client);
+    else if (r.path == "/api/history/airframes"  && r.method == "GET") Logbook::writeAirframesCsv(client);
+    else if (r.path == "/api/logo"               && r.method == "GET") handleGetLogo(client, r);
     else if (r.path == "/api/history/records"    && r.method == "GET")
     {
         String body;
@@ -952,6 +954,30 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
 // An airline logo from the web page (converted to 32x32 RGB565 in the
 // browser): POST /api/logo?code=CTN with exactly 2,048 bytes; &delete=1
 // removes one.
+// A logo's 2 KB of RGB565 (9.0: the sticker book draws them), streamed
+// from its file; 404 if the board has none.
+void WebConfig::handleGetLogo(WiFiClient &c, const Req &r)
+{
+    String code = qparam(r.query, "code");
+    code.toUpperCase();
+    bool ok = code.length() >= 2 && code.length() <= 4;
+    for (size_t i = 0; ok && i < code.length(); ++i) ok = isalnum((unsigned char)code[i]);
+    File f;
+    if (ok) f = LittleFS.open(String("/logos/") + code + ".bin", "r");
+    if (!f || f.size() != LogoBook::kBytes)
+    {
+        if (f) f.close();
+        sendHttp(c, 404, "text/plain", "no logo");
+        return;
+    }
+    c.printf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %u\r\n"
+             "Cache-Control: max-age=86400\r\nConnection: close\r\n\r\n", (unsigned)LogoBook::kBytes);
+    uint8_t buf[256];
+    size_t n;
+    while ((n = f.read(buf, sizeof(buf))) > 0 && c.connected()) c.write(buf, n);
+    f.close();
+}
+
 void WebConfig::handleLogo(WiFiClient &c, const Req &r)
 {
     String code = qparam(r.query, "code");
