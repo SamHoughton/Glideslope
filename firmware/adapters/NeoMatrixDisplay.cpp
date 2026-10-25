@@ -617,7 +617,7 @@ void NeoMatrixDisplay::todayJson(String &out)
             if (isalnum((unsigned char)*s) || *s == '-' || *s == ' ') o[n++] = *s;
         o[n] = '\0';
     };
-    static const char *const kKinds[] = {"rare", "first", "watch", "overhead", "goaround", "emergency"};
+    static const char *const kKinds[] = {"rare", "first", "watch", "overhead", "goaround", "emergency", "crosswind"};
     out = "";
     out.reserve(160 + nSpots * 64 + nRw * 24);
     char buf[96], a[12], b[12];

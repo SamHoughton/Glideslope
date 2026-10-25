@@ -74,6 +74,7 @@ void DailyStats::reset()
 {
     _year = _day = -1;
     _arrivals = _departures = _goArounds = 0;
+    _windiest = 0;
     memset(_arrHour, 0, sizeof(_arrHour));
     memset(_depHour, 0, sizeof(_depHour));
     memset(_seen, 0, sizeof(_seen));
@@ -608,6 +609,7 @@ void DailyStats::makeDayRecord()
     d.arrivals = _arrivals;
     d.departures = _departures;
     d.goArounds = (uint8_t)min(255, (int)_goArounds);
+    d.windiest = _windiest;
     d.types = _nTypes;
     d.airlines = _nAirlines;
     for (int h = 0; h < 24; ++h) d.hours[h] = (uint8_t)min(255, _arrHour[h] + _depHour[h]);

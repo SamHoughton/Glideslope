@@ -200,6 +200,41 @@ void NeoMatrixDisplay::startScene(unsigned long now, LandingScene::Kind kind, bo
     _landingStartMs = now;
 }
 
+// A landing in a strong crosswind (9.1): 20 kt across steady, or 25 with
+// the gusts, on the runway it landed on, from the latest METAR. A banner
+// after the landing, the spotter log, and the record for the strongest.
+void NeoMatrixDisplay::noteCrosswindLanding()
+{
+    const int rwyDeg = atoi(_current.runway) * 10;
+    if (!rwyDeg || !_metar.valid || _metar.windDir < 0) return;
+    int cross = 0, tail = 0, gustCross = 0;
+    Weather::components(_metar, rwyDeg, cross, tail);
+    if (_metar.gustKt)
+    {
+        Metar g = _metar;
+        g.windKt = _metar.gustKt;
+        Weather::components(g, rwyDeg, gustCross, tail);
+    }
+    const int worst = max(cross, gustCross);
+    if (cross < 20 && gustCross < 25) return;
+    const char *ident = _current.flight.ident_iata.length() ? _current.flight.ident_iata.c_str() : _current.flight.ident.c_str();
+    char what[9];
+    snprintf(what, sizeof(what), "%dkt %s", worst, _current.runway);
+    _stats.noteSpot(DailyStats::Crosswind, ident, what);
+    _stats.noteCrosswind((uint8_t)min(worst, 255));
+    Log.printf("Display: %s landed with %d kt across (%d steady)\n", ident, worst, cross);
+    const bool record = _records.since && worst > _records.windiest;
+    if (record) _records.windiest = (uint8_t)min(worst, 255);
+    strlcpy(_news1, record ? "Windiest landing yet" : "Crosswind landing", sizeof(_news1));
+    snprintf(_news2, sizeof(_news2), "%s %d kt", ident, worst);
+    _newsStyle = 6;
+    _newsQueuedMs = millis();
+    _newsPending = true;
+    if (record)
+        Notify::post(Notify::Weather, 3, "dash", "Windiest landing yet", "%s landed on %s with %d kt across%s.", ident,
+                     _current.runway, worst, gustCross > cross ? " in the gusts" : "");
+}
+
 void NeoMatrixDisplay::startLanding(unsigned long now, bool demo)
 {
     if (!demo)
@@ -211,6 +246,7 @@ void NeoMatrixDisplay::startLanding(unsigned long now, bool demo)
     startScene(now, LandingScene::Landing, demo);
     Log.printf("Display: %s touchdown on %s\n", _current.flight.ident.c_str(),
                _current.runway[0] ? _current.runway : "runway");
+    if (!demo) noteCrosswindLanding();
 }
 
 // Returns true while the landing animation owns the panel.

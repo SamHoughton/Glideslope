@@ -397,11 +397,13 @@ int main(int argc, char **argv)
         InfoScreens::renderMoodBanner(c, 1, "Low visibility", "Fog 300 m", 2500);            save(c, "banner_fog");
         InfoScreens::renderGoAroundAlert(c, "BAW117", "27L", 1200, 250);                     save(c, "alert_goaround_flash");
         InfoScreens::renderGoAroundAlert(c, "BAW117", "27L", 1200, 6000);                    save(c, "alert_goaround");
+        InfoScreens::renderGoAroundAlert(c, "BAW117", "27L", 1200, 7600, "Gusts 38 kt across");   save(c, "alert_goaround_gusts");
         InfoScreens::renderMoodBanner(c, 2, "Thunderstorm", "Over Heathrow", 1750);          save(c, "banner_storm");
         InfoScreens::renderMoodBanner(c, 2, "Thunderstorm", "Over Heathrow", 900);           save(c, "banner_storm_dark");
         InfoScreens::renderMoodBanner(c, 3, "Runway change due", "To 09 at 19:00", 900);     save(c, "banner_runway");
         InfoScreens::renderMoodBanner(c, 4, "Special livery", "Pride", 700);                 save(c, "banner_livery");
         InfoScreens::renderMoodBanner(c, 5, "New sticker", "Air Astana", 1500);           save(c, "banner_sticker");
+        InfoScreens::renderMoodBanner(c, 6, "Crosswind landing", "BA311 31 kt", 1200);     save(c, "banner_crosswind");
         InfoScreens::renderMoodBanner(c, 5, "New sticker", "Dominican Rep.", 400);        save(c, "banner_sticker_long");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 600);                                save(c, "runway_change_a");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 1900);                               save(c, "runway_change_b");

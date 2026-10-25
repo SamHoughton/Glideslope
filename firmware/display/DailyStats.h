@@ -26,6 +26,10 @@ public:
     // Every aircraft in range, once per fetch.
     void noteTraffic(const std::vector<StateVector> &states);
     void noteGoAround() { rollDay(); ++_goArounds; _dirty = true; }
+    // A landing in a strong crosswind (9.1): kt across, with gusts. True if
+    // it is the day's windiest so far.
+    bool noteCrosswind(uint8_t kt) { rollDay(); if (kt <= _windiest) return false; _windiest = kt; _dirty = true; return true; }
+    uint8_t windiest() const { return _windiest; }
     // A go-around spotted in noteTraffic since the last call (8.1): every
     // aircraft in range is watched, not only the card's. Fills the call
     // sign, runway and height; false if none.
@@ -79,7 +83,7 @@ public:
     int  busiestHour(int &movements) const;
 
     // ── Spotter log (7.1) ──────────────────────────────────────────────────
-    enum SpotKind : uint8_t { Rare, FirstVisit, Watchlist, Overhead, GoAround, Emergency };
+    enum SpotKind : uint8_t { Rare, FirstVisit, Watchlist, Overhead, GoAround, Emergency, Crosswind };
     struct Spot { uint16_t minute; uint8_t kind; char ident[8]; char what[9]; };
     static constexpr int kMaxSpots = 16;
     // Adds a sighting (the same aircraft and kind only once a day, except
@@ -109,6 +113,7 @@ public:
 private:
     int      _year = -1, _day = -1;   // local date the counts belong to
     uint16_t _arrivals = 0, _departures = 0, _goArounds = 0;
+    uint8_t  _windiest = 0;
     uint16_t _arrHour[24] = {}, _depHour[24] = {};
     uint16_t _yHour[24] = {};          // yesterday, arrivals + departures
     bool     _hasYesterday = false;

@@ -124,7 +124,7 @@ a.btn{display:inline-block;text-decoration:none;color:var(--text);border:1px sol
 .spots .k{font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:6px;text-align:center}
 .spots .w{color:#96c8eb}
 .k.rare{background:#4a3a10;color:#ffc83c}.k.first{background:#123a4c;color:#5ac8ff}.k.watch{background:#4a4210;color:#ffd750}
-.k.overhead{background:#16402a;color:#78dc96}.k.goaround{background:#4c1e18;color:#ff6e5a}.k.emergency{background:#5a1210;color:#ff3c32}
+.k.overhead{background:#16402a;color:#78dc96}.k.crosswind{background:#13324a;color:#78c8ff}.k.goaround{background:#4c1e18;color:#ff6e5a}.k.emergency{background:#5a1210;color:#ff3c32}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:480px){.row{grid-template-columns:1fr}}
 label{display:block;font-size:13px;color:var(--text);margin-bottom:5px;font-weight:500}
@@ -218,6 +218,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="mood?kind=storm">Thunderstorm</button>
         <button data-demo="mood?kind=livery">Special livery</button>
         <button data-demo="mood?kind=sticker">New sticker</button>
+        <button data-demo="mood?kind=crosswind">Crosswind landing</button>
         <button data-demo="sky?look=golden">Sky: golden hour</button>
         <button data-demo="sky?look=night">Sky: night</button>
         <button data-demo="sky?look=night+storm">Sky: storm</button>
@@ -699,7 +700,7 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
 
 // Today (7.1): the runway rhythm and the spotter log.
 (function(){
-  var KIND={rare:'Rare',first:'New',watch:'Watch',overhead:'Over',goaround:'Go-around',emergency:'Squawk'};
+  var KIND={rare:'Rare',first:'New',watch:'Watch',overhead:'Over',goaround:'Go-around',emergency:'Squawk',crosswind:'Windy'};
   function ms(s){return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
   function hm(m){return ('0'+Math.floor(m/60)).slice(-2)+':'+('0'+m%60).slice(-2);}
   function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -835,8 +836,8 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
   function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   function nice(d){if(!d)return '';var p=d.split('-');var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1];return (+p[2])+' '+m+' '+p[0];}
   function ms(s){s=+s;return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
-  var KIND={'rare':'Rare','first visit':'New','watchlist':'Watch','go-around':'Go-around','emergency':'Squawk','overhead':'Over'};
-  var KCLS={'rare':'rare','first visit':'first','watchlist':'watch','go-around':'goaround','emergency':'emergency','overhead':'overhead'};
+  var KIND={'rare':'Rare','first visit':'New','watchlist':'Watch','go-around':'Go-around','emergency':'Squawk','overhead':'Over','crosswind':'Windy'};
+  var KCLS={'rare':'rare','first visit':'first','watchlist':'watch','go-around':'goaround','emergency':'emergency','overhead':'overhead','crosswind':'crosswind'};
   var loading=false;
   window.loadHistory=function(){
     if(loading)return;loading=true;
@@ -847,6 +848,7 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
       if(r.best_day)card(r.best_day.toLocaleString(),'busiest day, '+nice(r.best_day_date));
       if(r.best_go_arounds)card(r.best_go_arounds,'most go-arounds, '+nice(r.best_go_arounds_date));
       if(r.tightest)card(ms(r.tightest),'tightest gap, '+nice(r.tightest_date));
+      if(r.windiest)card(r.windiest+' kt','strongest crosswind on a landing');
       card(r.airlines||0,'airlines seen');card(r.types||0,'aircraft types');
       if(r.airframes)card(r.airframes.toLocaleString(),'aircraft seen');if(r.airports)card(r.airports,'airports arrivals came from');
       card(r.events||0,'moments');

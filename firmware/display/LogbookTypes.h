@@ -13,7 +13,8 @@ namespace Logbook
     {
         uint32_t date = 0;               // YYYYMMDD, local
         uint16_t arrivals = 0, departures = 0;
-        uint8_t  goArounds = 0, types = 0, airlines = 0, spare0 = 0;
+        uint8_t  goArounds = 0, types = 0, airlines = 0;
+        uint8_t  windiest = 0;           // the day's strongest crosswind on a landing, kt with gusts (9.1; a spare before)
         uint8_t  hours[24] = {};         // movements in each local hour (255 at most)
         char     busiest[4] = "";        // busiest airline (IATA, else ICAO)
         uint16_t busiestN = 0;
@@ -66,7 +67,8 @@ namespace Logbook
     {
         uint32_t bestDayDate = 0;        // YYYYMMDD
         uint16_t bestDay = 0;            // movements
-        uint8_t  bestGa = 0, spare0 = 0;
+        uint8_t  bestGa = 0;
+        uint8_t  windiest = 0;           // the strongest crosswind on a landing, kt with gusts (9.1; a spare before)
         uint32_t bestGaDate = 0;
         uint16_t tightest = 0;           // seconds (0: none yet)
         uint16_t airports = 0;           // origin airports in the collection (9.0; a spare before)

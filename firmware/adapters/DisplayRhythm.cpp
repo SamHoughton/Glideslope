@@ -145,7 +145,20 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
         const uint32_t t = now - _gaMs;
         if (t < 10000)
         {
-            InfoScreens::renderGoAroundAlert(g_workFrame, _gaIdent, _gaRwy, _gaAlt, t);
+            char wind[28] = "";
+            {
+                // Blowing hard across its runway: say so (9.1).
+                const int deg = atoi(_gaRwy) * 10;
+                if (deg && _metar.valid && _metar.windDir >= 0)
+                {
+                    Metar g = _metar;
+                    if (g.gustKt) g.windKt = g.gustKt;
+                    int cross = 0, tail = 0;
+                    Weather::components(g, deg, cross, tail);
+                    if (cross >= 15) snprintf(wind, sizeof(wind), "%s %d kt across", _metar.gustKt ? "Gusts" : "Wind", cross);
+                }
+            }
+            InfoScreens::renderGoAroundAlert(g_workFrame, _gaIdent, _gaRwy, _gaAlt, t, wind);
             present();
             { wait = kCardFrameMs; return true; }
         }
@@ -173,7 +186,12 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
     {
         _newsStyle = s_moodDemo;
         s_moodDemo = 0;
-        if (_newsStyle == 5)
+        if (_newsStyle == 6)
+        {
+            snprintf(_news1, sizeof(_news1), "Crosswind landing");
+            snprintf(_news2, sizeof(_news2), "BA311 31 kt");
+        }
+        else if (_newsStyle == 5)
         {
             snprintf(_news1, sizeof(_news1), "New sticker");
             snprintf(_news2, sizeof(_news2), "Air Astana");

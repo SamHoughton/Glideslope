@@ -87,7 +87,7 @@ namespace
         out[n] = 0;
     }
 
-    const char *const kKinds[] = {"rare", "first visit", "watchlist", "overhead", "go-around", "emergency"};
+    const char *const kKinds[] = {"rare", "first visit", "watchlist", "overhead", "go-around", "emergency", "crosswind"};
 }
 
 void Logbook::begin()
@@ -151,6 +151,7 @@ void Logbook::addDay(const Day &d, const std::vector<Tally> &tallies, char *line
         s_rec.bestDay = moves;
         s_rec.bestDayDate = d.date;
     }
+    if (d.windiest > s_rec.windiest) s_rec.windiest = d.windiest;   // (9.1: announced live, not at midnight)
     if (d.goArounds > s_rec.bestGa)
     {
         if (!line1[0] && s_rec.bestGa) { snprintf(line1, len1, "Most go-arounds"); snprintf(line2, len2, "%u in a day", d.goArounds); }
@@ -268,7 +269,7 @@ void Logbook::writeEventsCsv(WiFiClient &c)
         strftime(when, sizeof(when), "%Y-%m-%d %H:%M", &lt);
         clean(e.ident, id, sizeof(id));
         clean(e.what, what, sizeof(what));
-        snprintf(line, sizeof(line), "%s,%s,%s,%s\n", e.at ? when : "", e.kind < 6 ? kKinds[e.kind] : "other", id, what);
+        snprintf(line, sizeof(line), "%s,%s,%s,%s\n", e.at ? when : "", e.kind < 6 ? kKinds[e.kind < 7 ? e.kind : 0] : "other", id, what);
         w.line(line);
     }
     f.close();
@@ -492,8 +493,8 @@ void Logbook::recordsJson(String &out)
     snprintf(buf, sizeof(buf),
              "{\"since\":\"%s\",\"days\":%u,\"events\":%u,\"bytes\":%u,\"best_day\":%u,\"best_day_date\":\"%s\","
              "\"best_go_arounds\":%u,\"best_go_arounds_date\":\"%s\",\"tightest\":%u,\"tightest_date\":\"%s\","
-             "\"airlines\":%u,\"types\":%u,\"airports\":%u,\"airframes\":%u}",
+             "\"airlines\":%u,\"types\":%u,\"airports\":%u,\"airframes\":%u,\"windiest\":%u}",
              s, (unsigned)days, (unsigned)events, (unsigned)bytesUsed(), s_rec.bestDay, a, s_rec.bestGa, b,
-             s_rec.tightest, t, s_rec.airlines, s_rec.types, s_rec.airports, (unsigned)Airframes::count());
+             s_rec.tightest, t, s_rec.airlines, s_rec.types, s_rec.airports, (unsigned)Airframes::count(), s_rec.windiest);
     out = buf;
 }

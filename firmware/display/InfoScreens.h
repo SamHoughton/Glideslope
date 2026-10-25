@@ -108,7 +108,9 @@ namespace InfoScreens
     void renderRareBanner(FrameCanvas &c, const char *line1, const char *line2, uint32_t tMs);
     // A go-around anywhere in range (8.3): an amber frame flashing for the
     // first seconds, GO-AROUND, the flight, and a track climbing away.
-    void renderGoAroundAlert(FrameCanvas &c, const char *ident, const char *runway, int altFt, uint32_t tMs);
+    // wind: "Gusts 38 kt across" when it was blowing hard (9.1), in turn with the height.
+    void renderGoAroundAlert(FrameCanvas &c, const char *ident, const char *runway, int altFt, uint32_t tMs,
+                             const char *wind = nullptr);
     // The airfield's mood (8.2), as a banner like the rare spot's: 1 low
     // visibility (fog drifting by), 2 thunderstorm (rain and lightning),
     // 3 a runway change on the way (a yellow-on-black direction sign).

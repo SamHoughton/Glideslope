@@ -514,6 +514,7 @@ namespace
             case DailyStats::Watchlist:  col = Rgb{255, 215, 80};  return "Watch";
             case DailyStats::Overhead:   col = Rgb{120, 220, 150}; return "Over";
             case DailyStats::GoAround:   col = Rgb{255, 110, 90};  return "G/A";
+            case DailyStats::Crosswind:  col = Rgb{120, 200, 255}; return "Wind";
             default:                     col = Rgb{255, 60, 50};   return "Sqk";
         }
     }
@@ -1356,7 +1357,8 @@ namespace
     }
 }
 
-void InfoScreens::renderGoAroundAlert(FrameCanvas &c, const char *ident, const char *runway, int altFt, uint32_t tMs)
+void InfoScreens::renderGoAroundAlert(FrameCanvas &c, const char *ident, const char *runway, int altFt, uint32_t tMs,
+                                      const char *wind)
 {
     c.clear();
     const Rgb amber{255, 170, 30};
@@ -1376,7 +1378,8 @@ void InfoScreens::renderGoAroundAlert(FrameCanvas &c, const char *ident, const c
     thousandsFt(altFt, alt, sizeof(alt));
     if (runway && runway[0]) snprintf(detail, sizeof(detail), "Off %s, at %s ft", runway, alt);
     else                     snprintf(detail, sizeof(detail), "At %s ft", alt);
-    centred(c, 37, detail, Rgb{200, 205, 215});
+    if (wind && wind[0] && (tMs / 2500) % 2 == 1) centred(c, 37, wind, Rgb{150, 210, 255});
+    else                                           centred(c, 37, detail, Rgb{200, 205, 215});
 
     // The track: down the approach, then up and away, drawn on over two seconds.
     const float drawn = fminf(1.0f, tMs / 2000.0f);
@@ -1449,6 +1452,18 @@ void InfoScreens::renderMoodBanner(FrameCanvas &c, uint8_t style, const char *li
             }
         }
         subject = Rgb{255, 200, 60};
+    }
+    else if (style == 6)
+    {
+        // A crosswind landing (9.1): streaks of wind blowing across.
+        for (int i = 0; i < 26; ++i)
+        {
+            const int y = (i * 41 + 3) % FrameCanvas::H, len = 6 + (i * 7) % 12, speed = 3 + i % 4;
+            const int x = (int)((tMs / 10 * speed + i * 53) % (FrameCanvas::W + 40)) - 20;
+            for (int k = 0; k < len; ++k)
+                c.set(x - k, y, FrameCanvas::scale(Rgb{120, 170, 220}, 0.6f * (1.0f - (float)k / len)));
+        }
+        subject = Rgb{150, 210, 255};
     }
     else if (style == 5)
     {
