@@ -40,6 +40,11 @@ The collection: everything the board has seen, and a sticker book to show it.
   need a secure connection.
 - The log keeps 32 lines (36); it is far quieter since 8.4.
 
+**Fixes**
+- A route adsb.im itself marks implausible (a flight landing at Heathrow
+  listed as Munich to Bremen) is no longer shown or remembered: the board
+  asks its other sources instead.
+
 ## 8.4.0 (in progress)
 
 **New**
