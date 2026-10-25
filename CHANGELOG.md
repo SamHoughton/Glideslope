@@ -7,7 +7,7 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
-## 9.0.1 (in progress)
+## 9.0.1 (25 Oct 2026)
 
 **Fixes**
 - Fewer secure-connection reopens: an arrival whose origin is known but not
