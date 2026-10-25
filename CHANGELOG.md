@@ -7,6 +7,24 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.1.0 (in progress)
+
+**New**
+- **A live map**: a Map tab with every aircraft in range on a real map
+  (OpenStreetMap, darkened), each with its trail, flight and height; the
+  approaches and the holding stacks; click one for more. The map loads in
+  your browser; the board only sends where everyone is, every five seconds.
+- **Photos of the aircraft**: under the panel on the web page, a photo of
+  the aircraft on the card itself, by its registration, from
+  Planespotters.net (credited, as they ask).
+- **New stickers on the panel**: the first time the board ever sees an
+  airline or a country, a sticker banner with its name (aircraft types: the
+  first-sighting banner, now called New sticker).
+- **Windy days**: a landing with a strong crosswind (20 kt, or 25 in the
+  gusts) gets a banner and a spotter-log entry; the windiest landing is a
+  record (announced, and sent to your phone, when it is beaten); a
+  go-around in a gale says how hard it was blowing.
+
 ## 9.0.2 (in progress)
 
 **Fixes**

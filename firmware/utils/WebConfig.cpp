@@ -287,6 +287,12 @@ void WebConfig::loop()
         Logbook::recordsJson(body);
         sendHttp(client, 200, "application/json", body);
     }
+    else if (r.path == "/api/traffic"       && r.method == "GET")
+    {
+        String body = "{}";
+        if (_traffic) _traffic(body, qparam(r.query, "airport") == "1");
+        sendHttp(client, 200, "application/json", body);
+    }
     else if (r.path == "/api/today"         && r.method == "GET")
     {
         String body = "{}";

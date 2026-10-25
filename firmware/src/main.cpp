@@ -835,6 +835,7 @@ void setup()
             }
 
             g_webConfig.setTodaySource([](String &out) { g_display.todayJson(out); });
+            g_webConfig.setTrafficSource([](String &out, bool withAirport) { g_display.trafficJson(out, withAirport); });
             g_webConfig.begin(80);  // start HTTP config + log UI
 
             // http://glideslope.local/ as well as the IP address.

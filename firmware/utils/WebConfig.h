@@ -58,12 +58,14 @@ public:
     void setAirfield(const char *mood, const char *outlook);
     // /api/today: filled by the display (7.1).
     void setTodaySource(void (*fill)(String &out)) { _today = fill; }
+    void setTrafficSource(void (*fill)(String &out, bool withAirport)) { _traffic = fill; }   // the live map (9.1)
 
     // Requests accepted so far (heartbeat diagnostics).
     uint32_t requestsServed() const { return _requests; }
 
 private:
     void (*_today)(String &out) = nullptr;
+    void                  (*_traffic)(String &out, bool withAirport) = nullptr;
     WiFiServer _server{80};
     static constexpr uint32_t kMinHeapToServe = 16000;   // 22 KB turned requests away for spells once the TLS arena moved ~34 KB out of the heap
 

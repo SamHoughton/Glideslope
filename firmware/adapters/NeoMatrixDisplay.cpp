@@ -590,6 +590,63 @@ bool NeoMatrixDisplay::originMetar(const char *icao, Metar &out) const
     return false;
 }
 
+void NeoMatrixDisplay::trafficJson(String &out, bool withAirport)
+{
+    char buf[200];
+    out = "";
+    {
+        Lock l(_lock);
+        const auto &all = _traffic.aircraft();
+        out.reserve(64 + all.size() * 150 + (withAirport ? 600 : 0));
+        out += "{\"aircraft\":[";
+        const unsigned long now = millis();
+        bool first = true;
+        for (const auto &t : all)
+        {
+            const TrafficPoint &p = t.p;
+            if (isnan(p.lat) || isnan(p.lon) || now - t.posMs > 60000UL) continue;
+            char label[9], type[5];
+            size_t n = 0;
+            for (const char *c = p.label; *c && n + 1 < sizeof(label); ++c) if (isalnum((unsigned char)*c)) label[n++] = *c;
+            label[n] = 0;
+            n = 0;
+            for (const char *c = p.type; *c && n + 1 < sizeof(type); ++c) if (isalnum((unsigned char)*c)) type[n++] = *c;
+            type[n] = 0;
+            snprintf(buf, sizeof(buf),
+                     "%s{\"id\":\"%06x\",\"f\":\"%s\",\"t\":\"%s\",\"lat\":%.5f,\"lon\":%.5f,\"h\":%d,\"gs\":%d,"
+                     "\"alt\":%d,\"c\":\"#%02x%02x%02x\",\"s\":%u,\"fin\":%d,\"rwy\":\"%s\"}",
+                     first ? "" : ",", (unsigned)p.id, label, type, p.lat, p.lon, isnan(p.heading) ? -1 : (int)lroundf(p.heading),
+                     isnan(p.gsKt) ? -1 : (int)lroundf(p.gsKt), isnan(p.altFt) ? -1 : (int)lroundf(p.altFt),
+                     p.colour.r, p.colour.g, p.colour.b, (unsigned)p.size, p.finalKm10 == 255 ? -1 : (int)p.finalKm10,
+                     isalnum((unsigned char)p.rwy[0]) ? p.rwy : "");
+            out += buf;
+            first = false;
+        }
+        out += "]";
+    }
+    if (withAirport)
+    {
+        snprintf(buf, sizeof(buf), ",\"airport\":{\"icao\":\"%s\",\"lat\":%.5f,\"lon\":%.5f,\"runways\":[",
+                 g_airport.icao, g_airport.lat, g_airport.lon);
+        out += buf;
+        for (int i = 0; i < g_airport.runwayCount; ++i)
+        {
+            const RunwayEnd &r = g_airport.runways[i];
+            snprintf(buf, sizeof(buf), "%s[\"%s\",%.5f,%.5f,%.1f]", i ? "," : "", r.name, r.lat, r.lon, r.course);
+            out += buf;
+        }
+        out += "],\"holds\":[";
+        for (int i = 0; i < g_airport.holdCount; ++i)
+        {
+            const HoldFix &h = g_airport.holds[i];
+            snprintf(buf, sizeof(buf), "%s[\"%s\",%.5f,%.5f]", i ? "," : "", h.name, h.lat, h.lon);
+            out += buf;
+        }
+        out += "]}";
+    }
+    out += "}";
+}
+
 void NeoMatrixDisplay::todayJson(String &out)
 {
     // Copied under the lock, written out after it: a web client can be slow.
