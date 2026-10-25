@@ -1450,6 +1450,38 @@ void InfoScreens::renderMoodBanner(FrameCanvas &c, uint8_t style, const char *li
         }
         subject = Rgb{255, 200, 60};
     }
+    else if (style == 5)
+    {
+        // A new sticker (9.1): a white-edged sticker, its corner peeling,
+        // a little shine passing over it.
+        const int x0 = 6, y0 = 22, w = FrameCanvas::W - 12, h = 30;
+        for (int y = y0; y < y0 + h; ++y)
+            for (int x = x0; x < x0 + w; ++x)
+            {
+                const bool edge = x < x0 + 2 || x >= x0 + w - 2 || y < y0 + 2 || y >= y0 + h - 2;
+                const int corner = (x - (x0 + w - 9)) + (y0 + 8 - y);     // the top-right corner, folded back
+                if (corner > 8) continue;
+                Rgb col = edge ? Rgb{235, 235, 225} : Rgb{24, 40, 70};
+                if (corner > 4) col = Rgb{170, 170, 160};                // the fold's underside
+                const int shine = (int)((tMs / 12) % 260) - 60;
+                if (!edge && corner <= 4 && abs((x - x0) - (y - y0) - shine) < 4) col = Rgb{60, 85, 130};
+                c.set(x, y, col);
+            }
+        // Stars around it.
+        for (int i = 0; i < 6; ++i)
+        {
+            const int sx = (i * 23 + 7) % FrameCanvas::W, sy = i % 2 ? 4 : 57;
+            const float k = 0.5f + 0.5f * sinf(tMs / 110.0f + i);
+            c.set(sx, sy, FrameCanvas::scale(kGold, k));
+        }
+        title = kGold;
+        subject = Rgb{255, 255, 255};
+        centred(c, 9, line1, title);
+        const Fonts::Font &f2 = FrameCanvas::width(Fonts::Large, line2) <= w - 6 ? Fonts::Large
+                              : FrameCanvas::width(Fonts::Medium, line2) <= w - 6 ? Fonts::Medium : Fonts::Label;
+        centredL(c, &f2 == &Fonts::Label ? 33 : 27, line2, subject, f2);
+        return;
+    }
     else if (style == 4)
     {
         // A special livery: a rainbow running round the edge.

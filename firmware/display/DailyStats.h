@@ -30,6 +30,9 @@ public:
     // aircraft in range is watched, not only the card's. Fills the call
     // sign, runway and height; false if none.
     bool takeGoAround(char *ident, size_t identLen, char *runway, size_t rwyLen, int &altFt);
+    // An airline seen for the first time today (9.1: the main loop checks
+    // the collection for a new sticker). Up to four wait.
+    bool takeNewAirline(char *code, size_t len);
 
     // ── For the logbook (8.1) ──────────────────────────────────────────────
     // A finished day (made at midnight, before the tally resets) and its
@@ -145,6 +148,8 @@ private:
     FinalWatch _watch[10] = {};
     char       _gaIdent[10] = "", _gaRwy[4] = "";
     int16_t    _gaAlt = 0;
+    char     _newAir[4][4] = {};   // airlines new today, for the sticker check (9.1)
+    uint8_t  _newAirN = 0;
     bool       _gaPending = false;
     void       watchGoArounds(const StateVector &s, const struct ApproachStatus &st, bool onFinal, uint32_t now);
 

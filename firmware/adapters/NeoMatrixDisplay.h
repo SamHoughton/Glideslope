@@ -142,6 +142,7 @@ public:
     // The year so far (9.0), from the logbook: on the stats screen from 26
     // December to 2 January (and on demand).
     void setYear(const Logbook::Year &y);
+    bool takeNewAirline(char *code, size_t len);   // see DailyStats (9.1)
     bool hasOriginWeather(const char *icao);
 
     // Today's stats from every aircraft in range (call once per fetch), and

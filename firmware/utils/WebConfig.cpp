@@ -298,7 +298,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/mood"     && r.method == "POST")
     {
         const String k = qparam(r.query, "kind");
-        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : k == "livery" ? 4 : 1);
+        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : k == "livery" ? 4 : k == "sticker" ? 5 : 1);
         sendHttp(client, 200, "application/json", "{\"ok\":true}");
     }
     else if (r.path == "/api/demo/goaround" && r.method == "POST") { requestGoAroundDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }

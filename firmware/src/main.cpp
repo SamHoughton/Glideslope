@@ -52,6 +52,8 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/Health.h"
 #include "utils/Airframes.h"
 #include "utils/Liveries.h"
+#include "config/Countries.h"
+#include "config/AirlineNames.h"
 #include "utils/TlsArena.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
@@ -242,7 +244,16 @@ static void noteCollection(const std::vector<StateVector> &states, const std::ve
     for (const FlightInfo &f : flights)
     {
         if (f.destination.code_icao != g_airport.icao || f.origin.code_icao.length() != 4) continue;
-        if (Logbook::noteOrigin(f.origin.code_icao.c_str(), f.ident.c_str()))
+        const int news = Logbook::noteOrigin(f.origin.code_icao.c_str(), f.ident.c_str());
+        if (news == 2)
+        {
+            char iso[3];
+            const char *country = "";
+            Countries::of(f.origin.code_icao.c_str(), iso, &country);
+            Log.printf("Logbook: a new country, %s (%s)\n", country, f.ident.c_str());
+            g_display.showMood(5, "New sticker", country);   // a whole new country (9.1)
+        }
+        else if (news == 1)
         {
             const char *city = Airports::city(f.origin.code_icao.c_str());
             char l2[24];
@@ -250,6 +261,15 @@ static void noteCollection(const std::vector<StateVector> &states, const std::ve
             g_display.showNews("First arrival from", l2);
         }
     }
+    // An airline the collection has never had (9.1).
+    char code[4];
+    while (g_display.takeNewAirline(code, sizeof(code)))
+        if (Logbook::stickerIsNew(0, code))
+        {
+            const char *name = AirlineNames::of(code);
+            Log.printf("Logbook: a new airline, %s\n", code);
+            g_display.showMood(5, "New sticker", name ? name : code);
+        }
 }
 
 static void spotterCheck(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
@@ -490,11 +510,11 @@ static Rgb airlineColour(const String &callsign)
 {
     // A fixed table (8.0): a map's node per new airline, all day, scattered
     // small permanent blocks through the heap.
-    // 78 airlines, the oldest replaced when full (8.3.1: 64 and then no
+    // 76 airlines, the oldest replaced when full (8.3.1: 64 and then no
     // caching at all, so a busy day's 65th airline onwards was worked out
     // again on every fetch).
     struct Slot { char icao[3]; Rgb c; };   // 6 bytes: no terminator kept
-    static Slot cache[78];
+    static Slot cache[76];
     static uint8_t cached = 0, next = 0;
     const Rgb kNeutral{200, 205, 215};
     if (callsign.length() < 4 || !isalpha((unsigned char)callsign[0]) ||
@@ -515,7 +535,7 @@ static Rgb airlineColour(const String &callsign)
         c = kNeutral;
         LogoBook::noteMissing(icao);   // for the web page's Logos section
     }
-    Slot &slot = cached < 78 ? cache[cached++] : cache[next++ % 78];
+    Slot &slot = cached < 76 ? cache[cached++] : cache[next++ % 76];
     memcpy(slot.icao, icao.c_str(), 3);
     slot.c = c;
     return c;

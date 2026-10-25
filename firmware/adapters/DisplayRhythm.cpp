@@ -173,7 +173,12 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
     {
         _newsStyle = s_moodDemo;
         s_moodDemo = 0;
-        if (_newsStyle == 4)
+        if (_newsStyle == 5)
+        {
+            snprintf(_news1, sizeof(_news1), "New sticker");
+            snprintf(_news2, sizeof(_news2), "Air Astana");
+        }
+        else if (_newsStyle == 4)
         {
             snprintf(_news1, sizeof(_news1), "Special livery");
             snprintf(_news2, sizeof(_news2), "Pride");

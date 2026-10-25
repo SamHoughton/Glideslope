@@ -32,10 +32,13 @@ namespace Logbook
     void addDay(const Day &d, const std::vector<Tally> &tallies, char *line1, size_t len1, char *line2, size_t len2);
     void addEvent(const Event &e);
     // An arrival from this airport (ICAO), as it is seen (9.0): into the
-    // collection at once, each flight counted once. True the first time
-    // the airport is ever seen (once the collection is a fortnight old:
-    // before that nearly everything is new).
-    bool noteOrigin(const char *icao, const char *ident);
+    // collection at once, each flight counted once.
+    // 0 nothing new, 1 a new airport, 2 a new country (9.1); both only
+    // once the collection is a fortnight old.
+    int noteOrigin(const char *icao, const char *ident);
+    // An airline (kind 0) or type (1) the collection has never had, once
+    // it is a fortnight old (9.1: the panel's new sticker).
+    bool stickerIsNew(uint8_t kind, const char *code);
 
     // CSV for the web page, written straight to the client.
     void writeDaysCsv(WiFiClient &c);

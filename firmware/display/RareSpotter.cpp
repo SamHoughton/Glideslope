@@ -102,7 +102,7 @@ void RareSpotter::banner(Reason r, const FlightInfo &f, char *line1, size_t len1
     {
         case Rare:      snprintf(line1, len1, "RARE SPOT");      snprintf(line2, len2, "%s", pretty); break;
         case Military:  snprintf(line1, len1, "MILITARY");       snprintf(line2, len2, "%s", type.length() ? pretty : f.ident.c_str()); break;
-        case FirstSeen: snprintf(line1, len1, "FIRST SIGHTING"); snprintf(line2, len2, "%s", pretty); break;
+        case FirstSeen: snprintf(line1, len1, "NEW STICKER");    snprintf(line2, len2, "%s", pretty); break;   // 9.1: the sticker book
         default:        line1[0] = line2[0] = '\0'; break;
     }
 }

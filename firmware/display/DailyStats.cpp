@@ -279,7 +279,14 @@ void DailyStats::count(const StateVector &s, bool arrival, int hour)
     _dirty = true;
 
     const String airline = airlineOf(s.callsign);
-    if (airline.length()) addAirline(airline.c_str(), 1);
+    if (airline.length())
+    {
+        bool known = false;
+        for (uint8_t i = 0; i < _nAirlines && !known; ++i)
+            known = strncmp(_airlines[i].code, airline.c_str(), sizeof(_airlines[i].code)) == 0;
+        if (!known && _newAirN < 4) strlcpy(_newAir[_newAirN++], airline.c_str(), sizeof(_newAir[0]));
+        addAirline(airline.c_str(), 1);
+    }
     String type = s.aircraft_type;
     type.trim();
     if (type.length())
@@ -551,6 +558,15 @@ void DailyStats::watchGoArounds(const StateVector &s, const ApproachStatus &st, 
         noteSpot(GoAround, _gaIdent, _gaRwy);   // marks the stats dirty too
         slot->id = 0;                           // once
     }
+}
+
+bool DailyStats::takeNewAirline(char *code, size_t len)
+{
+    if (!_newAirN) return false;
+    strlcpy(code, _newAir[0], len);
+    memmove(_newAir[0], _newAir[1], sizeof(_newAir[0]) * 3);
+    --_newAirN;
+    return true;
 }
 
 bool DailyStats::takeGoAround(char *ident, size_t identLen, char *runway, size_t rwyLen, int &altFt)

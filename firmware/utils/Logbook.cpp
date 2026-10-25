@@ -1,6 +1,7 @@
 #include "utils/Logbook.h"
 #include "utils/Airframes.h"
 #include "utils/SeenLog.h"
+#include "config/Countries.h"
 #include "utils/TelnetLogger.h"
 #include <LittleFS.h>
 #include <WiFiClient.h>
@@ -303,28 +304,53 @@ size_t Logbook::bytesUsed()
     return n;
 }
 
-bool Logbook::noteOrigin(const char *icao, const char *ident)
+bool Logbook::stickerIsNew(uint8_t kind, const char *code)
 {
-    if (!icao || strlen(icao) != 4 || !ident || !ident[0]) return false;
+    if (!code || !code[0]) return false;
     const time_t now = time(nullptr);
     if (now < 1600000000) return false;
+    const uint16_t today = SeenLog::dayNumber(now);
+    File f = LittleFS.open(kCollection, "r");
+    if (!f) return false;
+    Item it;
+    uint16_t first = today;
+    bool found = false;
+    while (!found && f.read((uint8_t *)&it, sizeof(it)) == sizeof(it))
+    {
+        if (it.kind != kind) continue;
+        if (it.firstDay < first) first = it.firstDay;
+        found = !strncmp(it.code, code, sizeof(it.code));
+    }
+    f.close();
+    return !found && today - first >= 14;
+}
+
+int Logbook::noteOrigin(const char *icao, const char *ident)
+{
+    if (!icao || strlen(icao) != 4 || !ident || !ident[0]) return 0;
+    const time_t now = time(nullptr);
+    if (now < 1600000000) return 0;
     // Each flight once (the card's flight comes round every fetch).
     static char recent[12][9] = {};
     static uint8_t next = 0;
     for (const auto &r : recent)
-        if (!strncmp(r, ident, 8)) return false;
+        if (!strncmp(r, ident, 8)) return 0;
     strlcpy(recent[next], ident, sizeof(recent[next]));
     next = (next + 1) % 12;
 
     const uint16_t today = SeenLog::dayNumber(now);
     File f = LittleFS.open(kCollection, LittleFS.exists(kCollection) ? "r+" : "w");
-    if (!f) return false;
+    if (!f) return 0;
     Item it;
     size_t pos = 0;
     uint16_t firstAirportDay = today;   // when the board started collecting airports
+    char iso[3], had[3];
+    Countries::of(icao, iso, nullptr);
+    bool countryKnown = !iso[0];        // unknown prefix: no country news
     while (f.read((uint8_t *)&it, sizeof(it)) == sizeof(it))
     {
         if (it.kind == 2 && it.firstDay < firstAirportDay) firstAirportDay = it.firstDay;
+        if (it.kind == 2 && !countryKnown && Countries::of(it.code, had, nullptr) && !strcmp(had, iso)) countryKnown = true;
         if (it.kind == 2 && !strncmp(it.code, icao, 4))
         {
             if (it.lastDay != today) { ++it.days; it.lastDay = today; }
@@ -332,7 +358,7 @@ bool Logbook::noteOrigin(const char *icao, const char *ident)
             f.seek(pos);
             f.write((const uint8_t *)&it, sizeof(it));
             f.close();
-            return false;
+            return 0;
         }
         pos += sizeof(it);
     }
@@ -349,7 +375,8 @@ bool Logbook::noteOrigin(const char *icao, const char *ident)
     saveRecords();
     Log.printf("Logbook: a first arrival from %s (%s)\n", icao, ident);
     // For the first fortnight nearly every airport is new: no news then.
-    return today - firstAirportDay >= 14;
+    if (today - firstAirportDay < 14) return 0;
+    return countryKnown ? 1 : 2;
 }
 
 void Logbook::writeAirframesCsv(WiFiClient &c)
