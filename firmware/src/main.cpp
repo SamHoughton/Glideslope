@@ -743,6 +743,16 @@ void setup()
     RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
     Logbook::begin();       // the days, events and collection kept for good (8.1)
     LogoBook::loadMissing(); // airlines seen without a logo, kept across restarts (8.1)
+    // 9.0: the route book of 8.3-8.4 could have learned routes adsb.im
+    // marked implausible; it was two days old, so start it again once.
+    {
+        Preferences p;
+        if (p.begin("routebook", false))
+        {
+            if (!p.isKey("v90")) { LittleFS.remove("/routes.txt"); LittleFS.remove("/routes.old"); p.putBool("v90", true); }
+            p.end();
+        }
+    }
     g_display.setRecords(Logbook::records());
     AirportPack::load();    // Heathrow, or the airport pack on LittleFS
     g_display.loadStats();  // today's tally survives a restart
