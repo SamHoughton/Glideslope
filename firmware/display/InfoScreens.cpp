@@ -1350,6 +1350,25 @@ void InfoScreens::renderMoodBanner(FrameCanvas &c, uint8_t style, const char *li
         }
         subject = Rgb{255, 200, 60};
     }
+    else if (style == 4)
+    {
+        // A special livery: a rainbow running round the edge.
+        static const Rgb kBow[] = {{255, 60, 60}, {255, 160, 40}, {255, 230, 60}, {70, 220, 90}, {60, 150, 255}, {170, 90, 255}};
+        const int per = 2 * (FrameCanvas::W + FrameCanvas::H);
+        for (int i = 0; i < per; ++i)
+        {
+            int x, y;
+            if (i < FrameCanvas::W)                          { x = i; y = 0; }
+            else if (i < FrameCanvas::W + FrameCanvas::H)    { x = FrameCanvas::W - 1; y = i - FrameCanvas::W; }
+            else if (i < 2 * FrameCanvas::W + FrameCanvas::H) { x = 2 * FrameCanvas::W + FrameCanvas::H - 1 - i; y = FrameCanvas::H - 1; }
+            else                                             { x = 0; y = per - 1 - i; }
+            const Rgb col = kBow[((i + (int)(tMs / 40)) / 12) % 6];
+            c.set(x, y, col);
+            // and one pixel in, two thick
+            c.set(x == 0 ? 1 : x == FrameCanvas::W - 1 ? x - 1 : x, y == 0 ? 1 : y == FrameCanvas::H - 1 ? y - 1 : y, col);
+        }
+        subject = Rgb{255, 220, 120};
+    }
     else
     {
         // A runway change on the way: a yellow-on-black direction sign.

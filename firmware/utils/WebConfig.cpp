@@ -12,6 +12,7 @@ WebServer library to avoid framework include-path issues.
 #include "utils/ImageCheck.h"
 #include "utils/Ota.h"
 #include "utils/Health.h"
+#include "utils/Liveries.h"
 #include "config/RuntimeConfig.h"
 #include "config/Airport.h"
 #include <LittleFS.h>
@@ -71,7 +72,7 @@ bool WebConfig::hostAllowed(const String &hostPort)
 
 bool WebConfig::needsToken(const String &p)
 {
-    return p == "/api/update" || p == "/api/update/github" || p == "/api/airport" || p == "/api/logo" || p == "/api/airport/reset" || p == "/api/config" ||
+    return p == "/api/update" || p == "/api/update/github" || p == "/api/liveries" || p == "/api/airport" || p == "/api/logo" || p == "/api/airport/reset" || p == "/api/config" ||
            p == "/api/config/reset" || p == "/api/restart" || p == "/api/wifi/reset" ||
            p == "/api/coredump/erase" || p == "/api/notify/test";
 }
@@ -272,6 +273,12 @@ void WebConfig::loop()
     else if (r.path == "/api/history/events"     && r.method == "GET") Logbook::writeEventsCsv(client);
     else if (r.path == "/api/history/collection" && r.method == "GET") Logbook::writeCollectionCsv(client);
     else if (r.path == "/api/history/airframes"  && r.method == "GET") Logbook::writeAirframesCsv(client);
+    else if (r.path == "/api/liveries"           && r.method == "GET") { String t; Liveries::read(t); sendHttp(client, 200, "text/plain; charset=utf-8", t); }
+    else if (r.path == "/api/liveries"           && r.method == "POST")
+    {
+        const bool ok = Liveries::write(r.body);
+        sendHttp(client, ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"too long (4 KB at most)\"}");
+    }
     else if (r.path == "/api/logo"               && r.method == "GET") handleGetLogo(client, r);
     else if (r.path == "/api/history/records"    && r.method == "GET")
     {
@@ -290,7 +297,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/mood"     && r.method == "POST")
     {
         const String k = qparam(r.query, "kind");
-        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : 1);
+        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : k == "livery" ? 4 : 1);
         sendHttp(client, 200, "application/json", "{\"ok\":true}");
     }
     else if (r.path == "/api/demo/goaround" && r.method == "POST") { requestGoAroundDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }

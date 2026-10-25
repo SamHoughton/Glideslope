@@ -173,7 +173,12 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
     {
         _newsStyle = s_moodDemo;
         s_moodDemo = 0;
-        if (_newsStyle == 3)
+        if (_newsStyle == 4)
+        {
+            snprintf(_news1, sizeof(_news1), "Special livery");
+            snprintf(_news2, sizeof(_news2), "Pride");
+        }
+        else if (_newsStyle == 3)
         {
             // The other end of the runway in use (09 at Heathrow on westerlies).
             const int now27 = atoi(_runwayInUse[0] ? _runwayInUse : "27");

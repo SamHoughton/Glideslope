@@ -211,6 +211,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="mood?kind=runway">Runway change due</button>
         <button data-demo="mood?kind=fog">Low visibility</button>
         <button data-demo="mood?kind=storm">Thunderstorm</button>
+        <button data-demo="mood?kind=livery">Special livery</button>
         <button data-demo="sky?look=golden">Sky: golden hour</button>
         <button data-demo="sky?look=night">Sky: night</button>
         <button data-demo="sky?look=night+storm">Sky: storm</button>
@@ -339,6 +340,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <label class="sw"><input type="checkbox" id="overhead_all"><span>Arrivals and departures too<small>Off: only aircraft flying over, not ones landing or taking off here (they have their own cards)</small></span></label>
       <div class="f"><label for="watchlist">Watchlist <small>&mdash; registrations, call signs, aircraft types or hex codes, separated by commas; * matches the start (B74*, RRR*)</small></label><textarea id="watchlist" rows="3" maxlength="159" spellcheck="false" placeholder="e.g. G-CIVA, B74*, A388, RRR*"></textarea></div>
       <p class="hint">A watchlist aircraft anywhere in range takes over the panel and, with alerts on, sends one to your phone (once every 6 hours each).</p>
+      <div class="f"><label for="liveries">Special liveries <small>&mdash; one a line: the registration, then its name. One in range for the first time in a day gets a rainbow banner and a phone alert.</small></label><textarea id="liveries" rows="5" maxlength="4000" spellcheck="false" placeholder="G-VPRD Pride&#10;G-EUPJ BEA retro"></textarea></div>
       <div class="btns"><button data-demo="overhead">Show an overhead pass</button></div>
     </section>
 
@@ -459,7 +461,8 @@ function load(){fetch('/api/config').then(function(r){return r.json();}).then(fu
   ['opensky_client_secret','aeroapi_key','ntfy_token'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});
   document.querySelectorAll('[data-scr]').forEach(function(e){e.checked=!!(d.screens&parseInt(e.dataset.scr));});
   document.querySelectorAll('[data-ntf]').forEach(function(e){e.checked=!!(d.notify_mask&parseInt(e.dataset.ntf));});
-  $('bv').textContent=d.display_brightness;});}
+  $('bv').textContent=d.display_brightness;});
+  fetch('/api/liveries').then(function(r){return r.text();}).then(function(t){window.liveriesLoaded=t;$('liveries').value=t;}).catch(function(){});}
 function save(){var d={};
   ['center_lat','center_lon','radius_km','home_lat','home_lon','overhead_km'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
   d.watchlist=$('watchlist').value.trim();d.mqtt_host=$('mqtt_host').value.trim();d.mqtt_user=$('mqtt_user').value;d.mqtt_port=parseInt($('mqtt_port').value)||1883;
@@ -473,6 +476,7 @@ function save(){var d={};
   d.night_start_minutes=toMin($('night_start_time').value);d.night_end_minutes=toMin($('night_end_time').value);
   d.quiet_start_minutes=toMin($('quiet_start_time').value);d.quiet_end_minutes=toMin($('quiet_end_time').value);
   ['opensky_client_id','opensky_client_secret','aeroapi_key','ntfy_token','mqtt_pass'].forEach(function(k){var v=$(k).value;if(v.length)d[k]=v;});
+  var lv=$('liveries').value;if(lv!==window.liveriesLoaded)send('/api/liveries','text/plain',lv).then(function(){window.liveriesLoaded=lv;}).catch(function(){});
   status('Saving…');post('/api/config',d).then(function(r){return r.json();})
     .then(function(j){status(j.ok?'Saved':'Error: '+(j.error||'?'),3000);load();}).catch(function(){status('Could not reach the board',4000);});}
 $('save').addEventListener('click',save);

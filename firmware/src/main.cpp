@@ -50,6 +50,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/Ota.h"
 #include "utils/Health.h"
 #include "utils/Airframes.h"
+#include "utils/Liveries.h"
 #include "utils/TlsArena.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
@@ -219,10 +220,22 @@ static void noteCollection(const std::vector<StateVector> &states, const std::ve
             isalpha((unsigned char)s.callsign[2]) && isdigit((unsigned char)s.callsign[3]))
             strlcpy(op, s.callsign.c_str(), sizeof(op));
         ++visits;
-        if (Airframes::visit(Airframes::fileStore(), icao, today, s.registration.c_str(), s.aircraft_type.c_str(), op) != Airframes::Failed)
+        const Airframes::Result r = Airframes::visit(Airframes::fileStore(), icao, today, s.registration.c_str(),
+                                                     s.aircraft_type.c_str(), op);
+        if (r == Airframes::Failed) continue;
+        recent[next] = icao;
+        next = (next + 1) % 40;
+        // A special livery, the first time today (9.0).
+        char livery[40];
+        if (r != Airframes::AgainToday && Liveries::find(s.registration.c_str(), livery, sizeof(livery)))
         {
-            recent[next] = icao;
-            next = (next + 1) % 40;
+            Log.printf("Spotter: special livery %s (%s) in range\n", s.registration.c_str(), livery);
+            char l2[24];
+            strlcpy(l2, livery, sizeof(l2));
+            g_display.showMood(4, "Special livery", l2);
+            Notify::post(Notify::Rare, 4, "rainbow", "Special livery", "%s (%s, %s) is in range%s%s.", livery,
+                         s.registration.c_str(), s.aircraft_type.length() ? s.aircraft_type.c_str() : "?",
+                         s.callsign.length() ? " as " : "", s.callsign.c_str());
         }
     }
     for (const FlightInfo &f : flights)
