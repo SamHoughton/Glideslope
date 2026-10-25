@@ -21,6 +21,14 @@ namespace CardRenderer
     // Accent colour for a flight: the dominant saturated colour of its logo,
     // or a default blue when there is no logo.
     Rgb accentFor(const FlightInfo &f);
+    // The same from pixels fed a piece at a time (8.3.1: the map's airline
+    // colours read a logo's file in small chunks, never 2 KB at once).
+    struct AccentSum
+    {
+        uint32_t cnt[12] = {}, sr[12] = {}, sg[12] = {}, sb[12] = {};
+        void add(const uint16_t *px, size_t n);
+        Rgb  result() const;
+    };
 
     struct Options
     {

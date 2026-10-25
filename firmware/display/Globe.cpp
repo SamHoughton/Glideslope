@@ -91,6 +91,15 @@ void Globe::subsolar(time_t t, float &lat, float &lon)
     lon = (float)lo;
 }
 
+int Globe::flyingMinutes(float flownKm, float tripKm)
+{
+    if (!(flownKm > 0)) return 0;
+    // Average ground speeds that match real block times: Singapore to
+    // London (10,880 km) about 13h 50m, New York 7h, Edinburgh 1h 15m.
+    const float avgKmh = tripKm > 3000 ? 800.0f : 620.0f;
+    return (int)lroundf(flownKm / avgKmh * 60.0f + 20.0f);
+}
+
 void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
 {
     c.clear();
@@ -238,9 +247,28 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
 
     const float km = d * 6371.0f;
     char num[16], line[24];
-    thousands(lroundf(r.landed ? km : km * frac), num, sizeof(num));
-    snprintf(line, sizeof(line), "%s km", num);
-    c.print(Fonts::Label, kTextX, 46, line, Rgb{200, 205, 215});
+    // Distance flown, in turn with the time in the air (8.4), once the
+    // route has drawn on; on a long flight the time is the bigger story.
+    const float flownKm = r.landed ? km : km * frac;
+    const int mins = flyingMinutes(flownKm, km);
+    const bool showTime = mins >= 30 && shownMs > 2100 && ((shownMs - 2100) / 3500) % 2 == 0;
+    c.setClip(kTextX, FrameCanvas::W - 1);
+    if (showTime)
+    {
+        if (mins >= 60) snprintf(line, sizeof(line), "%dh %02dm", mins / 60, (mins % 60) / 5 * 5);
+        else            snprintf(line, sizeof(line), "%d min", mins / 5 * 5);
+        const int w = c.print(Fonts::Label, kTextX, 46, line, Rgb{255, 220, 150});
+        const char *tail = r.landed ? " flight" : " flying";
+        if (FrameCanvas::width(Fonts::Label, line) + FrameCanvas::width(Fonts::Label, tail) <= FrameCanvas::W - kTextX)
+            c.print(Fonts::Label, kTextX + w, 46, tail, Rgb{120, 130, 150});
+    }
+    else
+    {
+        thousands(lroundf(flownKm), num, sizeof(num));
+        snprintf(line, sizeof(line), "%s km", num);
+        c.print(Fonts::Label, kTextX, 46, line, Rgb{200, 205, 215});
+    }
+    c.resetClip();
     struct tm lt;
     time_t when = r.landed ? r.landedAt : r.eta;
     if (!when && !r.landed && sunKnown && r.speedKts > 60 && frac > 0)

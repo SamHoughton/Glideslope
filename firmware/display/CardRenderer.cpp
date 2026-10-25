@@ -305,12 +305,18 @@ Rgb CardRenderer::accentFor(const FlightInfo &f)
 {
     const auto &px = f.airline_logo_rgb565;
     if (px.empty()) return kDefaultAccent;
+    AccentSum sum;
+    sum.add(px.data(), px.size());
+    return sum.result();
+}
 
-    // Bucket saturated, reasonably bright pixels by hue; average the busiest bucket.
+// Bucket saturated, reasonably bright pixels by hue; average the busiest bucket.
+void CardRenderer::AccentSum::add(const uint16_t *px, size_t n)
+{
     constexpr int kBuckets = 12;
-    uint32_t cnt[kBuckets] = {}, sr[kBuckets] = {}, sg[kBuckets] = {}, sb[kBuckets] = {};
-    for (uint16_t v : px)
+    for (size_t i = 0; i < n; ++i)
     {
+        const uint16_t v = px[i];
         if (v == kTransparent565) continue;
         const Rgb c = FrameCanvas::unpack(v);
         const int mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
@@ -324,6 +330,11 @@ Rgb CardRenderer::accentFor(const FlightInfo &f)
         const int b = (int)(h * kBuckets / 6.0f) % kBuckets;
         ++cnt[b]; sr[b] += c.r; sg[b] += c.g; sb[b] += c.b;
     }
+}
+
+Rgb CardRenderer::AccentSum::result() const
+{
+    constexpr int kBuckets = 12;
     int best = -1;
     for (int b = 0; b < kBuckets; ++b)
         if (cnt[b] > 20 && (best < 0 || cnt[b] > cnt[best])) best = b;

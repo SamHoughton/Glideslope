@@ -128,12 +128,17 @@ bool NeoMatrixDisplay::renderOverlays(unsigned long now, uint32_t &wait)
         _gaQueuedMs = now;
         _gaPending = true;
     }
-    if (_gaPending && now - _gaQueuedMs > 120000UL) _gaPending = false;
+    if (_gaPending && now - _gaQueuedMs > 120000UL)
+    {
+        _gaPending = false;
+        Log.printf("Display: go-around alert for %s dropped (the panel was busy for 2 min)\n", _gaIdent);
+    }
     if (_gaPending && !_landingActive && !_inTransition)
     {
         _gaPending = false;
         _gaActive = true;
         _gaMs = now;
+        Log.printf("Display: go-around alert for %s%s%s (%d ft)\n", _gaIdent, _gaRwy[0] ? " off " : "", _gaRwy, _gaAlt);
     }
     if (_gaActive)
     {

@@ -1,4 +1,5 @@
 #pragma once
+#include "display/FrameCanvas.h"   // Rgb
 /*
 Purpose: Load pre-converted airline logo bitmaps from LittleFS.
 File format: /logos/{ICAO_UPPERCASE}.bin — AirlineLogo::WIDTH * HEIGHT * 2 bytes,
@@ -12,6 +13,9 @@ class LocalLogoStore : public BaseLogoStore
 public:
     bool initialize();
 
+    // The logo's accent colour, read from its file 64 pixels at a time:
+    // nothing on the heap (8.3.1). False if there is no logo.
+    bool accentOf(const char *icao3, Rgb &out);
     bool getAirlineLogo(const String &airlineIcao,
                         std::vector<uint16_t> &outPixels) override;
     bool hasAirlineLogo(const String &airlineIcao) override;

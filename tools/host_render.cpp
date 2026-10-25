@@ -143,6 +143,8 @@ int main(int argc, char **argv)
     s4.oLat = -33.95f; s4.oLon = 151.18f; s4.dLat = 51.47f; s4.dLon = -0.45f;
     s4.lat = 50.9f; s4.lon = 2.5f; s4.speedKts = 280;
     Globe::render(c, s4, 6000, evening);                  save(c, "globe_syd_lhr");
+    Globe::render(c, s4, 2500, evening);                  save(c, "globe_syd_lhr_flying");   // 8.4: the time in turn
+    Globe::render(c, s2, 2500, evening);                  save(c, "globe_sin_lhr_flight");
     Globe::Route s5 = r;                                  // a short hop: zoomed in, nearly straight
     strcpy(s5.ident, "BA816"); strcpy(s5.from, "London"); strcpy(s5.to, "Billund");
     s5.oLat = 51.47f; s5.oLon = -0.45f; s5.dLat = 55.74f; s5.dLon = 9.15f;

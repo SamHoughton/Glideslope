@@ -7,6 +7,29 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 8.4.0 (25 Oct 2026)
+
+**New**
+- **How long it has been flying**: the route globe shows, in turn with the
+  distance, how long the flight has been in the air (`13h 50m flying`), and
+  once landed the whole flight (`12h 40m flight`). ADS-B carries no take-off
+  time, so it is worked out from the distance flown at an average that
+  matches real block times (Singapore to London about 13h 50m, New York
+  7h); the origin page uses the same estimate.
+
+**Fixes**
+- The log keeps what matters: the fetcher no longer writes three lines
+  every five seconds (cache hits, the nearest flight, the count), which
+  pushed everything else (go-arounds, landings, weather) out of the 36-line
+  log within a minute. It now says when the nearest flight or the count
+  changes.
+- A crash on a busy day: the map's airline colours loaded each logo whole
+  (2 KB) to pick its colour, and with the memory fragmented one load failed
+  and the board restarted. The colour is now read from the logo's file a
+  little at a time, 80 airlines are remembered (64, and none after that),
+  and a card whose logo can't be loaded shows without it.
+- The go-around alert is logged when it plays (or if it is dropped).
+
 ## 8.3.0 (24 Oct 2026)
 
 **New**

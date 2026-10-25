@@ -4,7 +4,8 @@ Purpose: The route globe: an orthographic Earth turned to face a flight's
 route, land from a 1-degree mask (display/LandMask.h), the night side shaded
 from the real sun, the great circle from origin to destination (solid where
 the aircraft has been, dashed ahead) and the aircraft on it; beside it the
-flight, the two cities, a progress bar, distance and ETA.
+flight, the two cities, a progress bar, distance (in turn, 8.4: how long it
+has been in the air) and ETA.
 Memory: drawn straight into the frame, nothing kept between frames.
 */
 #include <Arduino.h>
@@ -30,6 +31,11 @@ struct Route
 // shownMs: how long the screen has been up (the globe turns in, the route draws on).
 // now: Unix time, for the sun (anything before 2020 leaves the globe fully lit).
 void render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now);
+
+// Roughly how long a flight has been in the air (minutes), from the
+// distance flown: a typical average for the trip's length, plus 20 minutes
+// for the climb and the descent. ADS-B carries no take-off time.
+int flyingMinutes(float flownKm, float tripKm);
 
 // Where the sun is overhead at time t.
 void subsolar(time_t t, float &lat, float &lon);
