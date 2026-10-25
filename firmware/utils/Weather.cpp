@@ -65,6 +65,13 @@ bool Weather::parse(const char *raw, Metar &m)
             strlcpy(m.station, t, sizeof(m.station));
             continue;
         }
+        if (!haveWind && !m.obsDay && strlen(t) == 7 && t[6] == 'Z' && allDigits(t, 6))
+        {
+            m.obsDay  = (uint8_t)((t[0] - '0') * 10 + (t[1] - '0'));
+            m.obsHour = (uint8_t)((t[2] - '0') * 10 + (t[3] - '0'));
+            m.obsMin  = (uint8_t)((t[4] - '0') * 10 + (t[5] - '0'));
+            continue;
+        }
         if (!haveWind) { haveWind = parseWind(t, m); continue; }
         if (strcmp(t, "CAVOK") == 0) { m.cavok = true; m.visM = 9999; strlcpy(m.visText, "CAVOK", sizeof(m.visText)); continue; }
         if (m.visM < 0 && strlen(t) == 4 && allDigits(t, 4))
@@ -375,6 +382,12 @@ namespace
 }
 
 void Weather::tafBegin(Taf &t) { t = Taf(); }
+
+time_t Weather::observedAt(const Metar &m, time_t now)
+{
+    if (!m.obsDay || now < 1600000000) return 0;
+    return tafTime(m.obsDay, m.obsHour, m.obsMin, now);
+}
 
 void Weather::tafFeed(Taf &t, const char *text, time_t now)
 {

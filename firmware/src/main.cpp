@@ -27,6 +27,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "adapters/OpenSkyRouteFetcher.h"
 #include "adapters/FallbackFlightFetcher.h"
 #include "adapters/AdsbImRouteFetcher.h"
+#include "adapters/RouteBookFetcher.h"
 #include "adapters/LocalLogoStore.h"
 #include "core/FlightDataFetcher.h"
 #include "adapters/NeoMatrixDisplay.h"
@@ -65,9 +66,11 @@ static OpenSkyRouteFetcher        g_openSkyRoute(g_openSky);
 // Chain: hexdb → AeroAPI (if key set) → OpenSky flights endpoint (if creds set)
 static FallbackFlightFetcher      g_aeroApiFallback(&g_aeroApi, &g_openSkyRoute);
 static FallbackFlightFetcher      g_flightFetcher(&g_hexDb, &g_aeroApiFallback);
-// adsb.im first (plain HTTP, no TLS); the HTTPS chain above only for routes it lacks.
+// adsb.im first (plain HTTP, no TLS), then the routes the board has learned
+// (flash, 9.0); the HTTPS chain above only for routes neither has.
 static AdsbImRouteFetcher         g_adsbIm;
-static FallbackFlightFetcher      g_routes(&g_adsbIm, &g_flightFetcher);
+static RouteBookFetcher           g_learnedOrOnline(&g_flightFetcher);
+static FallbackFlightFetcher      g_routes(&g_adsbIm, &g_learnedOrOnline);
 static LocalLogoStore             g_logoStore;
 static FlightDataFetcher         *g_fetcher = nullptr;
 static NeoMatrixDisplay g_display;
@@ -90,6 +93,10 @@ static Taf    g_taf;                        // and its forecast (8.2: the runway
 static uint8_t g_mood = Weather::Calm;      // the airfield's mood from the METAR (8.2)
 static unsigned long g_lastMetarMs = 0;
 static constexpr unsigned long kMetarEveryMs = 10UL * 60 * 1000;
+// 9.0: timed to the next report (Heathrow issues one every 30 minutes):
+// each fetch closes and reopens the feed's secure connection, and those
+// reopens are where the heap goes to its lowest.
+static unsigned long g_metarWaitMs = kMetarEveryMs;
 static char g_originIds[24] = "";   // where the next arrivals came from, for the weather fetch
 static char g_cardOrigin[5] = "";   // the card's origin (ICAO), to have its weather in time
 
@@ -408,11 +415,11 @@ static Rgb airlineColour(const String &callsign)
 {
     // A fixed table (8.0): a map's node per new airline, all day, scattered
     // small permanent blocks through the heap.
-    // 80 airlines, the oldest replaced when full (8.3.1: 64 and then no
+    // 78 airlines, the oldest replaced when full (8.3.1: 64 and then no
     // caching at all, so a busy day's 65th airline onwards was worked out
     // again on every fetch).
     struct Slot { char icao[3]; Rgb c; };   // 6 bytes: no terminator kept
-    static Slot cache[80];
+    static Slot cache[78];
     static uint8_t cached = 0, next = 0;
     const Rgb kNeutral{200, 205, 215};
     if (callsign.length() < 4 || !isalpha((unsigned char)callsign[0]) ||
@@ -433,7 +440,7 @@ static Rgb airlineColour(const String &callsign)
         c = kNeutral;
         LogoBook::noteMissing(icao);   // for the web page's Logos section
     }
-    Slot &slot = cached < 80 ? cache[cached++] : cache[next++ % 80];
+    Slot &slot = cached < 78 ? cache[cached++] : cache[next++ % 78];
     memcpy(slot.icao, icao.c_str(), 3);
     slot.c = c;
     return c;
@@ -1087,7 +1094,7 @@ void loop()
     // and reopened the feed's TLS session, and the reopens fragmented the
     // heap; origins come with the regular request, or the page goes without.)
     if (WiFi.status() == WL_CONNECTED && millis() > 20000 && !g_display.showcaseRunning() &&
-        (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= kMetarEveryMs))
+        (g_lastMetarMs == 0 || millis() - g_lastMetarMs >= g_metarWaitMs))
     {
         // The card's origin first, then the next arrivals'.
         if (g_cardOrigin[0] && !strstr(g_originIds, g_cardOrigin))
@@ -1121,9 +1128,18 @@ void loop()
             g_webConfig.setWeather(g_metar.raw);
             if (changed) Log.printf("Weather: %s -> \"%s\"\n", g_metar.raw, line);
             airfieldCheck();
+            // The next report is due about 30 minutes after this one was
+            // observed: ask a couple of minutes after that. The same report
+            // again (not out yet): look again in five minutes.
+            const time_t now = time(nullptr), obs = Weather::observedAt(g_metar, now);
+            long waitS = 10 * 60;
+            if (obs && !changed && now - obs > 25 * 60) waitS = 5 * 60;
+            else if (obs)                               waitS = (long)(obs + 32 * 60 - now);
+            waitS = waitS < 120 ? 120 : waitS > 1800 ? 1800 : waitS;
+            g_metarWaitMs = (unsigned long)waitS * 1000UL;
         }
         else
-            g_lastMetarMs = millis() - kMetarEveryMs + 60000;   // retry in a minute
+            g_metarWaitMs = 60000;   // retry in a minute
     }
 
     // The display task draws the panel; keep the web preview's flight data

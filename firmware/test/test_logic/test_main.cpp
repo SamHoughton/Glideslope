@@ -94,6 +94,9 @@ void test_metar_uk()
     TEST_ASSERT_EQUAL(17, m.tempC);
     TEST_ASSERT_EQUAL(1019, m.qnh);
     TEST_ASSERT_EQUAL_STRING("EGLL", m.station);   // which airport the report is from (8.0)
+    TEST_ASSERT_EQUAL(15, m.obsDay);                 // observed 151720Z (9.0)
+    TEST_ASSERT_EQUAL(17, m.obsHour);
+    TEST_ASSERT_EQUAL(20, m.obsMin);
     TEST_ASSERT_EQUAL_STRING("-RA", m.wx);
     char line[40];
     Weather::friendly(m, line, sizeof(line));
