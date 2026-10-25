@@ -7,6 +7,16 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.0.2 (in progress)
+
+**Fixes**
+- What the aircraft is doing outranks the route database: one on final
+  here is landing here, one climbing out from here left from here. Call
+  signs are reused for the way back, so a lookup could return the other leg
+  (a Eurowings arrival shown as London to Berlin); that is now turned
+  round, and any other route keeps its far end with this airport at the
+  near one.
+
 ## 9.0.1 (in progress)
 
 **Fixes**
