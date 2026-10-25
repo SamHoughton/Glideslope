@@ -6,6 +6,8 @@ Responsibilities:
 - Return false silently for missing airlines.
 */
 #include "adapters/LocalLogoStore.h"
+#include <new>
+#include "display/CardRenderer.h"
 #include "models/FlightInfo.h"
 #include <LittleFS.h>
 #include "utils/TelnetLogger.h"
@@ -37,6 +39,30 @@ bool LocalLogoStore::hasAirlineLogo(const String &airlineIcao)
     String icao = airlineIcao;
     icao.toUpperCase();
     return LittleFS.exists(String("/logos/") + icao + ".bin");
+}
+
+bool LocalLogoStore::accentOf(const char *icao3, Rgb &out)
+{
+    if (!_mounted || !icao3 || !icao3[0]) return false;
+    char path[20];
+    snprintf(path, sizeof(path), "/logos/%s.bin", icao3);
+    if (!LittleFS.exists(path)) return false;
+    File f = LittleFS.open(path, "r");
+    if (!f) return false;
+    CardRenderer::AccentSum sum;
+    uint16_t chunk[64];
+    size_t total = 0;
+    while (true)
+    {
+        const size_t got = f.read(reinterpret_cast<uint8_t *>(chunk), sizeof(chunk));
+        if (!got) break;
+        sum.add(chunk, got / 2);
+        total += got;
+    }
+    f.close();
+    if (total != (size_t)AirlineLogo::WIDTH * AirlineLogo::HEIGHT * 2) return false;
+    out = sum.result();
+    return true;
 }
 
 bool LocalLogoStore::getAirlineLogo(const String &airlineIcao,
@@ -76,7 +102,17 @@ bool LocalLogoStore::getAirlineLogo(const String &airlineIcao,
     }
 
     const size_t pixelCount = (size_t)AirlineLogo::WIDTH * AirlineLogo::HEIGHT;
-    outPixels.resize(pixelCount);
+    // A card without its logo rather than a crash when the heap has no
+    // 2 KB block (8.3.1: the map's colours took the board down this way).
+    try { outPixels.resize(pixelCount); }
+    catch (const std::bad_alloc &)
+    {
+        f.close();
+        outPixels.clear();
+        Log.printf("LocalLogoStore: no memory for %s's logo (largest block %u)\n", icao.c_str(),
+                   (unsigned)ESP.getMaxAllocHeap());
+        return false;
+    }
 
     size_t bytesRead = f.read(reinterpret_cast<uint8_t *>(outPixels.data()), expectedBytes);
     f.close();

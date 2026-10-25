@@ -408,9 +408,12 @@ static Rgb airlineColour(const String &callsign)
 {
     // A fixed table (8.0): a map's node per new airline, all day, scattered
     // small permanent blocks through the heap.
-    struct Slot { char icao[4]; Rgb c; };
-    static Slot cache[64];
-    static uint8_t cached = 0;
+    // 80 airlines, the oldest replaced when full (8.3.1: 64 and then no
+    // caching at all, so a busy day's 65th airline onwards was worked out
+    // again on every fetch).
+    struct Slot { char icao[3]; Rgb c; };   // 6 bytes: no terminator kept
+    static Slot cache[80];
+    static uint8_t cached = 0, next = 0;
     const Rgb kNeutral{200, 205, 215};
     if (callsign.length() < 4 || !isalpha((unsigned char)callsign[0]) ||
         !isalpha((unsigned char)callsign[1]) || !isalpha((unsigned char)callsign[2]) ||
@@ -422,11 +425,17 @@ static Rgb airlineColour(const String &callsign)
     if (logosVersion != LogoBook::version()) { cached = 0; logosVersion = LogoBook::version(); }   // a logo was added
     for (uint8_t i = 0; i < cached; ++i)
         if (strncmp(cache[i].icao, icao.c_str(), 3) == 0) return cache[i].c;
-    FlightInfo tmp;
-    const bool have = g_logoStore.getAirlineLogo(icao, tmp.airline_logo_rgb565);
-    if (!have) LogoBook::noteMissing(icao);   // for the web page's Logos section
-    const Rgb c = have ? CardRenderer::accentFor(tmp) : kNeutral;
-    if (cached < 64) { memcpy(cache[cached].icao, icao.c_str(), 3); cache[cached].icao[3] = 0; cache[cached++].c = c; }
+    // From the logo's file a piece at a time (8.3.1): loading the 2 KB logo
+    // to work it out crashed the board when the heap had no 2 KB block.
+    Rgb c = kNeutral;
+    if (!g_logoStore.accentOf(icao.c_str(), c))
+    {
+        c = kNeutral;
+        LogoBook::noteMissing(icao);   // for the web page's Logos section
+    }
+    Slot &slot = cached < 80 ? cache[cached++] : cache[next++ % 80];
+    memcpy(slot.icao, icao.c_str(), 3);
+    slot.c = c;
     return c;
 }
 

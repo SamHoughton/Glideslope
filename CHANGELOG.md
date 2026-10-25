@@ -15,6 +15,12 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   pushed everything else (go-arounds, landings, weather) out of the 36-line
   log within a minute. It now says when the nearest flight or the count
   changes.
+- A crash on a busy day: the map's airline colours loaded each logo whole
+  (2 KB) to pick its colour, and with the memory fragmented one load failed
+  and the board restarted. The colour is now read from the logo's file a
+  little at a time, 80 airlines are remembered (64, and none after that),
+  and a card whose logo can't be loaded shows without it.
+- The go-around alert is logged when it plays (or if it is dropped).
 
 ## 8.3.0 (24 Oct 2026)
 
