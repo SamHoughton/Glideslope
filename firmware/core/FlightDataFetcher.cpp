@@ -182,6 +182,15 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                        stateIdx, totalStates, s.callsign.c_str());
             bool fetchOk = _flightFetcher->fetchFlightInfo(s.callsign, s.icao24, info);
             heapCheckpoint("route lookup");
+            // Where it came from but not where it is going (OpenSky's
+            // SAS36P CPH>?), and on final here: it is coming here. A whole
+            // route, so it is cached and learned like one (9.0.1: it was
+            // looked up again, a secure connection each time, every 30 s).
+            if (info.origin.code_icao.length() && !info.destination.code_icao.length() && statePriority(s) < 1000.0f)
+            {
+                info.destination.code_icao = g_airport.icao;
+                info.destination.code_iata = g_airport.iata;
+            }
             // The route book (8.3): every route learned is kept in flash, and
             // fills in when the online sources come up empty.
             {
@@ -228,7 +237,21 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                     : (unsigned long)g_config.aeroapi_fail_cache_ttl_seconds * 1000UL;
                 // The next to land without a route: look again in 30 s, not
                 // minutes (it will have landed by then).
-                if (!hasRoute && statePriority(s) < 1000.0f && ttlMs > 30000UL) ttlMs = 30000UL;
+                // Once: a flight no source knows would otherwise be looked
+                // up again (a secure connection each time) every 30 s.
+                if (!hasRoute && statePriority(s) < 1000.0f && ttlMs > 30000UL)
+                {
+                    static char quick[6][9] = {};
+                    static uint8_t qNext = 0;
+                    bool again = false;
+                    for (const auto &q : quick) if (!strncmp(q, s.callsign.c_str(), 8)) { again = true; break; }
+                    if (!again)
+                    {
+                        strlcpy(quick[qNext], s.callsign.c_str(), sizeof(quick[qNext]));
+                        qNext = (qNext + 1) % 6;
+                        ttlMs = 30000UL;
+                    }
+                }
                 // The same call sign's slot, else a free one, else the one
                 // closest to expiry.
                 CachedFlightEntry *slot = cacheFind(s.callsign);
