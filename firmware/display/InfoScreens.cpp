@@ -1,4 +1,5 @@
 #include "display/InfoScreens.h"
+#include "display/Globe.h"
 #include "display/Fonts.h"
 #include "display/Font3x5.h"
 #include <math.h>
@@ -423,9 +424,8 @@ bool InfoScreens::renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar 
         }
     }
     for (int x = kX; x < FrameCanvas::W - 2; x += 2) c.set(x, 42, Rgb{40, 46, 60});
-    // Roughly how long it has been flying: the distance at a typical
-    // average for the trip, plus half an hour for taxi, climb and descent.
-    const int mins = (int)lroundf(km / (km > 3000 ? 830.0f : 700.0f) * 60.0f + 30.0f);
+    // Roughly how long it has been flying (the same estimate as the globe's).
+    const int mins = Globe::flyingMinutes(km, km);
     char dur[12];
     snprintf(dur, sizeof(dur), "~%d:%02d", mins / 60, (mins / 5 * 5) % 60);
     int x = kX;
