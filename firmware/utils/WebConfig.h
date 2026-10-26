@@ -112,7 +112,7 @@ private:
     static String qparam(const String &query, const char *key);
 
     // Route handlers
-    void handleRoot(WiFiClient &c);
+    void handleRoot(WiFiClient &c, bool cached);
     void handleGetConfig(WiFiClient &c);
     void handlePostConfig(WiFiClient &c, const Req &r);
     void handleResetConfig(WiFiClient &c);

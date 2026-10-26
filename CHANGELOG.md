@@ -25,6 +25,11 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   record (announced, and sent to your phone, when it is beaten); a
   go-around in a gale says how hard it was blowing.
 
+**Changes**
+- The web page loads in a couple of seconds: it is sent compressed (27 KB
+  rather than 91), and a browser that has this version's page already
+  just keeps it.
+
 ## 9.0.2 (26 Oct 2026)
 
 **Fixes**
