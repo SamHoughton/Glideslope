@@ -37,7 +37,10 @@ struct Store
 enum Result : uint8_t { Failed, Known, AgainToday, New };
 // Note a sighting; New the first time this airframe is ever seen. reg, type
 // and op (the call sign's airline) fill in any the slot doesn't have yet.
-Result visit(Store &store, uint32_t icao24, uint16_t today, const char *reg, const char *type, const char *op);
+// close false: more visits follow, call store.done() after the last (one
+// open of the file for a batch: 9.0.2).
+Result visit(Store &store, uint32_t icao24, uint16_t today, const char *reg, const char *type, const char *op,
+             bool close = true);
 
 constexpr const char *kPath = "/log/airframes.bin";
 // How many airframes are in the collection (counted from the file once,

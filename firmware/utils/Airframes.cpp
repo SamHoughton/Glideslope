@@ -56,10 +56,10 @@ Result visitOpen(Store &store, uint32_t icao24, uint16_t today, const char *reg,
 }
 }
 
-Result visit(Store &store, uint32_t icao24, uint16_t today, const char *reg, const char *type, const char *op)
+Result visit(Store &store, uint32_t icao24, uint16_t today, const char *reg, const char *type, const char *op, bool close)
 {
     const Result r = visitOpen(store, icao24, today, reg, type, op);
-    store.done();
+    if (close) store.done();
     return r;
 }
 }
@@ -120,14 +120,12 @@ struct FileStore : Store
     {
         return open() && f.seek(i * sizeof(Slot)) && f.write((const uint8_t *)&s, sizeof(Slot)) == sizeof(Slot);
     }
-    // Kept open (9.0.2): every aircraft in range is visited, several a fetch
-    // in the morning rush, and opening the file each time took and freed a
-    // cache buffer every few seconds, breaking the heap up (three self-heal
-    // restarts on 26 Oct). Open once, its buffer for good; flushed after
-    // each visit so a restart loses nothing.
+    // Closed after each batch of visits (an open file keeps a cache buffer;
+    // kept open for good, LittleFS asserted in its write path, 26 Oct).
     void done() override
     {
-        if (f) f.flush();
+        if (f) f.close();
+        ready = false;
     }
 };
 }

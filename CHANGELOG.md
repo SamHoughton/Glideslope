@@ -19,8 +19,10 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 - Self-heal restarts in the morning rush (three on 26 October): the
   airframe collection opened its file for every new aircraft, several every
   few seconds, and the buffer each open took and freed broke the memory up.
-  The file is now opened once and kept open; the special liveries list is
-  only read when there is one.
+  New aircraft now wait in a short list and go to the file together about
+  once a minute, one open for the lot; the special liveries list is only
+  read when there is one. The log's heartbeat shows how many pieces the
+  free memory is in (fb), to see it breaking up if it ever does again.
 
 ## 9.0.1 (25 Oct 2026)
 
