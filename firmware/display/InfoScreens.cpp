@@ -1,4 +1,5 @@
 #include "display/InfoScreens.h"
+#include "display/Landmarks.h"
 #include "display/Globe.h"
 #include "display/Fonts.h"
 #include "display/Font3x5.h"
@@ -328,6 +329,9 @@ bool InfoScreens::renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar 
 {
     Airports::Place from;
     if (!Airports::find(f.origin, from)) return false;
+    // 9.1: only a city with a landmark (the page was a box of sky without one).
+    const Landmarks::Landmark *mark = Landmarks::forAirport(from.iata);
+    if (!mark) return false;
     // The great-circle distance from there to here.
     const double rad = M_PI / 180.0;
     const double la1 = from.lat * rad, la2 = g_airport.lat * rad, dlo = (g_airport.lon - from.lon) * rad;
@@ -383,12 +387,20 @@ bool InfoScreens::renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar 
     Sky::drawWeather(c, sky, shownMs, 0, kW - 1);
     c.resetClip();
     c.fillRect(0, kGround, kW, FrameCanvas::H - kGround, Sky::shade(sky, Rgb{30, 34, 44}));
-    if (m.valid && m.tempC != -99)
+    // The landmark, a silhouette against that sky, standing on the ground;
+    // at night a few lights in it.
     {
-        char t[10];
-        snprintf(t, sizeof(t), "%d\xC2\xB0", m.tempC);
-        c.print(Fonts::Huge, 5, 33, t, Rgb{0, 0, 0});
-        c.print(Fonts::Huge, 4, 32, t, m.tempC <= 0 ? Rgb{150, 200, 255} : m.tempC >= 30 ? Rgb{255, 170, 90} : kTitle);
+        const Rgb dark = FrameCanvas::scale(mixRgb(sky.horizon, Rgb{0, 0, 0}, 0.75f), 1.0f);
+        const int x0 = (kW - mark->w) / 2, y0 = kGround - mark->h, stride = (mark->w + 7) / 8;
+        uint32_t seed = 2166136261u;
+        for (int y = 0; y < mark->h; ++y)
+            for (int x = 0; x < mark->w; ++x)
+                if (mark->bits[y * stride + x / 8] & (0x80 >> (x % 8)))
+                {
+                    seed = (seed ^ (uint32_t)(x * 31 + y)) * 16777619u;
+                    const bool lit = sky.night > 0.6f && (seed % 23) == 0;
+                    c.set(x0 + x, y0 + y, lit ? Rgb{150, 120, 60} : dark);
+                }
     }
     for (int y = 0; y < FrameCanvas::H; ++y) c.set(kW, y, Rgb{0, 0, 0});
 
@@ -417,11 +429,13 @@ bool InfoScreens::renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar 
             snprintf(words, sizeof(words), "%s", kCloud[min(3, (int)sky.cloud)]);
             if (sky.cloud == 0 && sky.night > 0.7f) strlcat(words, " night", sizeof(words));
         }
-        if (words[0])
-        {
-            words[0] = (char)toupper((unsigned char)words[0]);
-            c.print(Fonts::Label, kX, 32, words, soft);
-        }
+        if (words[0]) words[0] = (char)toupper((unsigned char)words[0]);
+        // The temperature leads the line (it was large on the sky, where the
+        // landmark stands now).
+        char line[32];
+        if (m.valid && m.tempC != -99) snprintf(line, sizeof(line), "%d\xC2\xB0 %s", m.tempC, words);
+        else                           strlcpy(line, words, sizeof(line));
+        if (line[0]) c.print(Fonts::Label, kX, 32, line, soft);
     }
     for (int x = kX; x < FrameCanvas::W - 2; x += 2) c.set(x, 42, Rgb{40, 46, 60});
     // Roughly how long it has been flying (the same estimate as the globe's).

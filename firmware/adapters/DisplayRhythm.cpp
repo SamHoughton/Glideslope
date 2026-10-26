@@ -3,6 +3,7 @@ Purpose: The display's rhythm: what is on the panel each frame (alerts and
 scenes first, then the card or the rotation), the rotation of screens, and
 the pages on final. Part of NeoMatrixDisplay (see NeoMatrixDisplay.cpp).
 */
+#include "display/Landmarks.h"
 #include "adapters/DisplayInternal.h"
 #include "config/Airports.h"
 #include "display/LineupScreen.h"
@@ -582,9 +583,12 @@ uint8_t NeoMatrixDisplay::storyPage(unsigned long now, uint32_t &pageMs)
         if (LineupScreen::collect(_traffic, now, p) >= 2) pages[np++] = 3;
     }
     {
-        // Where it came from: an origin far enough away to be worth it.
+        // Where it came from: an origin far enough away to be worth it,
+        // and (9.1) with a landmark to stand under its sky.
         Airports::Place from;
-        if (Airports::find(_current.flight.origin, from) && strcmp(from.icao, g_airport.icao) != 0) pages[np++] = 4;
+        if (Airports::find(_current.flight.origin, from) && strcmp(from.icao, g_airport.icao) != 0 &&
+            Landmarks::forAirport(from.iata))
+            pages[np++] = 4;
     }
     pages[np++] = 2;
     const uint32_t t = now - _shownSinceMs;

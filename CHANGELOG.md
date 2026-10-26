@@ -17,6 +17,11 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 - **Photos of the aircraft**: under the panel on the web page, a photo of
   the aircraft on the card itself, by its registration, from
   Planespotters.net (credited, as they ask).
+- **Landmarks**: the page on final about where a flight came from now has
+  the city's landmark as a silhouette under that city's sky as it is now
+  (the Eiffel Tower, Burj Khalifa, Marina Bay Sands, the Opera House and
+  35 more, with a few lights at night), and shows only for those cities;
+  the temperature moves into the weather line.
 - **New stickers on the panel**: the first time the board ever sees an
   airline or a country, a sticker banner with its name (aircraft types: the
   first-sighting banner, now called New sticker).

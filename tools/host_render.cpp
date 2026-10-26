@@ -305,6 +305,16 @@ int main(int argc, char **argv)
             Weather::parse("METAR KJFK 181851Z 21014KT 8SM -SHRA BKN035 OVC060 18/12 A2998", wx);
             InfoScreens::renderOrigin(c, g, &wx, 140, "27L", 3000);                      save(c, "origin_jfk");
             InfoScreens::renderOrigin(c, g, nullptr, 140, "27L", 3000);                  save(c, "origin_no_weather");
+            // 9.1: landmarks.
+            g.origin.code_iata = "CDG"; g.origin.code_icao = "LFPG";
+            Weather::parse("METAR LFPG 181900Z 24008KT CAVOK 14/08 Q1018", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 60, "27L", 3000);                       save(c, "origin_paris");
+            g.origin.code_iata = "SIN"; g.origin.code_icao = "WSSS";
+            Weather::parse("METAR WSSS 181900Z 02006KT 9999 FEW018 28/24 Q1009", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 90, "27L", 3000);                       save(c, "origin_singapore");
+            g.origin.code_iata = "SYD"; g.origin.code_icao = "YSSY";
+            Weather::parse("METAR YSSY 181900Z 17012KT 9999 SCT030 17/11 Q1021", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 90, "27L", 3000);                       save(c, "origin_sydney");
         }
         o.landed = true; o.landedAt = 1792350600; o.animMs = 1200;
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_landed");
