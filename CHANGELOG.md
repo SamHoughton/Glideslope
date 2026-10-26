@@ -7,6 +7,23 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.0.2 (26 Oct 2026)
+
+**Fixes**
+- What the aircraft is doing outranks the route database: one on final
+  here is landing here, one climbing out from here left from here. Call
+  signs are reused for the way back, so a lookup could return the other leg
+  (a Eurowings arrival shown as London to Berlin); that is now turned
+  round, and any other route keeps its far end with this airport at the
+  near one.
+- Self-heal restarts in the morning rush (three on 26 October): the
+  airframe collection opened its file for every new aircraft, several every
+  few seconds, and the buffer each open took and freed broke the memory up.
+  New aircraft now wait in a short list and go to the file together about
+  once a minute, one open for the lot; the special liveries list is only
+  read when there is one. The log's heartbeat shows how many pieces the
+  free memory is in (fb), to see it breaking up if it ever does again.
+
 ## 9.0.1 (25 Oct 2026)
 
 **Fixes**

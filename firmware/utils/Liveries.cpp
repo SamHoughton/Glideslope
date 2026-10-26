@@ -13,9 +13,14 @@ namespace
     }
 }
 
+namespace { int8_t s_have = -1; }   // whether the list exists (-1: not looked yet)
+
 bool Liveries::find(const char *reg, char *name, size_t len)
 {
     if (!reg || !reg[0]) return false;
+    // Asked for every new aircraft: no list, no file opened (9.0.2).
+    if (s_have < 0) s_have = LittleFS.exists(kPath) ? 1 : 0;
+    if (!s_have) return false;
     char want[12];
     key(reg, want, sizeof(want));
     if (!want[0]) return false;
@@ -67,5 +72,6 @@ bool Liveries::write(const String &text)
     if (!f) return false;
     const size_t n = f.print(text);
     f.close();
+    s_have = text.length() ? 1 : 0;
     return n == text.length();
 }

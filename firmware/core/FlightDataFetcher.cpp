@@ -48,6 +48,53 @@ namespace
 
     // Same, from a raw state vector (before enrichment, so no route is known;
     // ApproachModel then relies on a low, descending aircraft lined up).
+    // Climbing out from one of this airport's runways (9.0.2).
+    bool stateDeparting(const StateVector &s)
+    {
+        FlightInfo f;
+        f.lat           = s.lat;
+        f.lon           = s.lon;
+        f.heading       = s.heading;
+        f.distance_km   = s.distance_km;
+        f.baro_altitude = isnan(s.baro_altitude) ? NAN : s.baro_altitude * 3.28084;
+        f.velocity      = isnan(s.velocity) ? NAN : s.velocity * 1.94384;
+        f.vertical_rate = isnan(s.vertical_rate) ? NAN : s.vertical_rate * 196.85;
+        char rwy[4];
+        return ApproachModel::climbingOut(f, rwy, sizeof(rwy));
+    }
+
+    // What the aircraft is doing outranks the route database (9.0.2): call
+    // signs are reused for the way back, so a lookup can return the other
+    // leg (a Eurowings arrival shown as London to Berlin) or another flight
+    // altogether. On final here: the destination is here (the other leg is
+    // turned round; any other route, the origin is unknown). Climbing out
+    // from here: the origin is here, likewise.
+    void routeFromPhase(const StateVector &s, FlightInfo &info, float priority)
+    {
+        const String home = g_airport.icao;
+        String &o = info.origin.code_icao, &d = info.destination.code_icao;
+        const bool arriving = priority < 1000.0f;
+        const bool departing = !arriving && stateDeparting(s);
+        if (!arriving && !departing) return;
+        AirportInfo &here  = arriving ? info.destination : info.origin;
+        AirportInfo &there = arriving ? info.origin : info.destination;
+        if (here.code_icao == home || (!o.length() && !d.length())) return;   // right, or nothing to correct
+        Log.printf("FlightDataFetcher: %s %s>%s, but %s here: ", s.callsign.c_str(), o.c_str(), d.c_str(),
+                   arriving ? "landing" : "departing");
+        if (there.code_icao == home)
+        {
+            std::swap(info.origin, info.destination);     // the other leg: turned round
+            Log.printf("turned round\n");
+            return;
+        }
+        // Another leg, or a diversion here: the far end is kept as given
+        // (a diversion's is right), and this end is here.
+        here = AirportInfo();
+        here.code_icao = home;
+        here.code_iata = g_airport.iata;
+        Log.printf("%s is here\n", arriving ? "destination" : "origin");
+    }
+
     float statePriority(const StateVector &s)
     {
         FlightInfo f;
@@ -182,6 +229,7 @@ size_t FlightDataFetcher::fetchFlights(std::vector<StateVector> &outStates,
                        stateIdx, totalStates, s.callsign.c_str());
             bool fetchOk = _flightFetcher->fetchFlightInfo(s.callsign, s.icao24, info);
             heapCheckpoint("route lookup");
+            routeFromPhase(s, info, statePriority(s));
             // Where it came from but not where it is going (OpenSky's
             // SAS36P CPH>?), and on final here: it is coming here. A whole
             // route, so it is cached and learned like one (9.0.1: it was
