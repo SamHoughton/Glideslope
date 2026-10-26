@@ -22,6 +22,10 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   (the Eiffel Tower, Burj Khalifa, Marina Bay Sands, the Opera House and
   35 more, with a few lights at night), and shows only for those cities;
   the temperature moves into the weather line.
+- **The globe at night**: the night side is a night of its own rather than
+  the day dimmed (which looked murky once the clocks went back): a deep blue
+  sea, dark land, a warm glow along the line between day and night, and a
+  faint light at every airport in the dark, glowing where they cluster.
 - **New stickers on the panel**: the first time the board ever sees an
   airline or a country, a sticker banner with its name (aircraft types: the
   first-sighting banner, now called New sticker).

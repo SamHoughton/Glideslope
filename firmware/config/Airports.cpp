@@ -166,3 +166,12 @@ bool icaoToIata(const char *icao, char outIata[4])
     return false;
 }
 }
+
+int Airports::count() { return AirportDb::kCount; }
+
+void Airports::position(int i, float &lat, float &lon)
+{
+    const AirportDb::Entry &e = AirportDb::kTable[i];
+    lat = e.lat100 / 100.0f;
+    lon = e.lon100 / 100.0f;
+}

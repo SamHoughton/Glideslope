@@ -34,4 +34,7 @@ bool shortCity(const char *code, size_t maxChars, char *out, size_t len);
 int utcOffsetMinutes(const Place &p, time_t t);
 // Fills outIata (3 characters + '\0'); false (and "") when not found.
 bool icaoToIata(const char *icao, char outIata[4]);
+// Every airport in the table, by number (9.1: the globe's night-side lights).
+int count();
+void position(int i, float &lat, float &lon);
 }
