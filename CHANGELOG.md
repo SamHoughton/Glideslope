@@ -16,6 +16,11 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   (a Eurowings arrival shown as London to Berlin); that is now turned
   round, and any other route keeps its far end with this airport at the
   near one.
+- Self-heal restarts in the morning rush (three on 26 October): the
+  airframe collection opened its file for every new aircraft, several every
+  few seconds, and the buffer each open took and freed broke the memory up.
+  The file is now opened once and kept open; the special liveries list is
+  only read when there is one.
 
 ## 9.0.1 (25 Oct 2026)
 

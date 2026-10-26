@@ -120,11 +120,14 @@ struct FileStore : Store
     {
         return open() && f.seek(i * sizeof(Slot)) && f.write((const uint8_t *)&s, sizeof(Slot)) == sizeof(Slot);
     }
-    // Closed between visits: an open file keeps a cache buffer in RAM.
+    // Kept open (9.0.2): every aircraft in range is visited, several a fetch
+    // in the morning rush, and opening the file each time took and freed a
+    // cache buffer every few seconds, breaking the heap up (three self-heal
+    // restarts on 26 Oct). Open once, its buffer for good; flushed after
+    // each visit so a restart loses nothing.
     void done() override
     {
-        if (f) f.close();
-        ready = false;
+        if (f) f.flush();
     }
 };
 }
