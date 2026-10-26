@@ -56,10 +56,10 @@ Result visitOpen(Store &store, uint32_t icao24, uint16_t today, const char *reg,
 }
 }
 
-Result visit(Store &store, uint32_t icao24, uint16_t today, const char *reg, const char *type, const char *op)
+Result visit(Store &store, uint32_t icao24, uint16_t today, const char *reg, const char *type, const char *op, bool close)
 {
     const Result r = visitOpen(store, icao24, today, reg, type, op);
-    store.done();
+    if (close) store.done();
     return r;
 }
 }
@@ -120,7 +120,8 @@ struct FileStore : Store
     {
         return open() && f.seek(i * sizeof(Slot)) && f.write((const uint8_t *)&s, sizeof(Slot)) == sizeof(Slot);
     }
-    // Closed between visits: an open file keeps a cache buffer in RAM.
+    // Closed after each batch of visits (an open file keeps a cache buffer;
+    // kept open for good, LittleFS asserted in its write path, 26 Oct).
     void done() override
     {
         if (f) f.close();

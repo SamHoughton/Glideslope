@@ -10,6 +10,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include <vector>
 #include <map>
 #include <esp_task_wdt.h>
+#include <esp_heap_caps.h>
 #include "utils/StageTrace.h"
 #include "utils/ImageCheck.h"
 #include <WiFi.h>
@@ -205,32 +206,39 @@ static void noteCollection(const std::vector<StateVector> &states, const std::ve
     const time_t now = time(nullptr);
     if (now < 1600000000) return;
     const uint16_t today = SeenLog::dayNumber(now);
-    static uint32_t recent[40] = {};   // visited today, so not looked up again every fetch
+    static uint32_t recent[40] = {};   // noted today, so not again every fetch
     static uint16_t recentDay = 0;
     static uint8_t next = 0;
     if (recentDay != today) { memset(recent, 0, sizeof(recent)); recentDay = today; }
-    int visits = 0;
+    // New ones wait here and go to the file together, about once a minute
+    // (9.0.2: one open of the file a batch, not one an aircraft, which in
+    // the morning rush meant several every few seconds and a heap broken
+    // up by LittleFS's buffers: three self-heal restarts on 26 Oct).
+    struct Pending { uint32_t icao; char reg[8], type[5], op[4]; };
+    static Pending pend[12];
+    static uint8_t nPend = 0;
+    static unsigned long lastFlushMs = 0;
     for (const StateVector &s : states)
     {
-        if (!s.registration.length() || visits >= 6) continue;   // a few a fetch: the rest next time
+        if (!s.registration.length() || nPend >= 12) continue;
         const uint32_t icao = (uint32_t)strtoul(s.icao24.c_str(), nullptr, 16);
         if (!icao) continue;
         bool seen = false;
         for (uint32_t r : recent) if (r == icao) { seen = true; break; }
         if (seen) continue;
-        char op[4] = "";
-        if (s.callsign.length() >= 4 && isalpha((unsigned char)s.callsign[0]) && isalpha((unsigned char)s.callsign[1]) &&
-            isalpha((unsigned char)s.callsign[2]) && isdigit((unsigned char)s.callsign[3]))
-            strlcpy(op, s.callsign.c_str(), sizeof(op));
-        ++visits;
-        const Airframes::Result r = Airframes::visit(Airframes::fileStore(), icao, today, s.registration.c_str(),
-                                                     s.aircraft_type.c_str(), op);
-        if (r == Airframes::Failed) continue;
         recent[next] = icao;
         next = (next + 1) % 40;
+        Pending &p = pend[nPend++];
+        p.icao = icao;
+        strlcpy(p.reg, s.registration.c_str(), sizeof(p.reg));
+        strlcpy(p.type, s.aircraft_type.c_str(), sizeof(p.type));
+        p.op[0] = 0;
+        if (s.callsign.length() >= 4 && isalpha((unsigned char)s.callsign[0]) && isalpha((unsigned char)s.callsign[1]) &&
+            isalpha((unsigned char)s.callsign[2]) && isdigit((unsigned char)s.callsign[3]))
+            strlcpy(p.op, s.callsign.c_str(), sizeof(p.op));
         // A special livery, the first time today (9.0).
         char livery[40];
-        if (r != Airframes::AgainToday && Liveries::find(s.registration.c_str(), livery, sizeof(livery)))
+        if (Liveries::find(s.registration.c_str(), livery, sizeof(livery)))
         {
             Log.printf("Spotter: special livery %s (%s) in range\n", s.registration.c_str(), livery);
             char l2[24];
@@ -240,6 +248,14 @@ static void noteCollection(const std::vector<StateVector> &states, const std::ve
                          s.registration.c_str(), s.aircraft_type.length() ? s.aircraft_type.c_str() : "?",
                          s.callsign.length() ? " as " : "", s.callsign.c_str());
         }
+    }
+    if (nPend && (nPend >= 12 || millis() - lastFlushMs > 60000UL))
+    {
+        lastFlushMs = millis();
+        for (uint8_t i = 0; i < nPend; ++i)
+            Airframes::visit(Airframes::fileStore(), pend[i].icao, today, pend[i].reg, pend[i].type, pend[i].op, false);
+        Airframes::fileStore().done();
+        nPend = 0;
     }
     for (const FlightInfo &f : flights)
     {
@@ -1317,10 +1333,14 @@ void loop()
             const uint32_t frames = g_display.framesDrawn(), reqs = g_webConfig.requestsServed();
             // Stack left at its lowest (bytes) for the main loop, display and web tasks.
             // Kept under the log's 112-character lines (a longer one lost its tail).
-            Log.printf("Beat %lus: +%u fr, +%u web, heap %u blk %u low %u, %u rt, stk %u/%u/%u\n",
+            // fb: how many pieces the free heap is in (9.0.2): rising, it is
+            // breaking up.
+            multi_heap_info_t hi;
+            heap_caps_get_info(&hi, MALLOC_CAP_8BIT);
+            Log.printf("Beat %lus: +%u fr, +%u web, heap %u blk %u low %u, fb %u, stk %u/%u/%u\n",
                        beatNow / 1000, (unsigned)(frames - lastFrames), (unsigned)(reqs - lastReqs),
                        (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
-                       (unsigned)ESP.getMinFreeHeap(), (unsigned)(g_fetcher ? g_fetcher->cachedFlights() : 0),
+                       (unsigned)ESP.getMinFreeHeap(), (unsigned)hi.free_blocks,
                        (unsigned)uxTaskGetStackHighWaterMark(nullptr),
                        (unsigned)(g_display.task() ? uxTaskGetStackHighWaterMark(g_display.task()) : 0),
                        (unsigned)(g_webTask ? uxTaskGetStackHighWaterMark(g_webTask) : 0));
