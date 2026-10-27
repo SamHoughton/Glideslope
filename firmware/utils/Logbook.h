@@ -31,6 +31,9 @@ namespace Logbook
     // back in line1/line2 (empty if none).
     void addDay(const Day &d, const std::vector<Tally> &tallies, char *line1, size_t len1, char *line2, size_t len2);
     void addEvent(const Event &e);
+    // Go-arounds logged since this Unix time (9.1.2: today's count, checked
+    // against the logbook at a start).
+    int goAroundsSince(uint32_t t);
     // An arrival from this airport (ICAO), as it is seen (9.0): into the
     // collection at once, each flight counted once.
     // 0 nothing new, 1 a new airport, 2 a new country (9.1); both only

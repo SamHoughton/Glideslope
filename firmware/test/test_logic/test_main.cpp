@@ -576,6 +576,30 @@ void test_go_around_from_traffic()
     TEST_ASSERT_FALSE(s.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt));
 }
 
+void test_repeat_go_arounds_removed()
+{
+    // Logged by 9.1.0: BA876 again and again in a minute, then a real second
+    // go-around by it an hour later, with another flight's in between. A
+    // start keeps the first of each (9.1.2), and a second start changes nothing.
+    LittleFS.wipe();
+    auto ev = [](uint32_t at, const char *ident) {
+        Logbook::Event e;
+        e.at = at; e.kind = DailyStats::GoAround;
+        strlcpy(e.ident, ident, sizeof(e.ident)); strlcpy(e.what, "27R", sizeof(e.what));
+        Logbook::addEvent(e);
+    };
+    const uint32_t t0 = 1800000000;
+    for (int i = 0; i < 9; ++i) ev(t0 + 10 * i, "BAW876");
+    ev(t0 + 30, "SWR9AM");
+    ev(t0 + 3600, "BAW876");
+    Logbook::begin();
+    TEST_ASSERT_EQUAL(3, Logbook::goAroundsSince(0));
+    TEST_ASSERT_EQUAL(2, Logbook::goAroundsSince(t0 + 1));     // SWR9AM and the later one
+    Logbook::begin();
+    TEST_ASSERT_EQUAL(3, Logbook::goAroundsSince(0));
+    LittleFS.wipe();
+}
+
 void test_spotter_log()
 {
     static DailyStats s;
@@ -883,6 +907,7 @@ int main(int, char **)
     RUN_TEST(test_seen_log);
     RUN_TEST(test_spotter_log);
     RUN_TEST(test_go_around_from_traffic);
+    RUN_TEST(test_repeat_go_arounds_removed);
     RUN_TEST(test_logbook);
     RUN_TEST(test_airport_time_zones);
     RUN_TEST(test_http_request);

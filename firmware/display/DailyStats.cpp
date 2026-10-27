@@ -2,6 +2,7 @@
 #include "display/ApproachModel.h"
 #include "config/AirlineCodes.h"
 #include "utils/TelnetLogger.h"
+#include "utils/Logbook.h"
 #include <LittleFS.h>
 #include <time.h>
 
@@ -518,6 +519,7 @@ void DailyStats::load()
     }
     _year = year;
     _day  = day;   // rollDay() resets it if this is not today
+    dropRepeatGoArounds();
     Log.printf("Stats: restored %u arrivals, %u departures\n", _arrivals, _departures);
 }
 
@@ -568,6 +570,43 @@ void DailyStats::watchGoArounds(const StateVector &s, const ApproachStatus &st, 
         noteSpot(GoAround, _gaIdent, _gaRwy);   // marks the stats dirty too
         slot->done = true;                      // once
         slot->finalMs = now;
+    }
+}
+
+// Before 9.1.1 one go-around could be counted many times: today's count
+// back to what the logbook has (already cleaned at the start), and the
+// repeats off the spotter log (9.1.2).
+void DailyStats::dropRepeatGoArounds()
+{
+    struct tm t = {};
+    t.tm_year = _year;
+    t.tm_mon = 0;
+    t.tm_mday = _day + 1;           // tm_yday + 1: mktime sorts out the month
+    t.tm_isdst = -1;
+    const time_t midnight = mktime(&t);
+    if (midnight > 1600000000)
+    {
+        const int logged = Logbook::goAroundsSince((uint32_t)midnight);
+        if (logged < _goArounds)
+        {
+            _spotsToday -= min<int>(_spotsToday, _goArounds - logged);
+            _goArounds = (uint16_t)logged;
+            _dirty = true;
+        }
+    }
+    for (int i = 0; i < _nSpots; ++i)   // newest first: drop it if an older one is the same go-around
+    {
+        if (_spots[i].kind != GoAround) continue;
+        for (int j = i + 1; j < _nSpots; ++j)
+            if (_spots[j].kind == GoAround && strncmp(_spots[j].ident, _spots[i].ident, sizeof(_spots[i].ident)) == 0 &&
+                _spots[i].minute - _spots[j].minute < 10)
+            {
+                memmove(&_spots[i], &_spots[i + 1], (size_t)(_nSpots - 1 - i) * sizeof(Spot));
+                --_nSpots;
+                --i;
+                _dirty = true;
+                break;
+            }
     }
 }
 
