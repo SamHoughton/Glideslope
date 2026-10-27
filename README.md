@@ -75,7 +75,7 @@ repository (see [Airline logos](#airline-logos)).
 
 | Approach line-up | Where it came from |
 | --- | --- |
-| ![The approach line-up: five aircraft on the glide path into 27L with the minutes between them](docs/lineup.png) | ![Where it came from: the sky over Dubai at night, 27 degrees, 23:15 there, about seven hours flying](docs/origin.png) |
+| ![The approach line-up: five aircraft on the glide path into 27L with the minutes between them](docs/lineup.png) | ![Where it came from: the Burj Khalifa under Dubai's night sky, 27 degrees, 23:15 there, about seven hours flying](docs/origin.png) |
 
 | Top airlines | Aircraft types |
 | --- | --- |
@@ -91,10 +91,13 @@ are the board's own frames.
 
 Every board serves a page at `http://glideslope.local/`: the panel drawn as
 glowing LEDs (a still, or live for two minutes from the **Live** button),
-what's on it now, the animations on demand, the board's history, sticker book
-and health, every setting in tabs (display with a switch for each screen,
-airport, night, data, spotter, phone alerts and Home Assistant, history,
-stickers, system, health, log), updates at a tap and a log.
+what's on it now with a photo of the aircraft (from Planespotters.net,
+credited), the animations on demand, a live map, the board's history,
+sticker book and health, every setting in tabs (display with a switch for
+each screen, airport, night, data, spotter, phone alerts and Home Assistant,
+history, stickers, map, system, health, log), updates at a tap and a log.
+The page is sent compressed and loads in a fraction of a second, even while
+the board is busy fetching.
 
 | Desktop | Phone |
 | --- | --- |
@@ -119,6 +122,12 @@ their aircraft it has seen, countries from where arrivals took off, types
 with how many different aircraft of each.
 
 <img src="docs/webui-stickers.png" alt="The Stickers tab: albums of airlines, countries and aircraft types, the ones seen in colour with the date" width="560">
+
+The **Map** tab: every aircraft in range on a real map (OpenStreetMap,
+darkened), each with its trail, flight and height, the approaches and the
+holding stacks. Click one for more.
+
+<img src="docs/webui-map.png" alt="The Map tab: aircraft around Heathrow on a dark map, with labels, trails and the approach lines" width="560">
 
 The **Health** tab: memory over the last day (the free heap and the largest
 free block, which the feed's secure connection needs), every start and its
@@ -162,10 +171,11 @@ reason, the feed, the weather, Wi-Fi, storage and temperature. The
   distance and height in its airline's colour, and the time to the one
   ahead beneath it (red under a minute). In the rotation whenever two or
   more are coming in.
-- **Where it came from**: the sky at the origin as it is right now (its own
-  sun or moon and weather) with the temperature there, its local time and
-  weather in words (`23:15 there`, `Clear night`), roughly how long the
-  flight has been flying and how far it has come.
+- **Where it came from** (9.1): the city's landmark as a silhouette (the
+  Eiffel Tower, Burj Khalifa, the Opera House and 36 more, lit windows at
+  night) under its sky as it is right now, its local time, temperature and
+  weather (`23:15 there`, `27° Clear night`), roughly how long the flight
+  has been flying and how far it has come. Only for cities with a landmark.
 - **Fly-across**: when a new aircraft arrives, its sprite crosses the panel in
   the direction it is really flying, climbing or descending with its real
   vertical rate. The old card stays ahead of it and the new one is revealed
@@ -236,6 +246,11 @@ reason, the feed, the weather, Wi-Fi, storage and temperature. The
   last seen and on how many days, kept in flash (room for 8,192). And the
   airport every arrival came from; a first arrival from a new one gets a
   gold banner.
+- **New stickers** (9.1): the first time the board sees an airline, a
+  country or an aircraft type, a sticker banner with its name.
+- **Windy days** (9.1): a landing in a strong crosswind (20 kt, or 25 in the
+  gusts) gets a banner and a spotter-log entry; the windiest landing is a
+  record, and a go-around in a gale says how hard it was blowing.
 - **Your year at Heathrow**: from 26 December to 2 January the stats pages
   add the year: its movements, busiest day and hour, tightest gap,
   go-arounds, rare spots, what is new in the collection, and the aircraft
@@ -302,8 +317,9 @@ reason, the feed, the weather, Wi-Fi, storage and temperature. The
   wait.
 - **Route globe**: after a card, the flight's route on a globe turned to face
   it, from the offline airport table and a world map in 8 KB: solid where it
-  has been and dashed ahead, the aircraft on the line, the night side shaded
-  from the real sun, with the cities, a progress bar, distance flown (in
+  has been and dashed ahead, the aircraft on the line, the night side from
+  the real sun (deep blue sea, a warm line at dusk, airport lights in the
+  dark), with the cities, a progress bar, distance flown (in
   turn with how long it has been flying: `13h 50m flying`) and
   the ETA (or when it landed).
 - **Overhead**: an aircraft passing within a set distance of the home marker

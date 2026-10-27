@@ -142,6 +142,11 @@ public:
     // The year so far (9.0), from the logbook: on the stats screen from 26
     // December to 2 January (and on demand).
     void setYear(const Logbook::Year &y);
+    void noteCrosswindLanding();   // at touchdown, under the lock (9.1)
+    bool takeNewAirline(char *code, size_t len);   // see DailyStats (9.1)
+    // Every aircraft in range for the web page's live map (9.1); with
+    // withAirport, the runways and holding stacks too.
+    void trafficJson(String &out, bool withAirport);
     bool hasOriginWeather(const char *icao);
 
     // Today's stats from every aircraft in range (call once per fetch), and

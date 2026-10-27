@@ -96,7 +96,11 @@ bool AdsbAggregatorFetcher::fetchFrom(int i, const String &url, const char *name
     // buffers come next (reserving after the GET failed once).
     out.reserve(kMaxAircraft);
     const bool reused = i == 0 && _keepHttp && _keepTls && _keepTls->connected();
-    const int code = http.GET();
+    // The web server waits only while a new secure connection is set up
+    // (9.1): a fetch on the kept-open one leaves it answering the phone.
+    int code;
+    if (reused) code = http.GET();
+    else { NetBusy busy; code = http.GET(); }
     if (code < 0 && reused && mayRetry)
     {
         // The server closed the kept-open connection while it was idle: one

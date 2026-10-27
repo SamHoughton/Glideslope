@@ -1,4 +1,5 @@
 #include "display/InfoScreens.h"
+#include "display/Landmarks.h"
 #include "display/Globe.h"
 #include "display/Fonts.h"
 #include "display/Font3x5.h"
@@ -328,6 +329,9 @@ bool InfoScreens::renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar 
 {
     Airports::Place from;
     if (!Airports::find(f.origin, from)) return false;
+    // 9.1: only a city with a landmark (the page was a box of sky without one).
+    const Landmarks::Landmark *mark = Landmarks::forAirport(from.iata);
+    if (!mark) return false;
     // The great-circle distance from there to here.
     const double rad = M_PI / 180.0;
     const double la1 = from.lat * rad, la2 = g_airport.lat * rad, dlo = (g_airport.lon - from.lon) * rad;
@@ -383,12 +387,20 @@ bool InfoScreens::renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar 
     Sky::drawWeather(c, sky, shownMs, 0, kW - 1);
     c.resetClip();
     c.fillRect(0, kGround, kW, FrameCanvas::H - kGround, Sky::shade(sky, Rgb{30, 34, 44}));
-    if (m.valid && m.tempC != -99)
+    // The landmark, a silhouette against that sky, standing on the ground;
+    // at night a few lights in it.
     {
-        char t[10];
-        snprintf(t, sizeof(t), "%d\xC2\xB0", m.tempC);
-        c.print(Fonts::Huge, 5, 33, t, Rgb{0, 0, 0});
-        c.print(Fonts::Huge, 4, 32, t, m.tempC <= 0 ? Rgb{150, 200, 255} : m.tempC >= 30 ? Rgb{255, 170, 90} : kTitle);
+        const Rgb dark = FrameCanvas::scale(mixRgb(sky.horizon, Rgb{0, 0, 0}, 0.75f), 1.0f);
+        const int x0 = (kW - mark->w) / 2, y0 = kGround - mark->h, stride = (mark->w + 7) / 8;
+        uint32_t seed = 2166136261u;
+        for (int y = 0; y < mark->h; ++y)
+            for (int x = 0; x < mark->w; ++x)
+                if (mark->bits[y * stride + x / 8] & (0x80 >> (x % 8)))
+                {
+                    seed = (seed ^ (uint32_t)(x * 31 + y)) * 16777619u;
+                    const bool lit = sky.night > 0.6f && (seed % 23) == 0;
+                    c.set(x0 + x, y0 + y, lit ? Rgb{150, 120, 60} : dark);
+                }
     }
     for (int y = 0; y < FrameCanvas::H; ++y) c.set(kW, y, Rgb{0, 0, 0});
 
@@ -417,11 +429,13 @@ bool InfoScreens::renderOrigin(FrameCanvas &c, const FlightInfo &f, const Metar 
             snprintf(words, sizeof(words), "%s", kCloud[min(3, (int)sky.cloud)]);
             if (sky.cloud == 0 && sky.night > 0.7f) strlcat(words, " night", sizeof(words));
         }
-        if (words[0])
-        {
-            words[0] = (char)toupper((unsigned char)words[0]);
-            c.print(Fonts::Label, kX, 32, words, soft);
-        }
+        if (words[0]) words[0] = (char)toupper((unsigned char)words[0]);
+        // The temperature leads the line (it was large on the sky, where the
+        // landmark stands now).
+        char line[32];
+        if (m.valid && m.tempC != -99) snprintf(line, sizeof(line), "%d\xC2\xB0 %s", m.tempC, words);
+        else                           strlcpy(line, words, sizeof(line));
+        if (line[0]) c.print(Fonts::Label, kX, 32, line, soft);
     }
     for (int x = kX; x < FrameCanvas::W - 2; x += 2) c.set(x, 42, Rgb{40, 46, 60});
     // Roughly how long it has been flying (the same estimate as the globe's).
@@ -514,6 +528,7 @@ namespace
             case DailyStats::Watchlist:  col = Rgb{255, 215, 80};  return "Watch";
             case DailyStats::Overhead:   col = Rgb{120, 220, 150}; return "Over";
             case DailyStats::GoAround:   col = Rgb{255, 110, 90};  return "G/A";
+            case DailyStats::Crosswind:  col = Rgb{120, 200, 255}; return "Wind";
             default:                     col = Rgb{255, 60, 50};   return "Sqk";
         }
     }
@@ -1356,7 +1371,8 @@ namespace
     }
 }
 
-void InfoScreens::renderGoAroundAlert(FrameCanvas &c, const char *ident, const char *runway, int altFt, uint32_t tMs)
+void InfoScreens::renderGoAroundAlert(FrameCanvas &c, const char *ident, const char *runway, int altFt, uint32_t tMs,
+                                      const char *wind)
 {
     c.clear();
     const Rgb amber{255, 170, 30};
@@ -1376,7 +1392,8 @@ void InfoScreens::renderGoAroundAlert(FrameCanvas &c, const char *ident, const c
     thousandsFt(altFt, alt, sizeof(alt));
     if (runway && runway[0]) snprintf(detail, sizeof(detail), "Off %s, at %s ft", runway, alt);
     else                     snprintf(detail, sizeof(detail), "At %s ft", alt);
-    centred(c, 37, detail, Rgb{200, 205, 215});
+    if (wind && wind[0] && (tMs / 2500) % 2 == 1) centred(c, 37, wind, Rgb{150, 210, 255});
+    else                                           centred(c, 37, detail, Rgb{200, 205, 215});
 
     // The track: down the approach, then up and away, drawn on over two seconds.
     const float drawn = fminf(1.0f, tMs / 2000.0f);
@@ -1449,6 +1466,50 @@ void InfoScreens::renderMoodBanner(FrameCanvas &c, uint8_t style, const char *li
             }
         }
         subject = Rgb{255, 200, 60};
+    }
+    else if (style == 6)
+    {
+        // A crosswind landing (9.1): streaks of wind blowing across.
+        for (int i = 0; i < 26; ++i)
+        {
+            const int y = (i * 41 + 3) % FrameCanvas::H, len = 6 + (i * 7) % 12, speed = 3 + i % 4;
+            const int x = (int)((tMs / 10 * speed + i * 53) % (FrameCanvas::W + 40)) - 20;
+            for (int k = 0; k < len; ++k)
+                c.set(x - k, y, FrameCanvas::scale(Rgb{120, 170, 220}, 0.6f * (1.0f - (float)k / len)));
+        }
+        subject = Rgb{150, 210, 255};
+    }
+    else if (style == 5)
+    {
+        // A new sticker (9.1): a white-edged sticker, its corner peeling,
+        // a little shine passing over it.
+        const int x0 = 6, y0 = 22, w = FrameCanvas::W - 12, h = 30;
+        for (int y = y0; y < y0 + h; ++y)
+            for (int x = x0; x < x0 + w; ++x)
+            {
+                const bool edge = x < x0 + 2 || x >= x0 + w - 2 || y < y0 + 2 || y >= y0 + h - 2;
+                const int corner = (x - (x0 + w - 9)) + (y0 + 8 - y);     // the top-right corner, folded back
+                if (corner > 8) continue;
+                Rgb col = edge ? Rgb{235, 235, 225} : Rgb{24, 40, 70};
+                if (corner > 4) col = Rgb{170, 170, 160};                // the fold's underside
+                const int shine = (int)((tMs / 12) % 260) - 60;
+                if (!edge && corner <= 4 && abs((x - x0) - (y - y0) - shine) < 4) col = Rgb{60, 85, 130};
+                c.set(x, y, col);
+            }
+        // Stars around it.
+        for (int i = 0; i < 6; ++i)
+        {
+            const int sx = (i * 23 + 7) % FrameCanvas::W, sy = i % 2 ? 4 : 57;
+            const float k = 0.5f + 0.5f * sinf(tMs / 110.0f + i);
+            c.set(sx, sy, FrameCanvas::scale(kGold, k));
+        }
+        title = kGold;
+        subject = Rgb{255, 255, 255};
+        centred(c, 9, line1, title);
+        const Fonts::Font &f2 = FrameCanvas::width(Fonts::Large, line2) <= w - 6 ? Fonts::Large
+                              : FrameCanvas::width(Fonts::Medium, line2) <= w - 6 ? Fonts::Medium : Fonts::Label;
+        centredL(c, &f2 == &Fonts::Label ? 33 : 27, line2, subject, f2);
+        return;
     }
     else if (style == 4)
     {

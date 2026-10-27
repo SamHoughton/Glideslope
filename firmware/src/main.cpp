@@ -53,6 +53,8 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "utils/Health.h"
 #include "utils/Airframes.h"
 #include "utils/Liveries.h"
+#include "config/Countries.h"
+#include "config/AirlineNames.h"
 #include "utils/TlsArena.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
@@ -135,10 +137,7 @@ static void sampleStack()
     const HoldFix &fix = g_airport.holds[g_nextStack];
     std::vector<StateVector> around;
     bool ok;
-    {
-        NetBusy busy;
-        ok = g_feeds.fetchArea(fix.lat, fix.lon, 9.0, around);
-    }
+    ok = g_feeds.fetchArea(fix.lat, fix.lon, 9.0, around);   // (pauses the web server itself if it must connect)
     if (ok) g_display.noteStack(g_nextStack, around);
     g_nextStack = (g_nextStack + 1) % g_airport.holdCount;
     heapCheckpoint("stack sample");
@@ -258,7 +257,16 @@ static void noteCollection(const std::vector<StateVector> &states, const std::ve
     for (const FlightInfo &f : flights)
     {
         if (f.destination.code_icao != g_airport.icao || f.origin.code_icao.length() != 4) continue;
-        if (Logbook::noteOrigin(f.origin.code_icao.c_str(), f.ident.c_str()))
+        const int news = Logbook::noteOrigin(f.origin.code_icao.c_str(), f.ident.c_str());
+        if (news == 2)
+        {
+            char iso[3];
+            const char *country = "";
+            Countries::of(f.origin.code_icao.c_str(), iso, &country);
+            Log.printf("Logbook: a new country, %s (%s)\n", country, f.ident.c_str());
+            g_display.showMood(5, "New sticker", country);   // a whole new country (9.1)
+        }
+        else if (news == 1)
         {
             const char *city = Airports::city(f.origin.code_icao.c_str());
             char l2[24];
@@ -266,6 +274,15 @@ static void noteCollection(const std::vector<StateVector> &states, const std::ve
             g_display.showNews("First arrival from", l2);
         }
     }
+    // An airline the collection has never had (9.1).
+    char code[4];
+    while (g_display.takeNewAirline(code, sizeof(code)))
+        if (Logbook::stickerIsNew(0, code))
+        {
+            const char *name = AirlineNames::of(code);
+            Log.printf("Logbook: a new airline, %s\n", code);
+            g_display.showMood(5, "New sticker", name ? name : code);
+        }
 }
 
 static void spotterCheck(const std::vector<StateVector> &states, const std::vector<FlightInfo> &flights)
@@ -287,10 +304,7 @@ static void spotterCheck(const std::vector<StateVector> &states, const std::vect
     for (const FlightInfo &f : flights)
         if (f.ident == s.callsign) { route = f; haveRoute = true; break; }
     if (!haveRoute && s.callsign.length() >= 4 && ESP.getMaxAllocHeap() > 20000)
-    {
-        NetBusy busy;
-        haveRoute = g_adsbIm.fetchFlightInfo(s.callsign, s.icao24, route) && route.destination.code_icao.length();
-    }
+    haveRoute = g_adsbIm.fetchFlightInfo(s.callsign, s.icao24, route) && route.destination.code_icao.length();   // plain HTTP
 
     OverheadScene::Info info;
     if (ev.watch)
@@ -506,11 +520,11 @@ static Rgb airlineColour(const String &callsign)
 {
     // A fixed table (8.0): a map's node per new airline, all day, scattered
     // small permanent blocks through the heap.
-    // 78 airlines, the oldest replaced when full (8.3.1: 64 and then no
+    // 76 airlines, the oldest replaced when full (8.3.1: 64 and then no
     // caching at all, so a busy day's 65th airline onwards was worked out
     // again on every fetch).
     struct Slot { char icao[3]; Rgb c; };   // 6 bytes: no terminator kept
-    static Slot cache[78];
+    static Slot cache[76];
     static uint8_t cached = 0, next = 0;
     const Rgb kNeutral{200, 205, 215};
     if (callsign.length() < 4 || !isalpha((unsigned char)callsign[0]) ||
@@ -531,7 +545,7 @@ static Rgb airlineColour(const String &callsign)
         c = kNeutral;
         LogoBook::noteMissing(icao);   // for the web page's Logos section
     }
-    Slot &slot = cached < 78 ? cache[cached++] : cache[next++ % 78];
+    Slot &slot = cached < 76 ? cache[cached++] : cache[next++ % 76];
     memcpy(slot.icao, icao.c_str(), 3);
     slot.c = c;
     return c;
@@ -831,6 +845,7 @@ void setup()
             }
 
             g_webConfig.setTodaySource([](String &out) { g_display.todayJson(out); });
+            g_webConfig.setTrafficSource([](String &out, bool withAirport) { g_display.trafficJson(out, withAirport); });
             g_webConfig.begin(80);  // start HTTP config + log UI
 
             // http://glideslope.local/ as well as the IP address.
@@ -1003,7 +1018,9 @@ void loop()
         {
         size_t enriched;
         {
-            NetBusy busy;
+            // 9.1: no NetBusy round the whole fetch (it kept the web server
+            // waiting most of the time: a phone took 10-20 s to load the
+            // page); each secure connection holds it while it is set up.
             StageTrace::mark(StageTrace::Main, StageTrace::MainFetch);
             // Out of memory part-way (a heap that tight is rare, but a
             // phone on the live preview once tipped it): skip this round,

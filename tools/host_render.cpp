@@ -305,6 +305,16 @@ int main(int argc, char **argv)
             Weather::parse("METAR KJFK 181851Z 21014KT 8SM -SHRA BKN035 OVC060 18/12 A2998", wx);
             InfoScreens::renderOrigin(c, g, &wx, 140, "27L", 3000);                      save(c, "origin_jfk");
             InfoScreens::renderOrigin(c, g, nullptr, 140, "27L", 3000);                  save(c, "origin_no_weather");
+            // 9.1: landmarks.
+            g.origin.code_iata = "CDG"; g.origin.code_icao = "LFPG";
+            Weather::parse("METAR LFPG 181900Z 24008KT CAVOK 14/08 Q1018", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 60, "27L", 3000);                       save(c, "origin_paris");
+            g.origin.code_iata = "SIN"; g.origin.code_icao = "WSSS";
+            Weather::parse("METAR WSSS 181900Z 02006KT 9999 FEW018 28/24 Q1009", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 90, "27L", 3000);                       save(c, "origin_singapore");
+            g.origin.code_iata = "SYD"; g.origin.code_icao = "YSSY";
+            Weather::parse("METAR YSSY 181900Z 17012KT 9999 SCT030 17/11 Q1021", wx);
+            InfoScreens::renderOrigin(c, g, &wx, 90, "27L", 3000);                       save(c, "origin_sydney");
         }
         o.landed = true; o.landedAt = 1792350600; o.animMs = 1200;
         CardRenderer::render(c, f, ApproachModel::evaluate(f), Rgb{255, 185, 60}, o);   save(c, "card_landed");
@@ -397,10 +407,14 @@ int main(int argc, char **argv)
         InfoScreens::renderMoodBanner(c, 1, "Low visibility", "Fog 300 m", 2500);            save(c, "banner_fog");
         InfoScreens::renderGoAroundAlert(c, "BAW117", "27L", 1200, 250);                     save(c, "alert_goaround_flash");
         InfoScreens::renderGoAroundAlert(c, "BAW117", "27L", 1200, 6000);                    save(c, "alert_goaround");
+        InfoScreens::renderGoAroundAlert(c, "BAW117", "27L", 1200, 7600, "Gusts 38 kt across");   save(c, "alert_goaround_gusts");
         InfoScreens::renderMoodBanner(c, 2, "Thunderstorm", "Over Heathrow", 1750);          save(c, "banner_storm");
         InfoScreens::renderMoodBanner(c, 2, "Thunderstorm", "Over Heathrow", 900);           save(c, "banner_storm_dark");
         InfoScreens::renderMoodBanner(c, 3, "Runway change due", "To 09 at 19:00", 900);     save(c, "banner_runway");
         InfoScreens::renderMoodBanner(c, 4, "Special livery", "Pride", 700);                 save(c, "banner_livery");
+        InfoScreens::renderMoodBanner(c, 5, "New sticker", "Air Astana", 1500);           save(c, "banner_sticker");
+        InfoScreens::renderMoodBanner(c, 6, "Crosswind landing", "BA311 31 kt", 1200);     save(c, "banner_crosswind");
+        InfoScreens::renderMoodBanner(c, 5, "New sticker", "Dominican Rep.", 400);        save(c, "banner_sticker_long");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 600);                                save(c, "runway_change_a");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 1900);                               save(c, "runway_change_b");
         InfoScreens::renderRunwayChange(c, "27R", "09L", 2600);                               save(c, "runway_change_c");

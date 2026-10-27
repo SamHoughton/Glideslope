@@ -4,7 +4,13 @@
 # the page has changed, so it doesn't force a rebuild.
 #
 # Also usable outside PlatformIO:  python scripts/gen_webpage.py
+#
+# 9.1: stored gzip-compressed (about a quarter of the size: the page had
+# grown to 84 KB and took 8 s to reach a phone), with an ETag so a browser
+# that has it already gets a 304 and nothing more.
+import gzip
 import re
+import zlib
 from pathlib import Path
 
 try:
@@ -24,16 +30,20 @@ def page():
 
 
 def main():
-    html = page()
-    assert ')GSPAGE"' not in html
+    raw = page().encode('utf-8')
+    gz = gzip.compress(raw, compresslevel=9, mtime=0)   # the same bytes every build
+    etag = '"%08x"' % (zlib.crc32(raw) & 0xFFFFFFFF)
+    rows = ',\n'.join(','.join('0x%02x' % b for b in gz[i:i + 24]) for i in range(0, len(gz), 24))
     header = ('// Generated from web/index.html by scripts/gen_webpage.py: edit the HTML, not this.\n'
-              '#pragma once\n#include <stddef.h>\n\n'
-              'static const char kHtmlPage[] = R"GSPAGE(' + html + ')GSPAGE";\n'
-              'static const size_t kHtmlPageLen = sizeof(kHtmlPage) - 1;\n')
+              '// The page gzip-compressed (%d bytes, %d unpacked).\n'
+              '#pragma once\n#include <stddef.h>\n#include <stdint.h>\n\n'
+              'static const uint8_t kHtmlPageGz[] = {\n%s\n};\n'
+              'static const size_t kHtmlPageGzLen = sizeof(kHtmlPageGz);\n'
+              'static const char kHtmlPageEtag[] = %s;\n' % (len(gz), len(raw), rows, '"' + etag.replace('"', '\\"') + '"'))
     out = ROOT / 'utils' / 'WebPage.h'
     if not out.exists() or out.read_text(encoding='utf-8') != header:
         out.write_text(header, encoding='utf-8')
-        print(f'gen_webpage: wrote {out.name} ({len(html)} bytes of page)')
+        print(f'gen_webpage: wrote {out.name} ({len(raw)} bytes of page, {len(gz)} compressed)')
 
 
 main()

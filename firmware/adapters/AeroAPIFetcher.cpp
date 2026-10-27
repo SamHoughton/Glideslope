@@ -74,7 +74,8 @@ bool AeroAPIFetcher::fetchFlightInfo(const String &flightIdent,
     http.addHeader("x-apikey", aeroKey());
     http.addHeader("Accept", "application/json");
 
-    int code = http.GET();
+    int code;
+    { NetBusy busy; code = http.GET(); }
     if (code != 200)
     {
         Log.printf("AeroAPIFetcher: HTTP request failed with code %d for flight %s\n", code, flightIdent.c_str());

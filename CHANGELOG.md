@@ -7,6 +7,40 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.1.0 (27 Oct 2026)
+
+**New**
+- **A live map**: a Map tab with every aircraft in range on a real map
+  (OpenStreetMap, darkened), each with its trail, flight and height; the
+  approaches and the holding stacks; click one for more. The map loads in
+  your browser; the board only sends where everyone is, every five seconds.
+- **Photos of the aircraft**: under the panel on the web page, a photo of
+  the aircraft on the card itself, by its registration, from
+  Planespotters.net (credited, as they ask).
+- **Landmarks**: the page on final about where a flight came from now has
+  the city's landmark as a silhouette under that city's sky as it is now
+  (the Eiffel Tower, Burj Khalifa, Marina Bay Sands, the Opera House and
+  35 more, with a few lights at night), and shows only for those cities;
+  the temperature moves into the weather line.
+- **The globe at night**: the night side is a night of its own rather than
+  the day dimmed (which looked murky once the clocks went back): a deep blue
+  sea, dark land, a warm glow along the line between day and night, and a
+  faint light at every airport in the dark, glowing where they cluster.
+- **New stickers on the panel**: the first time the board ever sees an
+  airline or a country, a sticker banner with its name (aircraft types: the
+  first-sighting banner, now called New sticker).
+- **Windy days**: a landing with a strong crosswind (20 kt, or 25 in the
+  gusts) gets a banner and a spotter-log entry; the windiest landing is a
+  record (announced, and sent to your phone, when it is beaten); a
+  go-around in a gale says how hard it was blowing.
+
+**Changes**
+- The web page loads in a fraction of a second (it took 10 to 20 seconds on
+  a phone, or timed out): the board no longer stops answering it for the
+  whole of every fetch, only for the second it takes to open a new secure
+  connection. And it is sent compressed (27 KB rather than 91); a browser
+  that has this version's page already just keeps it.
+
 ## 9.0.2 (26 Oct 2026)
 
 **Fixes**

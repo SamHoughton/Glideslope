@@ -45,7 +45,8 @@ bool HexDbFetcher::httpGet(const String &url, String &outPayload)
     http.setTimeout(TimingConfiguration::AEROAPI_TIMEOUT_MS);
     http.addHeader("Accept", "application/json");
 
-    int code = http.GET();
+    int code;
+    { NetBusy busy; code = http.GET(); }
 
     // -1 on the first try usually means a stale keep-alive socket from a
     // previous cycle.  Drop the client and retry once with a fresh connection.
@@ -61,7 +62,7 @@ bool HexDbFetcher::httpGet(const String &url, String &outPayload)
         http.begin(_client, url);
         http.setTimeout(TimingConfiguration::AEROAPI_TIMEOUT_MS);
         http.addHeader("Accept", "application/json");
-        code = http.GET();
+        { NetBusy busy; code = http.GET(); }
     }
 
     if (code != 200)

@@ -74,6 +74,7 @@ void DailyStats::reset()
 {
     _year = _day = -1;
     _arrivals = _departures = _goArounds = 0;
+    _windiest = 0;
     memset(_arrHour, 0, sizeof(_arrHour));
     memset(_depHour, 0, sizeof(_depHour));
     memset(_seen, 0, sizeof(_seen));
@@ -279,7 +280,14 @@ void DailyStats::count(const StateVector &s, bool arrival, int hour)
     _dirty = true;
 
     const String airline = airlineOf(s.callsign);
-    if (airline.length()) addAirline(airline.c_str(), 1);
+    if (airline.length())
+    {
+        bool known = false;
+        for (uint8_t i = 0; i < _nAirlines && !known; ++i)
+            known = strncmp(_airlines[i].code, airline.c_str(), sizeof(_airlines[i].code)) == 0;
+        if (!known && _newAirN < 4) strlcpy(_newAir[_newAirN++], airline.c_str(), sizeof(_newAir[0]));
+        addAirline(airline.c_str(), 1);
+    }
     String type = s.aircraft_type;
     type.trim();
     if (type.length())
@@ -553,6 +561,15 @@ void DailyStats::watchGoArounds(const StateVector &s, const ApproachStatus &st, 
     }
 }
 
+bool DailyStats::takeNewAirline(char *code, size_t len)
+{
+    if (!_newAirN) return false;
+    strlcpy(code, _newAir[0], len);
+    memmove(_newAir[0], _newAir[1], sizeof(_newAir[0]) * 3);
+    --_newAirN;
+    return true;
+}
+
 bool DailyStats::takeGoAround(char *ident, size_t identLen, char *runway, size_t rwyLen, int &altFt)
 {
     if (!_gaPending) return false;
@@ -592,6 +609,7 @@ void DailyStats::makeDayRecord()
     d.arrivals = _arrivals;
     d.departures = _departures;
     d.goArounds = (uint8_t)min(255, (int)_goArounds);
+    d.windiest = _windiest;
     d.types = _nTypes;
     d.airlines = _nAirlines;
     for (int h = 0; h < 24; ++h) d.hours[h] = (uint8_t)min(255, _arrHour[h] + _depHour[h]);

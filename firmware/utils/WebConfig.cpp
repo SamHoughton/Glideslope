@@ -5,6 +5,7 @@ WebServer library to avoid framework include-path issues.
 */
 #include "utils/Notify.h"
 #include "utils/WebConfig.h"
+#include "utils/WebPage.h"   // the page, compressed (scripts/gen_webpage.py)
 #include "utils/Logbook.h"
 #include "utils/TelnetLogger.h"
 #include "utils/WifiProvisioner.h"
@@ -198,7 +199,7 @@ void WebConfig::loop()
     StageTrace::mark(StageTrace::Web, StageTrace::WebHandle, (uint8_t)r.path.length());
     // Any demo: night watch stands aside so it can be seen at night.
     if (r.path.startsWith("/api/demo/") && r.path != "/api/demo/nightwatch") noteWebDemo();
-    if      (r.path == "/"                  && r.method == "GET")  handleRoot(client);
+    if      (r.path == "/"                  && r.method == "GET")  handleRoot(client, header(raw, "If-None-Match") == kHtmlPageEtag);
     else if (r.path == "/api/config"        && r.method == "GET")  handleGetConfig(client);
     else if (r.path == "/api/config"        && r.method == "POST") handlePostConfig(client, r);
     else if (r.path == "/api/config/reset"  && r.method == "POST") handleResetConfig(client);
@@ -287,6 +288,12 @@ void WebConfig::loop()
         Logbook::recordsJson(body);
         sendHttp(client, 200, "application/json", body);
     }
+    else if (r.path == "/api/traffic"       && r.method == "GET")
+    {
+        String body = "{}";
+        if (_traffic) _traffic(body, qparam(r.query, "airport") == "1");
+        sendHttp(client, 200, "application/json", body);
+    }
     else if (r.path == "/api/today"         && r.method == "GET")
     {
         String body = "{}";
@@ -298,7 +305,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/mood"     && r.method == "POST")
     {
         const String k = qparam(r.query, "kind");
-        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : k == "livery" ? 4 : 1);
+        requestMoodDemo(k == "storm" ? 2 : k == "runway" ? 3 : k == "livery" ? 4 : k == "sticker" ? 5 : k == "crosswind" ? 6 : 1);
         sendHttp(client, 200, "application/json", "{\"ok\":true}");
     }
     else if (r.path == "/api/demo/goaround" && r.method == "POST") { requestGoAroundDemo(); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
@@ -375,11 +382,25 @@ String WebConfig::qparam(const String &query, const char *key)
 
 // The page: web/index.html, turned into a header at build time
 // (scripts/gen_webpage.py).
-#include "utils/WebPage.h"
 
-void WebConfig::handleRoot(WiFiClient &c)
+// The page, gzip-compressed (every browser accepts it), and a 304 when the
+// browser has this build's already (9.1).
+void WebConfig::handleRoot(WiFiClient &c, bool cached)
 {
-    sendHtmlDirect(c, kHtmlPage, kHtmlPageLen);
+    if (cached)
+    {
+        c.printf("HTTP/1.1 304 Not Modified\r\nETag: %s\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n", kHtmlPageEtag);
+        return;
+    }
+    c.printf("HTTP/1.1 200 OK\r\n"
+             "Content-Type: text/html; charset=utf-8\r\n"
+             "Content-Encoding: gzip\r\n"
+             "Content-Length: %u\r\n"
+             "ETag: %s\r\n"
+             "Cache-Control: no-cache\r\n"
+             "Connection: close\r\n\r\n",
+             (unsigned)kHtmlPageGzLen, kHtmlPageEtag);
+    sendChunked(c, kHtmlPageGz, kHtmlPageGzLen, 1024);
 }
 
 void WebConfig::handleGetConfig(WiFiClient &c)

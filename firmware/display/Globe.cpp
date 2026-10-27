@@ -1,6 +1,7 @@
 #include "display/Globe.h"
 #include "display/Fonts.h"
 #include "display/LandMask.h"
+#include "config/Airports.h"
 #include <math.h>
 
 namespace
@@ -176,10 +177,35 @@ void Globe::render(FrameCanvas &c, const Route &r, uint32_t shownMs, time_t now)
             float k = 0.55f + 0.45f * sqrtf(fmaxf(0, 1 - (sx * sx + sy * sy)));   // rounder: darker towards the edge
             if (sunKnown)
             {
+                // Night (9.1): not the day dimmed, which looked muddy, but a
+                // night of its own: deep blue sea, dark land, and a warm glow
+                // along the line between them.
                 const float day = dot(p, sun);
-                k *= day > 0.08f ? 1.0f : (day < -0.08f ? 0.32f : 0.32f + 0.68f * (day + 0.08f) / 0.16f);   // night still readable
+                const bool land = col.g > col.b;
+                const Rgb night = land ? Rgb{34, 44, 46} : Rgb{6, 16, 44};
+                const float t = day > 0.08f ? 0.0f : (day < -0.08f ? 1.0f : (0.08f - day) / 0.16f);
+                col = mix(col, night, t);
+                const float dusk = 1.0f - fminf(1.0f, fabsf(day) / 0.06f);   // the terminator
+                if (dusk > 0) col = mix(col, Rgb{200, 110, 50}, 0.22f * dusk);
             }
             c.set(px, py, FrameCanvas::scale(col, k));
+        }
+
+    // City lights on the night side (9.1): every airport in the table, a
+    // faint warm point, adding up where they cluster (Europe, the US east).
+    if (sunKnown)
+        for (int i = 0; i < Airports::count(); ++i)
+        {
+            float alat, alon;
+            Airports::position(i, alat, alon);
+            const V3 q = vec(alat, alon);
+            if (dot(q, sun) > -0.05f) continue;           // daylight there
+            float x, y;
+            if (!v.project(q, x, y)) continue;
+            const int ix = (int)lroundf(x), iy = (int)lroundf(y);
+            const Rgb was = FrameCanvas::unpack(c.get(ix, iy));
+            if (was.r > 120) continue;                    // a cluster lit already: a glow, not a blaze
+            c.set(ix, iy, Rgb{(uint8_t)min(255, was.r + 26), (uint8_t)min(255, was.g + 18), (uint8_t)min(255, was.b + 5)});
         }
 
     // The route: drawn on after the globe has turned in. Solid (fading up to

@@ -164,6 +164,7 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/api/history/collection': self.send(HIST_COLLECTION.encode(), 'text/csv')
         elif p == '/api/history/airframes':  self.send(HIST_AIRFRAMES.encode(), 'text/csv')
         elif p == '/api/logo':       self.send_error(404)   # no airline logos in the docs (trademarks)
+        elif p == '/api/traffic':    self.send(TRAFFIC)
         elif p == '/api/frame':      self.send(rle(self.frame) if 'z=1' in self.path else self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
         elif p.startswith('/packs/') and (ROOT / p.lstrip('/')).is_file():
@@ -228,6 +229,21 @@ HIST_EVENTS = """time,kind,flight,detail
 2026-10-22 21:03,go-around,VS4,27R
 2026-10-23 18:36,rare,EK4CK,A388
 """
+TRAFFIC = {
+    'aircraft': [
+        {'id': '406b62', 'f': 'BA311', 't': 'A320', 'lat': 51.4655, 'lon': -0.3200, 'h': 270, 'gs': 140, 'alt': 1300, 'c': '#5a8cff', 's': 1, 'fin': 85, 'rwy': '27L'},
+        {'id': '4ca9ba', 'f': 'EI158', 't': 'A20N', 'lat': 51.4650, 'lon': -0.1550, 'h': 270, 'gs': 160, 'alt': 2700, 'c': '#3cc878', 's': 1, 'fin': 200, 'rwy': '27L'},
+        {'id': '896183', 'f': 'EK1', 't': 'A388', 'lat': 51.4660, 'lon': 0.0300, 'h': 268, 'gs': 180, 'alt': 4400, 'c': '#e03030', 's': 2, 'fin': -1, 'rwy': ''},
+        {'id': '4007f2', 'f': 'BA117', 't': 'B77W', 'lat': 51.4780, 'lon': -0.6200, 'h': 275, 'gs': 210, 'alt': 3800, 'c': '#5a8cff', 's': 2, 'fin': -1, 'rwy': ''},
+        {'id': '3c66b1', 'f': 'LH915', 't': 'A20N', 'lat': 51.6900, 'lon': -0.5300, 'h': 120, 'gs': 220, 'alt': 8000, 'c': '#ffcc33', 's': 1, 'fin': -1, 'rwy': ''},
+        {'id': '4ca8f1', 'f': 'VS3', 't': 'A35K', 'lat': 51.6200, 'lon': 0.1000, 'h': 300, 'gs': 230, 'alt': 9000, 'c': '#d02040', 's': 2, 'fin': -1, 'rwy': ''},
+    ],
+    'airport': {'icao': 'EGLL', 'lat': 51.4700, 'lon': -0.4543,
+                'runways': [['27L', 51.4648, -0.4342, 269.7], ['27R', 51.4777, -0.4330, 269.7],
+                            ['09L', 51.4775, -0.4850, 89.7], ['09R', 51.4645, -0.4823, 89.7]],
+                'holds': [['BNN', 51.7261, -0.5498], ['LAM', 51.6461, 0.1517], ['BIG', 51.3311, 0.0328], ['OCK', 51.3050, -0.4475]]},
+}
+
 HIST_AIRFRAMES = "registration,type,airline,first_seen,last_seen,days\n" + "".join(
     f"G-X{i:03d},{t},{op},2026-10-25,2026-10-25,1\n" for i, (t, op) in enumerate(
         [("A320", "BAW")] * 40 + [("A20N", "BAW")] * 25 + [("A35K", "BAW")] * 12 + [("B789", "VIR")] * 9 +
@@ -301,7 +317,8 @@ def main():
     ap.add_argument('--shots', action='store_true', help='write screenshots to docs/ and exit')
     a = ap.parse_args()
     Handler.html = page_html().replace('https://api.github.com/repos/SamHoughton/Glideslope/releases/latest',
-                                       '/mock/release').encode('utf-8')
+                                       '/mock/release').replace(
+        'https://api.planespotters.net/pub/photos/reg/', '/mock/photo/').encode('utf-8')   # no real photos in the docs
     Handler.frame = sample_frame()
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     url = f'http://127.0.0.1:{PORT}/'
@@ -317,6 +334,7 @@ def main():
     shoot(url + '#history', str(ROOT / 'docs' / 'webui-history.png'), 1280, 1100, 1)
     shoot(url + '#health', str(ROOT / 'docs' / 'webui-health.png'), 1280, 900, 1)
     shoot(url + '#stickers', str(ROOT / 'docs' / 'webui-stickers.png'), 1280, 1300, 1)
+    shoot(url + '#map', str(ROOT / 'docs' / 'webui-map.png'), 1280, 900, 1)
     shoot(url + '#system', str(ROOT / 'docs' / 'webui-system.png'), 1280, 900, 1)
     today = ROOT / 'docs' / 'webui-today.png'
     shoot(url, str(today), 1280, 1240, 1)

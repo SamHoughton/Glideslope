@@ -57,6 +57,9 @@ h3:first-child{margin-top:0}
 .now .rt{font-size:15px;color:var(--text)}
 .now .meta{width:100%;font-size:13px;color:var(--muted)}
 .now .idle{color:var(--muted)}
+.pic{margin-top:12px;display:none}.pic.on{display:block}
+.pic img{display:block;width:100%;max-width:420px;aspect-ratio:3/2;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:#0b0f15}
+.pic span{display:block;font-size:11px;color:var(--faint);margin-top:4px}.pic a{color:inherit}
 
 /* Buttons */
 button{font:inherit;font-size:14px;cursor:pointer;border-radius:10px;padding:9px 14px;min-height:40px;
@@ -74,7 +77,7 @@ details[open]>summary{margin-bottom:10px}
 
 /* Tabs */
 .tabs{display:flex;gap:2px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px}
-.tabs button{background:none;border:none;min-height:34px;padding:6px 6px;color:var(--muted);font-weight:600;font-size:13px;border-radius:8px}
+.tabs button{background:none;border:none;min-height:34px;padding:6px 4px;color:var(--muted);font-weight:600;font-size:13px;border-radius:8px}
 .tabs button.on{background:#1e2733;color:var(--amber)}
 .tab{display:none}.tab.on{display:block}
 
@@ -87,6 +90,11 @@ details[open]>summary{margin-bottom:10px}
 .heat i{border-radius:3px;background:var(--line)}
 .heatkey{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--faint);margin:6px 0 4px}
 .heatkey i{display:block;width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,#3a2c12,#ffb93c)}
+#lmap{height:560px;max-height:72vh;border-radius:12px;border:1px solid var(--line);background:#0b0f15}
+#lmap .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.8) contrast(.85) saturate(.6)}
+.plane{background:none;border:none}.leaflet-tooltip.ptip{background:#0b0f15cc;color:#e6edf5;border:none;box-shadow:none;font-size:11px;padding:1px 5px}
+.leaflet-tooltip.ptip:before{display:none}.leaflet-tooltip.htip{background:none;border:none;box-shadow:none;color:#5aaaff;font-size:10px;font-weight:700}
+.leaflet-tooltip.htip:before{display:none}
 .stks{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;margin:8px 0 18px}
 .stk{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:10px 8px;text-align:center;
   filter:grayscale(1);opacity:.38;transition:opacity .2s}
@@ -121,7 +129,7 @@ a.btn{display:inline-block;text-decoration:none;color:var(--text);border:1px sol
 .spots .k{font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:6px;text-align:center}
 .spots .w{color:#96c8eb}
 .k.rare{background:#4a3a10;color:#ffc83c}.k.first{background:#123a4c;color:#5ac8ff}.k.watch{background:#4a4210;color:#ffd750}
-.k.overhead{background:#16402a;color:#78dc96}.k.goaround{background:#4c1e18;color:#ff6e5a}.k.emergency{background:#5a1210;color:#ff3c32}
+.k.overhead{background:#16402a;color:#78dc96}.k.crosswind{background:#13324a;color:#78c8ff}.k.goaround{background:#4c1e18;color:#ff6e5a}.k.emergency{background:#5a1210;color:#ff3c32}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:480px){.row{grid-template-columns:1fr}}
 label{display:block;font-size:13px;color:var(--text);margin-bottom:5px;font-weight:500}
@@ -174,6 +182,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
     <div class="bezel"><canvas id="dmp" width="768" height="384"></canvas></div>
     <div class="liverow"><button id="livebtn" class="pri">&#9654; Live</button><span id="livest">A still of the panel. Live shows it moving for two minutes.</span></div>
     <div class="now" id="now"><span class="idle">&nbsp;</span></div>
+    <div class="pic" id="nowpic"></div>
   </div>
   <div class="card" id="today">
     <h2>Today</h2>
@@ -213,6 +222,8 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
         <button data-demo="mood?kind=fog">Low visibility</button>
         <button data-demo="mood?kind=storm">Thunderstorm</button>
         <button data-demo="mood?kind=livery">Special livery</button>
+        <button data-demo="mood?kind=sticker">New sticker</button>
+        <button data-demo="mood?kind=crosswind">Crosswind landing</button>
         <button data-demo="sky?look=golden">Sky: golden hour</button>
         <button data-demo="sky?look=night">Sky: night</button>
         <button data-demo="sky?look=night+storm">Sky: storm</button>
@@ -238,6 +249,7 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <button data-tab="alerts">Alerts</button>
       <button data-tab="history">History</button>
       <button data-tab="stickers">Stickers</button>
+      <button data-tab="map">Map</button>
       <button data-tab="system">System</button>
       <button data-tab="health">Health</button>
       <button data-tab="log">Log</button>
@@ -390,6 +402,11 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.75)}
       <div class="stkh"><h3>Aircraft types</h3><span id="sttyn"></span></div><div class="stks" id="stty"></div>
     </section>
 
+    <section class="tab" id="t-map">
+      <div class="stkh"><p class="hint">Every aircraft in range, live, with its trail; the approaches and the holding stacks. Click one for more.</p><span id="mapn"></span></div>
+      <div id="lmap"></div>
+    </section>
+
     <section class="tab" id="t-system">
       <dl class="kv" id="sys"></dl>
       <h3>Updates</h3>
@@ -444,11 +461,12 @@ function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;r
 // Tabs (remembered for next time).
 function showTab(n){document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.tab===n);});
   document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('on',t.id==='t-'+n);});
-  $('savebar').style.display=(n==='system'||n==='log'||n==='history'||n==='health'||n==='stickers')?'none':'';
+  $('savebar').style.display=(n==='system'||n==='log'||n==='history'||n==='health'||n==='stickers'||n==='map')?'none':'';
   try{localStorage.setItem('gs-tab',n);}catch(e){}
   if(n==='history'&&window.loadHistory)loadHistory();
   if(n==='health'&&window.loadHealth)loadHealth();
   if(n==='stickers'&&window.loadStickers)loadStickers();
+  if(n==='map'&&window.openMap)openMap();
   if(n==='system'&&window.checkUpdates&&!window.relChecked)checkUpdates();}
 document.querySelectorAll('#tabs button').forEach(function(b){b.addEventListener('click',function(){showTab(b.dataset.tab);});});
 try{var lt=location.hash.slice(1)||localStorage.getItem('gs-tab');if(lt&&$('t-'+lt))showTab(lt);}catch(e){}
@@ -620,8 +638,21 @@ function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
   .finally(function(){setTimeout(pollStatus,10000);});}
 
 // What is on the card.
+// A photo of the aircraft itself (9.1), from Planespotters.net by its
+// registration, credited as they ask; the browser fetches it, not the board.
+var PSAPI='https://api.planespotters.net/pub/photos/reg/',PHOTOS={},picReg='';
+function showPhoto(reg){var el=$('nowpic');if(reg===picReg)return;picReg=reg;
+  function put(p){if(picReg!==reg)return;if(!p){el.className='pic';el.innerHTML='';return;}
+    el.innerHTML='<a href="'+esc(p.link)+'" target="_blank" rel="noopener"><img alt="'+esc(reg)+'" src="'+esc(p.src)+'"></a>'+
+      '<span>'+esc(reg)+' · photo '+esc(p.by)+' · <a href="'+esc(p.link)+'" target="_blank" rel="noopener">Planespotters.net</a></span>';el.className='pic on';}
+  if(!reg){put(null);return;}
+  if(reg in PHOTOS){put(PHOTOS[reg]);return;}
+  fetch(PSAPI+encodeURIComponent(reg)).then(function(r){return r.ok?r.json():{};}).then(function(j){
+    var x=(j.photos||[])[0];PHOTOS[reg]=x?{src:x.thumbnail_large.src,link:x.link,by:x.photographer}:null;put(PHOTOS[reg]);
+  }).catch(function(){PHOTOS[reg]=null;put(null);});}
 function pollNow(){if(document.hidden){setTimeout(pollNow,3000);return;}
   fetch('/api/display').then(function(r){return r.json();}).then(function(d){var n=$('now');
+    showPhoto(d.active&&d.registration&&d.registration!=='GSLP'&&d.registration!=='G-GSLP'?d.registration:'');
     if(!d.active){n.innerHTML='<span class="idle">Between planes: map, arrivals, stats and weather in turn</span>';return;}
     n.innerHTML='<span class="fl">'+esc(d.flight)+'</span><span class="rt">'+esc(d.origin||'?')+' &rarr; '+esc(d.dest||'?')+'</span>'+
       '<span class="meta">'+[d.airline_name,d.aircraft_name,d.registration,d.altitude_ft+' ft',d.speed_kt+' kt'].filter(Boolean).map(esc).join(' · ')+'</span>';
@@ -681,7 +712,7 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
 
 // Today (7.1): the runway rhythm and the spotter log.
 (function(){
-  var KIND={rare:'Rare',first:'New',watch:'Watch',overhead:'Over',goaround:'Go-around',emergency:'Squawk'};
+  var KIND={rare:'Rare',first:'New',watch:'Watch',overhead:'Over',goaround:'Go-around',emergency:'Squawk',crosswind:'Windy'};
   function ms(s){return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
   function hm(m){return ('0'+Math.floor(m/60)).slice(-2)+':'+('0'+m%60).slice(-2);}
   function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -811,14 +842,56 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
   if($('t-stickers').classList.contains('on'))loadStickers();
 })();
 
+// The live map (9.1): every aircraft in range on a real map, in the browser.
+// Leaflet and the map tiles load only when the tab is opened; the board just
+// sends where everyone is (/api/traffic) every five seconds.
+(function(){
+  var map=null,marks={},trails={},timer=null,started=false;
+  function dest(lat,lon,brg,km){var R=6371,d=km/R,b=brg*Math.PI/180,p1=lat*Math.PI/180,l1=lon*Math.PI/180;
+    var p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(b));
+    var l2=l1+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2));return [p2*180/Math.PI,l2*180/Math.PI];}
+  function icon(a){var sz=[14,18,24][a.s]||18,h=a.h<0?0:a.h;
+    return L.divIcon({className:'plane',iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],
+      html:'<svg viewBox="0 0 24 24" width="'+sz+'" height="'+sz+'" style="transform:rotate('+h+'deg)"><path fill="'+a.c+'" stroke="#000" stroke-width=".8" d="M12 1.5c.9 0 1.4 1 1.4 2.2v5.6l8.6 5v2.2l-8.6-2.6v4.6l2.4 1.8v1.8L12 21l-3.8 1.1v-1.8l2.4-1.8v-4.6L2 16.5v-2.2l8.6-5V3.7c0-1.2.5-2.2 1.4-2.2z"/></svg>'});}
+  function label(a){return esc(a.f||a.id)+(a.alt>=0?' · '+a.alt.toLocaleString()+' ft':'');}
+  function popup(a){return '<b>'+esc(a.f||a.id)+'</b> '+esc(a.t)+'<br>'+(a.alt>=0?a.alt.toLocaleString()+' ft':'')+(a.gs>=0?' · '+a.gs+' kt':'')+
+    (a.fin>=0?'<br>On final '+esc(a.rwy)+', '+(a.fin/10).toFixed(1)+' km out':'');}
+  function poll(){if(!map||document.hidden||!$('t-map').classList.contains('on')){timer=setTimeout(poll,5000);return;}
+    fetch('/api/traffic',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){var seen={};
+      (d.aircraft||[]).forEach(function(a){seen[a.id]=1;var ll=[a.lat,a.lon];
+        if(!marks[a.id]){marks[a.id]=L.marker(ll,{icon:icon(a)}).addTo(map).bindTooltip(label(a),{permanent:true,direction:'right',offset:[10,0],className:'ptip'}).bindPopup(popup(a));
+          trails[a.id]=L.polyline([ll],{color:a.c,weight:2,opacity:.55}).addTo(map);}
+        else{marks[a.id].setLatLng(ll).setIcon(icon(a)).setTooltipContent(label(a)).setPopupContent(popup(a));
+          var t=trails[a.id],p=t.getLatLngs();p.push(ll);if(p.length>40)p.shift();t.setLatLngs(p);}});
+      Object.keys(marks).forEach(function(id){if(!seen[id]){map.removeLayer(marks[id]);map.removeLayer(trails[id]);delete marks[id];delete trails[id];}});
+      $('mapn').textContent=(d.aircraft||[]).length+' in range';
+    }).catch(function(){}).finally(function(){timer=setTimeout(poll,5000);});}
+  function init(){fetch('/api/traffic?airport=1').then(function(r){return r.json();}).then(function(d){var ap=d.airport||{lat:51.47,lon:-0.454,runways:[],holds:[]};
+      map=L.map('lmap',{zoomControl:true,attributionControl:true}).setView([ap.lat,ap.lon],10);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:15,
+        attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+      // The approaches: 10 nm back from each landing threshold.
+      (ap.runways||[]).forEach(function(r){var far=dest(r[1],r[2],r[3]+180,18.5);
+        L.polyline([[r[1],r[2]],far],{color:'#ffb93c',weight:1,opacity:.5,dashArray:'4 6'}).addTo(map);
+        L.circleMarker([r[1],r[2]],{radius:2,color:'#ffb93c',weight:1}).addTo(map).bindTooltip(r[0]);});
+      (ap.holds||[]).forEach(function(h){L.circle([h[1],h[2]],{radius:4000,color:'#5aaaff',weight:1,opacity:.5,fill:false,dashArray:'3 5'}).addTo(map)
+        .bindTooltip(h[0],{permanent:true,direction:'center',className:'htip'});});
+      poll();});}
+  window.openMap=function(){if(started){if(map)setTimeout(function(){map.invalidateSize();},50);return;}started=true;
+    var css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);
+    var js=document.createElement('script');js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';js.onload=init;
+    js.onerror=function(){$('mapn').textContent='The map needs the internet (Leaflet, the map tiles)';started=false;};document.head.appendChild(js);};
+  if($('t-map').classList.contains('on'))openMap();
+})();
+
 // History (8.1): the logbook, read as CSV and drawn here (the board just streams its files).
 (function(){
   function csv(t){return t.trim().split('\n').slice(1).filter(function(l){return l;}).map(function(l){return l.split(',');});}
   function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   function nice(d){if(!d)return '';var p=d.split('-');var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1];return (+p[2])+' '+m+' '+p[0];}
   function ms(s){s=+s;return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
-  var KIND={'rare':'Rare','first visit':'New','watchlist':'Watch','go-around':'Go-around','emergency':'Squawk','overhead':'Over'};
-  var KCLS={'rare':'rare','first visit':'first','watchlist':'watch','go-around':'goaround','emergency':'emergency','overhead':'overhead'};
+  var KIND={'rare':'Rare','first visit':'New','watchlist':'Watch','go-around':'Go-around','emergency':'Squawk','overhead':'Over','crosswind':'Windy'};
+  var KCLS={'rare':'rare','first visit':'first','watchlist':'watch','go-around':'goaround','emergency':'emergency','overhead':'overhead','crosswind':'crosswind'};
   var loading=false;
   window.loadHistory=function(){
     if(loading)return;loading=true;
@@ -829,6 +902,7 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
       if(r.best_day)card(r.best_day.toLocaleString(),'busiest day, '+nice(r.best_day_date));
       if(r.best_go_arounds)card(r.best_go_arounds,'most go-arounds, '+nice(r.best_go_arounds_date));
       if(r.tightest)card(ms(r.tightest),'tightest gap, '+nice(r.tightest_date));
+      if(r.windiest)card(r.windiest+' kt','strongest crosswind on a landing');
       card(r.airlines||0,'airlines seen');card(r.types||0,'aircraft types');
       if(r.airframes)card(r.airframes.toLocaleString(),'aircraft seen');if(r.airports)card(r.airports,'airports arrivals came from');
       card(r.events||0,'moments');
