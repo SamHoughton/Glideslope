@@ -7,7 +7,7 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
-## 9.1.0 (in progress)
+## 9.1.0 (27 Oct 2026)
 
 **New**
 - **A live map**: a Map tab with every aircraft in range on a real map
@@ -35,9 +35,11 @@ phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
   go-around in a gale says how hard it was blowing.
 
 **Changes**
-- The web page loads in a couple of seconds: it is sent compressed (27 KB
-  rather than 91), and a browser that has this version's page already
-  just keeps it.
+- The web page loads in a fraction of a second (it took 10 to 20 seconds on
+  a phone, or timed out): the board no longer stops answering it for the
+  whole of every fetch, only for the second it takes to open a new secure
+  connection. And it is sent compressed (27 KB rather than 91); a browser
+  that has this version's page already just keeps it.
 
 ## 9.0.2 (26 Oct 2026)
 
