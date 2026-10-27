@@ -6,6 +6,7 @@ Responsibilities:
 Inputs: Airline ICAO code, aircraft ICAO type code, or airport ICAO code.
 Outputs: Display name / IATA code strings via out parameters.
 */
+#include "utils/HeapWatch.h"   // NetBusy (9.1: only round a secure connection)
 #include "adapters/FlightWallFetcher.h"
 #include "utils/TelnetLogger.h"
 
@@ -22,7 +23,8 @@ bool FlightWallFetcher::httpGetJson(const String &url, String &outPayload)
     http.setTimeout(8000);  // 8 s — prevents hangs on CDN timeouts
     http.addHeader("Accept", "application/json");
 
-    int code = http.GET();
+    int code;
+    { NetBusy busy; code = http.GET(); }
     if (code != 200)
     {
         http.end();

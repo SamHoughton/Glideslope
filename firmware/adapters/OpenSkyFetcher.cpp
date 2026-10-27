@@ -120,7 +120,8 @@ bool OpenSkyFetcher::requestAccessToken(String &outToken, unsigned long &outExpi
     Log.printf("OpenSkyFetcher: POST body length: %d\n", (int)body.length());
     http.setTimeout(TimingConfiguration::OPENSKY_TIMEOUT_MS);
 
-    int code = http.POST(body);
+    int code;
+    { NetBusy busy; code = http.POST(body); }
     String payload = http.getString();
     if (code != 200)
     {
@@ -195,7 +196,8 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
     const char* trackedHeaders[] = { "X-Rate-Limit-Remaining" };
     http.collectHeaders(trackedHeaders, 1);
 
-    int code = http.GET();
+    int code;
+    { NetBusy busy; code = http.GET(); }
     if (code != 200)
     {
         bool attemptedRefresh = false;
@@ -210,7 +212,7 @@ bool OpenSkyFetcher::fetchStateVectors(double centerLat,
                 retry.useHTTP10(true);
                 retry.addHeader("Authorization", String("Bearer ") + m_accessToken);
                 retry.collectHeaders(trackedHeaders, 1);
-                code = retry.GET();
+                { NetBusy busy; code = retry.GET(); }
                 if (code != 200)
                 {
                     Log.printf("OpenSkyFetcher: HTTP retry failed with code: %d\n", code);
@@ -358,7 +360,8 @@ bool OpenSkyFetcher::fetchFlightRoute(const String &icao24,
     const char* trackedHeaders[] = { "X-Rate-Limit-Remaining" };
     http.collectHeaders(trackedHeaders, 1);
 
-    int code = http.GET();
+    int code;
+    { NetBusy busy; code = http.GET(); }
     if (code != 200)
     {
         Log.printf("OpenSkyFetcher: flights endpoint HTTP %d for %s\n", code, hex.c_str());

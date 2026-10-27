@@ -137,10 +137,7 @@ static void sampleStack()
     const HoldFix &fix = g_airport.holds[g_nextStack];
     std::vector<StateVector> around;
     bool ok;
-    {
-        NetBusy busy;
-        ok = g_feeds.fetchArea(fix.lat, fix.lon, 9.0, around);
-    }
+    ok = g_feeds.fetchArea(fix.lat, fix.lon, 9.0, around);   // (pauses the web server itself if it must connect)
     if (ok) g_display.noteStack(g_nextStack, around);
     g_nextStack = (g_nextStack + 1) % g_airport.holdCount;
     heapCheckpoint("stack sample");
@@ -307,10 +304,7 @@ static void spotterCheck(const std::vector<StateVector> &states, const std::vect
     for (const FlightInfo &f : flights)
         if (f.ident == s.callsign) { route = f; haveRoute = true; break; }
     if (!haveRoute && s.callsign.length() >= 4 && ESP.getMaxAllocHeap() > 20000)
-    {
-        NetBusy busy;
-        haveRoute = g_adsbIm.fetchFlightInfo(s.callsign, s.icao24, route) && route.destination.code_icao.length();
-    }
+    haveRoute = g_adsbIm.fetchFlightInfo(s.callsign, s.icao24, route) && route.destination.code_icao.length();   // plain HTTP
 
     OverheadScene::Info info;
     if (ev.watch)
@@ -1024,7 +1018,9 @@ void loop()
         {
         size_t enriched;
         {
-            NetBusy busy;
+            // 9.1: no NetBusy round the whole fetch (it kept the web server
+            // waiting most of the time: a phone took 10-20 s to load the
+            // page); each secure connection holds it while it is set up.
             StageTrace::mark(StageTrace::Main, StageTrace::MainFetch);
             // Out of memory part-way (a heap that tight is rare, but a
             // phone on the live preview once tipped it): skip this round,
