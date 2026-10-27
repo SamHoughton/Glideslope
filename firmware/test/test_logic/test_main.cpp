@@ -562,6 +562,18 @@ void test_go_around_from_traffic()
     s.noteTraffic(v);
     TEST_ASSERT_EQUAL(1, s.goArounds());
     TEST_ASSERT_EQUAL(DailyStats::GoAround, s.spot(0).kind);
+    // Climbing out along the runway it looks on final, then climbing away,
+    // by turns: still one go-around (9.1.1; BA876 was counted nine times).
+    for (int i = 0; i < 8; ++i)
+    {
+        v[0] = onFinal("ga1", "27L", 0.5);
+        s.noteTraffic(v);
+        v[0].baro_altitude = (1000 + 100 * i) / 3.28084;
+        v[0].vertical_rate = 2000 / 196.85;
+        s.noteTraffic(v);
+    }
+    TEST_ASSERT_EQUAL(1, s.goArounds());
+    TEST_ASSERT_FALSE(s.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt));
 }
 
 void test_spotter_log()

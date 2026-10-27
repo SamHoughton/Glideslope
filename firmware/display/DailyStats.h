@@ -149,7 +149,7 @@ private:
     void noteArrival(const StateVector &s, const char *runway);
 
     // Go-around watch: who was on final lately, and how high they were.
-    struct FinalWatch { uint32_t id; uint32_t finalMs; int16_t altFt; char rwy[4]; };
+    struct FinalWatch { uint32_t id; uint32_t finalMs; int16_t altFt; char rwy[4]; bool done; };   // done: gone around (at finalMs)
     FinalWatch _watch[10] = {};
     char       _gaIdent[10] = "", _gaRwy[4] = "";
     int16_t    _gaAlt = 0;

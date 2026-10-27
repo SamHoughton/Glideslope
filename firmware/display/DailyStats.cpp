@@ -529,6 +529,14 @@ void DailyStats::watchGoArounds(const StateVector &s, const ApproachStatus &st, 
     const float alt = isnan(s.baro_altitude) ? NAN : (float)(s.baro_altitude * 3.28084);
     FinalWatch *slot = nullptr;
     for (FinalWatch &w : _watch) if (w.id == id) { slot = &w; break; }
+    // Gone around in the last ten minutes: not again (9.1.1). Climbing out
+    // along the runway it can look on final and climbing away by turns,
+    // which counted one go-around nine times.
+    if (slot && slot->done)
+    {
+        if (now - slot->finalMs < 600000) return;
+        slot->done = false;
+    }
     if (onFinal)
     {
         // On final: remember it (the slot it had, else the stalest).
@@ -537,6 +545,7 @@ void DailyStats::watchGoArounds(const StateVector &s, const ApproachStatus &st, 
             slot = &_watch[0];
             for (FinalWatch &w : _watch) if (now - w.finalMs > now - slot->finalMs) slot = &w;
             slot->id = id;
+            slot->done = false;
         }
         slot->finalMs = now;
         slot->altFt = isnan(alt) ? 0 : (int16_t)alt;
@@ -557,7 +566,8 @@ void DailyStats::watchGoArounds(const StateVector &s, const ApproachStatus &st, 
         _gaPending = true;
         ++_goArounds;
         noteSpot(GoAround, _gaIdent, _gaRwy);   // marks the stats dirty too
-        slot->id = 0;                           // once
+        slot->done = true;                      // once
+        slot->finalMs = now;
     }
 }
 
