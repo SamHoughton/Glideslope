@@ -7,6 +7,14 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.1.2 (27 Oct 2026)
+
+**Fixes**
+- The go-arounds 9.1.0 counted more than once are tidied up when the board
+  starts: the repeats come out of the logbook, today's count and the
+  spotter log (keeping the first of any by the same flight within ten
+  minutes).
+
 ## 9.1.1 (27 Oct 2026)
 
 **Fixes**

@@ -156,6 +156,7 @@ private:
     char     _newAir[4][4] = {};   // airlines new today, for the sticker check (9.1)
     uint8_t  _newAirN = 0;
     bool       _gaPending = false;
+    void       dropRepeatGoArounds();
     void       watchGoArounds(const StateVector &s, const struct ApproachStatus &st, bool onFinal, uint32_t now);
 
     // Spotter log: newest first (_spotHead is kept at 0; older files had a ring).

@@ -90,9 +90,70 @@ namespace
     const char *const kKinds[] = {"rare", "first visit", "watchlist", "overhead", "go-around", "emergency", "crosswind"};
 }
 
+namespace
+{
+    // Before 9.1.1 an aircraft climbing out after a go-around could be
+    // counted again and again (BA876 seventeen times). Each start, drop a
+    // go-around by the same flight within ten minutes of one kept; once
+    // there are none, the file is only read.
+    void dropRepeatGoArounds()
+    {
+        constexpr int kKind = 4;            // DailyStats::GoAround
+        constexpr int kRecent = 8;
+        File in = LittleFS.open(kEvents, "r");
+        if (!in) return;
+        Logbook::Event e, kept[kRecent] = {};
+        int nKept = 0, dropped = 0;
+        File out;
+        size_t at = 0;
+        while (in.read((uint8_t *)&e, sizeof(e)) == sizeof(e))
+        {
+            bool repeat = false;
+            if (e.kind == kKind)
+            {
+                for (int i = 0; i < nKept && !repeat; ++i)
+                    repeat = strncmp(kept[i].ident, e.ident, sizeof(e.ident)) == 0 && e.at - kept[i].at < 600;
+                if (!repeat) { memmove(&kept[1], &kept[0], sizeof(kept[0]) * (kRecent - 1)); kept[0] = e; nKept = min(nKept + 1, kRecent); }
+            }
+            if (repeat && !out)
+            {
+                // The first repeat: copy what came before it, then go on.
+                out = LittleFS.open("/log/events.tmp", "w");
+                if (!out) { in.close(); return; }
+                File again = LittleFS.open(kEvents, "r");
+                Logbook::Event x;
+                for (size_t i = 0; i < at && again.read((uint8_t *)&x, sizeof(x)) == sizeof(x); ++i)
+                    out.write((const uint8_t *)&x, sizeof(x));
+                again.close();
+            }
+            ++at;
+            if (repeat) ++dropped;
+            else if (out) out.write((const uint8_t *)&e, sizeof(e));
+        }
+        in.close();
+        if (!out) return;
+        out.close();
+        LittleFS.remove(kEvents);
+        LittleFS.rename("/log/events.tmp", kEvents);
+        Log.printf("Logbook: removed %d repeated go-arounds\n", dropped);
+    }
+}
+
+int Logbook::goAroundsSince(uint32_t t)
+{
+    File f = LittleFS.open(kEvents, "r");
+    if (!f) return 0;
+    Event e;
+    int n = 0;
+    while (f.read((uint8_t *)&e, sizeof(e)) == sizeof(e)) n += e.kind == 4 && e.at >= t;
+    f.close();
+    return n;
+}
+
 void Logbook::begin()
 {
     if (!LittleFS.exists(kDir)) LittleFS.mkdir(kDir);
+    dropRepeatGoArounds();
     File f = LittleFS.open(kRecords, "r");
     if (f && f.read((uint8_t *)&s_rec, sizeof(s_rec)) != sizeof(s_rec)) s_rec = Records();
     if (f) f.close();
