@@ -20,6 +20,8 @@ namespace StageTrace
                      MainStats = 6, MainTraffic = 7 };
 
     void mark(Task t, uint8_t stage, uint8_t detail = 0);
+    // What a task is doing now and how long since it last marked (9.1.4).
+    void describe(Task t, char *out, size_t len);
 
     // Call early in setup(), after the logger is ready.
     void reportAtBoot();

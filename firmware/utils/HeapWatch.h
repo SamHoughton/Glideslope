@@ -42,23 +42,31 @@ struct NetBusy
 // registers how to close it; any other TLS user that finds too little heap
 // closes it first and tries again. It reopens on the next position fetch.
 inline void (*g_tlsReleaser)() = nullptr;
+// Since when the feed has been put off for want of memory (0: it hasn't).
+// The main loop restarts the board when this lasts (9.1.4: the self-heal
+// looks at the outcome, not at heap figures that can miss it).
+inline unsigned long g_feedDeferredSinceMs = 0;
 
 inline bool tlsAffordable(const char *what)
 {
     // The two record buffers come from utils/TlsArena; the heap only needs
     // room for the handshake's own working memory.
-    // kMinBlock: the arena takes every request of 8 KB or more (kLarge), so
-    // no single heap allocation in a handshake is bigger than this (10000
-    // until 8.1 refused handshakes that would have fitted).
-    static constexpr uint32_t kMinFree = 30000, kMinBlock = 8192;   // 42 KB left 40 KB free short (5.1 soak)
+    // Measured on the board (9.1.4, TlsArena::largestSmall): the largest
+    // piece a handshake asks the heap for is 2.3 KB, and a handshake takes
+    // about 16.5 KB in all. 30 KB and 8 KB (until 9.1.3) were guesses the
+    // board, idling at 28-32 KB free, often failed: no feed for minutes,
+    // then a self-heal restart.
+    static constexpr uint32_t kMinFree = 22000, kMinBlock = 4096;
     auto room = [] { return TlsArena::slotsFree() && ESP.getFreeHeap() >= kMinFree && ESP.getMaxAllocHeap() >= kMinBlock; };
-    if (room()) return true;
+    const bool feed = strncmp(what, "adsb", 4) == 0;   // the position feed (adsb.fi, adsb.lol)
+    if (room()) { if (feed) g_feedDeferredSinceMs = 0; return true; }
     if (g_tlsReleaser)
     {
         Log.printf("Heap: closing the feed connection for %s\n", what);
         g_tlsReleaser();
-        if (room()) return true;
+        if (room()) { if (feed) g_feedDeferredSinceMs = 0; return true; }
     }
+    if (feed && !g_feedDeferredSinceMs) g_feedDeferredSinceMs = millis() | 1;
     static unsigned long lastLog = 0;
     if (millis() - lastLog > 60000)
     {

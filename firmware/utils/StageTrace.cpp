@@ -11,6 +11,7 @@ namespace
     RTC_NOINIT_ATTR uint32_t s_magic;
     RTC_NOINIT_ATTR uint8_t  s_stage[3];
     RTC_NOINIT_ATTR uint8_t  s_detail[3];
+    RTC_NOINIT_ATTR uint32_t s_markMs[3];   // when each task last marked (9.1.4: the black box)
 
     const char *displayStage(uint8_t s)
     {
@@ -57,6 +58,15 @@ void StageTrace::mark(Task t, uint8_t stage, uint8_t detail)
     s_magic     = kMagic;
     s_stage[t]  = stage;
     s_detail[t] = detail;
+    s_markMs[t] = millis();
+}
+
+void StageTrace::describe(Task t, char *out, size_t len)
+{
+    const uint8_t s = s_stage[t];
+    const char *what = t == Display ? displayStage(s) : t == Web ? webStage(s) : mainStage(s);
+    snprintf(out, len, "%s (detail %u), %lus ago", what, (unsigned)s_detail[t],
+             (unsigned long)((millis() - s_markMs[t]) / 1000));
 }
 
 static char s_lastReset[192] = "unknown";

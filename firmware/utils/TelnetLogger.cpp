@@ -160,3 +160,15 @@ size_t TelnetLogger::linesJson(uint32_t cursor, size_t maxLines, char *buf, size
     buf[n] = '\0';
     return n;
 }
+
+void TelnetLogger::writeLines(Print &out) const
+{
+    if (_mutex && xSemaphoreTake(_mutex, kLockTicks) != pdTRUE) return;
+    const uint32_t oldest = _seqNext > MAX_LINES ? _seqNext - MAX_LINES : 0;
+    for (uint32_t seq = oldest; seq < _seqNext; ++seq)
+    {
+        out.print(_ring[seq % MAX_LINES]);
+        out.print('\n');
+    }
+    if (_mutex) xSemaphoreGive(_mutex);
+}

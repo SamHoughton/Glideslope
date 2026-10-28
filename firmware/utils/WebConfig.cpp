@@ -93,7 +93,18 @@ void WebConfig::loop()
     // While the main loop is in a TLS handshake the heap briefly drops by
     // 60-70 KB; serving a request then (its buffers, the reply) could leave
     // the handshake short. New requests wait in the backlog until it passes.
-    if (g_netBusy || ESP.getFreeHeap() < kMinHeapToServe) { delay(20); return; }
+    if (g_netBusy || ESP.getFreeHeap() < kMinHeapToServe)
+    {
+        StageTrace::mark(StageTrace::Web, StageTrace::WebAccept, g_netBusy ? 1 : 2);   // standing aside, and why
+        // Short of heap: turn waiting browsers away rather than leave them
+        // queued. Each holds memory in the network stack until answered, so
+        // left waiting they kept the heap low and the page unanswered for
+        // minutes on end (9.1.4). The browser tries again.
+        if (!g_netBusy)
+            if (WiFiClient waiting = _server.accept()) waiting.stop();
+        delay(20);
+        return;
+    }
     WiFiClient client = _server.accept();
     if (!client) { StageTrace::mark(StageTrace::Web, StageTrace::WebIdle); return; }
     struct Busy { Busy() { g_webBusy = true; } ~Busy() { g_webBusy = false; } } busy;   // while this request is handled
@@ -106,7 +117,7 @@ void WebConfig::loop()
 
     // ── Read request headers (until CRLFCRLF) ─────────────────────────────
     String raw;
-    raw.reserve(512);
+    raw.reserve(1024);   // a phone's headers run past 512; past the reserve each byte was a realloc (9.1.4)
     bool headersRead = false;
     unsigned long t0 = millis();
     while (client.connected() && millis() - t0 < 2000 && !headersRead)
@@ -271,6 +282,7 @@ void WebConfig::loop()
     else if (r.path == "/api/demo/nightwatch" && r.method == "POST") { requestScreenPreview(9, 20000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/summary"  && r.method == "POST") { requestScreenPreview(7, 15000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
     else if (r.path == "/api/demo/year"     && r.method == "POST") { requestScreenPreview(10, 20000); sendHttp(client, 200, "application/json", "{\"ok\":true}"); }
+    else if (r.path == "/api/blackbox"           && r.method == "GET") Health::writeBlackBox(client);
     else if (r.path == "/api/history/days"       && r.method == "GET") Logbook::writeDaysCsv(client);
     else if (r.path == "/api/history/events"     && r.method == "GET") Logbook::writeEventsCsv(client);
     else if (r.path == "/api/history/collection" && r.method == "GET") Logbook::writeCollectionCsv(client);

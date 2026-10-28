@@ -34,6 +34,8 @@ public:
     // Returns the JSON length (0 if it could not be built).
     // Thread-safe: may be called from a different task than write().
     size_t linesJson(uint32_t cursor, size_t maxLines, char *buf, size_t len) const;
+    // Every line held, oldest first, one a line (9.1.4: the black box).
+    void writeLines(Print &out) const;
 
 private:
     char     _ring[MAX_LINES][LINE_LEN];
