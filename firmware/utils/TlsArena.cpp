@@ -19,7 +19,7 @@ constexpr int    kSlots = 2;
 alignas(16) uint8_t s_slots[kSlots][kSlot];
 bool                s_used[kSlots] = {};
 portMUX_TYPE        s_mux = portMUX_INITIALIZER_UNLOCKED;
-uint32_t            s_served = 0, s_overflowed = 0;
+uint32_t            s_served = 0, s_overflowed = 0, s_largestSmall = 0;   // largest request left to the heap (9.1.4)
 int                 s_logged = 0;
 
 void *arenaCalloc(size_t n, size_t size)
@@ -48,6 +48,7 @@ void *arenaCalloc(size_t n, size_t size)
         }
         ++s_overflowed;   // both taken, or larger than a slot: the heap, as before
     }
+    else if (bytes > s_largestSmall) s_largestSmall = bytes;
     return esp_mbedtls_mem_calloc(n, size);
 }
 
@@ -84,4 +85,5 @@ bool slotsFree()
 
 uint32_t served() { return s_served; }
 uint32_t overflowed() { return s_overflowed; }
+uint32_t largestSmall() { return s_largestSmall; }
 }

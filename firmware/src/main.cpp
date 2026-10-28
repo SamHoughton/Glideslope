@@ -1065,28 +1065,28 @@ void loop()
             {
                 Log.println("WiFi: still no data after reconnecting, restarting");
                 Health::noteRestart("self-heal: no data on Wi-Fi");
+                Health::saveBlackBox("self-heal: no data on Wi-Fi");
                 delay(200);
                 ESP.restart();
             }
         }
-        // Fragmented: no positions although plenty of memory is free (no
-        // feed session holds it), just not in blocks a TLS handshake can use
-        // (two 16 KB buffers). It doesn't mend itself: save the day's stats
-        // and restart, a few seconds instead of waiting for the watchdog.
+        // No memory for the feed: its connection put off for want of heap
+        // (too little free, or broken into pieces) for two minutes running.
+        // It doesn't mend itself: save the day's stats and restart, a few
+        // seconds instead of a board with no flights. (Until 9.1.3 this
+        // looked at heap figures instead: free over 22 KB and the largest
+        // block under 10 KB, which missed 20-30 KB free with 12 KB blocks,
+        // and the board went without flights until a restart by hand.)
         {
-            static unsigned long fragSinceMs = 0;
-            const bool fragmented = !g_fetcher->lastFetchOk() && TlsArena::slotsFree() &&
-                                    ESP.getFreeHeap() > 22000 && ESP.getMaxAllocHeap() < 10000;   // 34000 until 8.1: the
-                                    // board now idles near 30 KB free, so it never fired (stuck on scanning)
-            if (!fragmented)        fragSinceMs = 0;
-            else if (!fragSinceMs)  fragSinceMs = millis();
-            else if (millis() - fragSinceMs > 90000)
+            if (g_fetcher->lastFetchOk()) g_feedDeferredSinceMs = 0;
+            if (g_feedDeferredSinceMs && millis() - g_feedDeferredSinceMs > 120000)
             {
-                Log.printf("Heap: %u free but the largest block is %u: restarting to recover the feed\n",
+                Log.printf("Heap: no memory for the feed for 2 minutes (%u free, largest block %u): restarting\n",
                            (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
                 saveStats();
-                ImageCheck::keep("restart to recover from fragmentation");
-                Health::noteRestart("self-heal: memory fragmented");
+                ImageCheck::keep("restart to recover the feed's memory");
+                Health::noteRestart("self-heal: no memory");   // (the list keeps 27 characters)
+                Health::saveBlackBox("self-heal: no memory for the feed for 2 minutes");
                 delay(300);
                 ESP.restart();
             }

@@ -7,6 +7,27 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.1.4 (28 Oct 2026)
+
+**Fixes**
+- Far fewer restarts with the web page open. A new secure connection
+  asked for 30 KB free and an 8 KB block in one piece; measured on the
+  board it needs about 16.5 KB, and 2.3 KB at most in one piece. With a
+  phone on the page the board often had less than the old figures, put the
+  feed off, and restarted itself ("self-heal"): three times in half an
+  hour of heavy use, none now.
+- The self-heal looks at the feed itself: two minutes without it for want
+  of memory and the board restarts. Until now it went by heap figures that
+  could miss it, leaving the board with no flights until restarted by hand.
+- Short of memory for more than 5 seconds, the web server turns a waiting
+  browser away (it tries again) rather than leaving it queued, holding
+  memory, for minutes. Brief dips while the feed connects only make it wait.
+- A phone's request headers no longer grow their buffer a byte at a time.
+
+**New**
+- A black box: after a self-heal restart, the Health tab links to what led
+  up to it (the memory and the last log lines), kept in flash.
+
 ## 9.1.3 (28 Oct 2026)
 
 **Fixes**

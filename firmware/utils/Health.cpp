@@ -8,7 +8,10 @@
 #include <WiFi.h>
 #include <esp_system.h>
 #include <esp_attr.h>
+#include <esp_heap_caps.h>
+#include <WiFiClient.h>
 #include <time.h>
+#include "utils/TelnetLogger.h"
 
 namespace
 {
@@ -86,6 +89,45 @@ void Health::noteRestart(const char *why)
     memset(s_why, 0, sizeof(s_why));
     strlcpy(s_why, why, sizeof(s_why));
     s_whyMagic = whySum(s_why, sizeof(s_why));
+}
+
+void Health::saveBlackBox(const char *why)
+{
+    File f = LittleFS.open("/log/blackbox.txt", "w");
+    if (!f) return;
+    multi_heap_info_t hi;
+    heap_caps_get_info(&hi, MALLOC_CAP_8BIT);
+    char when[24] = "clock not set";
+    const time_t now = time(nullptr);
+    struct tm lt;
+    if (now > 1600000000) { localtime_r(&now, &lt); strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &lt); }
+    f.printf("%s  %s  (%s, up %lus)\n", when, why, GLIDESLOPE_VERSION, (unsigned long)(millis() / 1000));
+    f.printf("heap free %u, largest block %u, lowest %u, free blocks %u, allocated blocks %u; TLS slots free %d\n\n",
+             (unsigned)hi.total_free_bytes, (unsigned)hi.largest_free_block, (unsigned)hi.minimum_free_bytes,
+             (unsigned)hi.free_blocks, (unsigned)hi.allocated_blocks, (int)TlsArena::slotsFree());
+    char st[96];
+    StageTrace::describe(StageTrace::Web, st, sizeof(st));
+    f.printf("web task: %s\n", st);
+    StageTrace::describe(StageTrace::Main, st, sizeof(st));
+    f.printf("main loop: %s\n\n", st);
+    Log.writeLines(f);
+    f.close();
+}
+
+void Health::writeBlackBox(WiFiClient &c)
+{
+    File f = LittleFS.open("/log/blackbox.txt", "r");
+    if (!f)
+    {
+        c.print("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nNo self-heal restart yet.\n");
+        return;
+    }
+    c.printf("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: %u\r\nConnection: close\r\n\r\n",
+             (unsigned)f.size());
+    uint8_t buf[256];
+    size_t n;
+    while ((n = f.read(buf, sizeof(buf))) > 0) c.write(buf, n);
+    f.close();
 }
 
 void Health::noteFetch(bool ok)
@@ -204,7 +246,7 @@ void Health::json(String &out)
     snprintf(b, sizeof(b), ",\"storage\":{\"used\":%u,\"total\":%u,\"logbook\":%u}", (unsigned)LittleFS.usedBytes(),
              (unsigned)LittleFS.totalBytes(), (unsigned)Logbook::bytesUsed());
     out += b;
-    snprintf(b, sizeof(b), ",\"temp_c\":%.1f,\"tls\":{\"served\":%u,\"to_heap\":%u}}", temperatureRead(),
-             (unsigned)TlsArena::served(), (unsigned)TlsArena::overflowed());
+    snprintf(b, sizeof(b), ",\"temp_c\":%.1f,\"tls\":{\"served\":%u,\"to_heap\":%u,\"largest_small\":%u}}", temperatureRead(),
+             (unsigned)TlsArena::served(), (unsigned)TlsArena::overflowed(), (unsigned)TlsArena::largestSmall());
     out += b;
 }

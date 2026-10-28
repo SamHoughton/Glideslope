@@ -23,4 +23,7 @@ bool slotsFree();
 // Large allocations served from the slots, and refused for want of one.
 uint32_t served();
 uint32_t overflowed();
+// The largest mbedTLS request below a slot's size so far: what a handshake
+// needs from the heap in one piece (9.1.4).
+uint32_t largestSmall();
 }
