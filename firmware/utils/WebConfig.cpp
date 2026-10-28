@@ -93,14 +93,19 @@ void WebConfig::loop()
     // While the main loop is in a TLS handshake the heap briefly drops by
     // 60-70 KB; serving a request then (its buffers, the reply) could leave
     // the handshake short. New requests wait in the backlog until it passes.
-    if (g_netBusy || ESP.getFreeHeap() < kMinHeapToServe)
+    static unsigned long lowSinceMs = 0;   // since when the heap has been too low to serve (0: it isn't)
+    const bool low = ESP.getFreeHeap() < kMinHeapToServe;
+    if (!low) lowSinceMs = 0;
+    else if (!lowSinceMs) lowSinceMs = millis() | 1;
+    if (g_netBusy || low)
     {
         StageTrace::mark(StageTrace::Web, StageTrace::WebAccept, g_netBusy ? 1 : 2);   // standing aside, and why
-        // Short of heap: turn waiting browsers away rather than leave them
-        // queued. Each holds memory in the network stack until answered, so
-        // left waiting they kept the heap low and the page unanswered for
-        // minutes on end (9.1.4). The browser tries again.
-        if (!g_netBusy)
+        // Short of heap for 5 s: turn waiting browsers away rather than leave
+        // them queued. Each holds memory in the network stack until answered,
+        // so left waiting they kept the heap low and the page unanswered for
+        // minutes on end (9.1.4). Not on the brief dips of a handshake: that
+        // turned away one status check in six. The browser tries again.
+        if (!g_netBusy && lowSinceMs && millis() - lowSinceMs > 5000)
             if (WiFiClient waiting = _server.accept()) waiting.stop();
         delay(20);
         return;
