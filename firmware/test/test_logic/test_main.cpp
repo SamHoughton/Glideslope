@@ -576,6 +576,23 @@ void test_go_around_from_traffic()
     TEST_ASSERT_FALSE(s.takeGoAround(id, sizeof(id), rwy, sizeof(rwy), alt));
 }
 
+void test_busy_day_counted_in_full()
+{
+    // Heathrow does about 1,300 movements a day; 9.1.2 and before stopped
+    // counting at 1,152 (9.1.3). Each arrival is still counted once.
+    static DailyStats s;
+    std::vector<StateVector> v(1);
+    char hex[8];
+    for (int i = 0; i < 1400; ++i)
+    {
+        snprintf(hex, sizeof(hex), "%06x", 0x400000 + i * 7);
+        v[0] = onFinal(hex, i % 2 ? "27L" : "27R", 3);
+        s.noteTraffic(v);
+        s.noteTraffic(v);                         // seen again: not a second arrival
+    }
+    TEST_ASSERT_INT_WITHIN(2, 1400, s.arrivals());   // a fingerprint can, rarely, match another
+}
+
 void test_repeat_go_arounds_removed()
 {
     // Logged by 9.1.0: BA876 again and again in a minute, then a real second
@@ -908,6 +925,7 @@ int main(int, char **)
     RUN_TEST(test_spotter_log);
     RUN_TEST(test_go_around_from_traffic);
     RUN_TEST(test_repeat_go_arounds_removed);
+    RUN_TEST(test_busy_day_counted_in_full);
     RUN_TEST(test_logbook);
     RUN_TEST(test_airport_time_zones);
     RUN_TEST(test_http_request);
