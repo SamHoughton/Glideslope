@@ -7,6 +7,14 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.1.3 (28 Oct 2026)
+
+**Fixes**
+- Busy days are counted in full: the board stopped counting at 1,152
+  movements a day (the table that makes sure each is counted once was
+  full), and Heathrow does about 1,300. It now has room for 2,304 in the
+  same memory. Days already logged at 1,152 were really busier.
+
 ## 9.1.2 (27 Oct 2026)
 
 **Fixes**

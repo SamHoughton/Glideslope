@@ -120,8 +120,12 @@ private:
     time_t   _lastMove = 0;
     bool     _dirty = false;
 
-    static constexpr size_t kSeenSlots = 1536;   // 6 KB; up to 1,152 movements a day
-    uint32_t _seen[kSeenSlots] = {};
+    // Each movement once: a 16-bit fingerprint a slot (9.1.3; whole 32-bit
+    // hashes before, half as many, which stopped counting at 1,152 a day
+    // when Heathrow does 1,300). 6 KB; up to 2,304 movements a day.
+    static constexpr size_t kSeenSlots = 3072;
+    uint16_t _seen[kSeenSlots] = {};
+    static uint16_t seenPrint(uint32_t h) { const uint16_t p = (uint16_t)(h >> 16); return p ? p : 1; }
     uint16_t _seenCount = 0;
     bool     markSeen(uint32_t h);    // false if already counted
     bool     wasSeen(uint32_t h) const;

@@ -9,7 +9,8 @@
 namespace
 {
     constexpr const char *kPath = "/stats.bin";
-    constexpr uint32_t    kMagic = 0x31535347;   // "GSS1"
+    constexpr uint32_t    kMagic = 0x32535347;   // "GSS2" (9.1.3: the seen table as fingerprints)
+    constexpr uint32_t    kMagicV1 = 0x31535347; // "GSS1": whole hashes, 1,536 of them
     constexpr uint32_t    kExtraMagic = 0x37535347;   // "GSS7": the 7.1 additions follow
 
     bool localNow(struct tm &lt)
@@ -219,9 +220,10 @@ void DailyStats::noteSpot(SpotKind kind, const char *ident, const char *what)
 
 bool DailyStats::wasSeen(uint32_t h) const
 {
+    const uint16_t p = seenPrint(h);
     for (size_t i = h % kSeenSlots;; i = (i + 1) % kSeenSlots)
     {
-        if (_seen[i] == h) return true;
+        if (_seen[i] == p) return true;
         if (_seen[i] == 0) return false;
     }
 }
@@ -229,10 +231,11 @@ bool DailyStats::wasSeen(uint32_t h) const
 bool DailyStats::markSeen(uint32_t h)
 {
     if (_seenCount >= kSeenSlots * 3 / 4) return false;   // full for today: stop counting
+    const uint16_t p = seenPrint(h);
     for (size_t i = h % kSeenSlots;; i = (i + 1) % kSeenSlots)
     {
-        if (_seen[i] == h) return false;
-        if (_seen[i] == 0) { _seen[i] = h; ++_seenCount; return true; }
+        if (_seen[i] == p) return false;
+        if (_seen[i] == 0) { _seen[i] = p; ++_seenCount; return true; }
     }
 }
 
@@ -446,12 +449,26 @@ void DailyStats::load()
     if (!f) return;
     uint32_t magic = 0;
     int16_t year = 0, day = 0;
-    bool ok = get(f, magic) && magic == kMagic && get(f, year) && get(f, day) &&
+    bool ok = get(f, magic) && (magic == kMagic || magic == kMagicV1) && get(f, year) && get(f, day) &&
               get(f, _arrivals) && get(f, _departures) && get(f, _goArounds);
     for (uint16_t &n : _arrHour) ok = ok && get(f, n);
     for (uint16_t &n : _depHour) ok = ok && get(f, n);
-    ok = ok && get(f, _seenCount) && get(f, _seq) &&
-         f.read((uint8_t *)_seen, sizeof(_seen)) == sizeof(_seen);
+    ok = ok && get(f, _seenCount) && get(f, _seq);
+    if (ok && magic == kMagicV1)
+    {
+        // Saved by 9.1.2 or before: whole hashes (the same 6 KB), each
+        // put into the new table, so today's movements still count once.
+        memset(_seen, 0, sizeof(_seen));
+        _seenCount = 0;
+        for (size_t i = 0; ok && i < kSeenSlots / 2; ++i)
+        {
+            uint32_t h = 0;
+            ok = get(f, h);
+            if (ok && h) markSeen(h);
+        }
+    }
+    else
+        ok = ok && f.read((uint8_t *)_seen, sizeof(_seen)) == sizeof(_seen);
     uint8_t n = 0;
     ok = ok && get(f, n);
     for (int i = 0; ok && i < n; ++i)
