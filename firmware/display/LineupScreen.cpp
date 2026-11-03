@@ -2,6 +2,7 @@
 #include "display/AircraftSprites.h"
 #include "display/Font3x5.h"
 #include "display/Fonts.h"
+#include "display/Theme.h"
 #include <math.h>
 #include <algorithm>
 
@@ -12,7 +13,7 @@ namespace
     constexpr float kFtPerKm = 172.0f;            // a 3-degree glide path
     constexpr float kTopFt = kMaxKm * kFtPerKm;   // the height at the right edge
 
-    const Rgb kInk{235, 238, 245}, kSoft{150, 160, 180}, kFaint{80, 88, 106};
+    const Rgb kInk = Theme::Ink, kSoft = Theme::Soft, kFaint = Theme::Faint;
 
     int xFor(float km) { return kThrX + (int)lroundf(km / kMaxKm * (126 - kThrX)); }
     int yFor(float ft)
@@ -21,19 +22,6 @@ namespace
         return kGroundY - 1 - (int)lroundf((k < 0 ? 0 : k) * (kGroundY - 1 - kTopY));
     }
 
-    // The title band the 7.0 screens share.
-    void titleBand(FrameCanvas &c, const char *title, const char *extra, Rgb tick)
-    {
-        for (int y = 0; y < 10; ++y)
-        {
-            const float k = y / 10.0f;
-            const Rgb col{(uint8_t)(20 + (6 - 20) * k), (uint8_t)(26 + (8 - 26) * k), (uint8_t)(42 + (14 - 42) * k)};
-            for (int x = 0; x < FrameCanvas::W; ++x) c.set(x, y, col);
-        }
-        c.fillRect(0, 1, 2, 8, tick);
-        c.print(Fonts::Label, 5, 1, title, kInk);
-        if (extra && extra[0]) c.print(Fonts::Label, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, extra), 1, extra, kSoft);
-    }
 }
 
 int LineupScreen::collect(const TrafficTracker &traffic, unsigned long now, Plane *out)
@@ -91,7 +79,7 @@ void LineupScreen::render(FrameCanvas &c, Plane *planes, int n, uint32_t shownMs
     const char *rwy = n && planes[0].rwy[0] ? planes[0].rwy : "";
     snprintf(title, sizeof(title), rwy[0] ? "On final %s" : "On final", rwy);
     snprintf(right, sizeof(right), n == 1 ? "1 coming" : "%d coming", n);
-    titleBand(c, title, right, Rgb{255, 176, 50});
+    Theme::titleBand(c, title, right);
 
     // The glide path, dotted, with a mark every 5 km below it.
     for (float km = 0; km <= kMaxKm; km += 0.25f)

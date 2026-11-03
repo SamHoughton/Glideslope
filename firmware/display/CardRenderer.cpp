@@ -1,4 +1,5 @@
 #include "display/CardRenderer.h"
+#include "display/Theme.h"
 #include "display/AircraftSprites.h"
 #include "display/Fonts.h"
 #include "config/Airport.h"
@@ -11,15 +12,15 @@ namespace
     constexpr uint16_t kTransparent565 = 0xF81F;   // magenta in the logo files
 
     const Rgb kWhite     {240, 240, 240};
-    const Rgb kInk       {235, 238, 245};
-    const Rgb kSoft      {150, 160, 180};
-    const Rgb kFaint     { 80,  88, 106};
+    const Rgb kInk       = Theme::Ink;
+    const Rgb kSoft      = Theme::Soft;
+    const Rgb kFaint     = Theme::Faint;
     const Rgb kBand      { 14,  18,  28};
-    const Rgb kTypeBlue  {150, 200, 255};
-    const Rgb kAltGreen  {110, 220, 140};
-    const Rgb kAmber     {255, 185,  60};
+    const Rgb kTypeBlue  = Theme::Sky;
+    const Rgb kAltGreen  = Theme::Green;
+    const Rgb kAmber     = Theme::Amber;
     const Rgb kCyan      { 90, 200, 210};
-    const Rgb kLate      {255,  95,  80};
+    const Rgb kLate      = Theme::Red;
     const Rgb kGrey      {150, 155, 165};
     const Rgb kDimGrey   { 70,  75,  85};
     const Rgb kBarGrey   {200, 200, 205};

@@ -10,12 +10,13 @@
 #include "config/RuntimeConfig.h"
 #include "display/AircraftSprites.h"
 #include "display/LandingScene.h"
+#include "display/Theme.h"
 
 namespace
 {
-    const Rgb kTitle {235, 240, 245};
+    const Rgb kTitle = Theme::Ink;
     const Rgb kLabel { 90, 150, 170};
-    const Rgb kValue {255, 185,  60};
+    const Rgb kValue = Theme::Amber;
     const Rgb kDim   { 60,  66,  80};
     const Rgb kGold  {255, 200,  60};
 
@@ -55,9 +56,8 @@ void InfoScreens::runwaySummary(const char *runway, char *out, size_t len, bool 
 
 namespace
 {
-    const Rgb kArr {255, 176,  50};   // amber: arrivals
-    const Rgb kDep { 60, 200, 225};   // cyan: departures
-    const Rgb kSub {120, 170, 210};   // title-bar extras
+    const Rgb kArr = Theme::Amber;     // amber: arrivals
+    const Rgb kDep = Theme::Cyan;      // cyan: departures
 
     float easeOut(float u) { u = u < 0 ? 0 : (u > 1 ? 1 : u); return 1 - (1 - u) * (1 - u) * (1 - u); }
     Rgb mixRgb(Rgb a, Rgb b, float k)
@@ -66,19 +66,10 @@ namespace
         return { (uint8_t)(a.r + (b.r - a.r) * k), (uint8_t)(a.g + (b.g - a.g) * k), (uint8_t)(a.b + (b.b - a.b) * k) };
     }
 
-    // Title band shared by the 7.0 screens: a dark band fading down, an
-    // accent tick, the title on the left and a dim extra (clock, count) on
-    // the right.
-    void titleBand(FrameCanvas &c, const char *title, const char *extra, Rgb tick = Rgb{255, 176, 50})
+    // Title band shared by the list screens (display/Theme.h).
+    void titleBand(FrameCanvas &c, const char *title, const char *extra, Rgb tick = Theme::Amber)
     {
-        for (int y = 0; y < 10; ++y)
-        {
-            const Rgb col = mixRgb(Rgb{20, 26, 42}, Rgb{6, 8, 14}, y / 10.0f);
-            for (int x = 0; x < FrameCanvas::W; ++x) c.set(x, y, col);
-        }
-        c.fillRect(0, 1, 2, 8, tick);
-        c.print(Fonts::Label, 5, 1, title, kTitle);
-        if (extra && extra[0]) c.print(Fonts::Label, FrameCanvas::W - 2 - FrameCanvas::width(Fonts::Label, extra), 1, extra, Rgb{150, 160, 180});
+        Theme::titleBand(c, title, extra, tick);
     }
 
     // Filled rectangle with the corners left out; edge (if any) along the top.
@@ -155,7 +146,7 @@ void InfoScreens::renderStats(FrameCanvas &c, const DailyStats &stats, uint32_t 
         c.print(Fonts::Huge, x, 13, v, col);
         snprintf(v, sizeof(v), "%d", total);   // its final width, so nothing moves as it counts
         const int lx = x + FrameCanvas::width(Fonts::Huge, v) + 3;
-        c.print(Fonts::Label, lx, 14, arr ? "in" : "out", Rgb{150, 160, 180});
+        c.print(Fonts::Label, lx, 14, arr ? "in" : "out", Theme::Soft);
         const int lastH = nowH > 0 ? (arr ? stats.arrivalsInHour(nowH - 1) : stats.departuresInHour(nowH - 1)) : 0;
         if (lastH > 0)
         {
@@ -596,7 +587,7 @@ void InfoScreens::renderSpots(FrameCanvas &c, const DailyStats &stats, uint32_t 
     c.clear();
     char extra[16];
     snprintf(extra, sizeof(extra), "%d today", stats.spotsToday());
-    titleBand(c, "Spotted today", extra, Rgb{255, 200, 60});
+    titleBand(c, "Spotted today", extra);
     const int n = stats.spotCount();
     if (!n)
     {
@@ -718,8 +709,8 @@ void InfoScreens::renderYear(FrameCanvas &c, const Logbook::Year &y, int page, u
         Fonts::titleCase(name);
         snprintf(title, sizeof(title), "%u at %s", (unsigned)y.year, name);
     }
-    centred(c, 2, title, kGold);
-    for (int x = 20; x < FrameCanvas::W - 20; ++x) c.set(x, 12, Rgb{60, 50, 20});
+    titleBand(c, title, "");
+    Theme::pageDots(c, page < 0 ? 0 : (page > 4 ? 4 : page), 5);
     // Numbers count up as the page opens.
     const float k = fminf(1.0f, shownMs / 900.0f);
     switch (page)
@@ -733,24 +724,24 @@ void InfoScreens::renderYear(FrameCanvas &c, const Logbook::Year &y, int page, u
                 char line[40];
                 snprintf(line, sizeof(line), "%s in, %s out", a, b);
                 centred(c, 46, "movements", kDim);
-                centred(c, 55, line, Rgb{150, 160, 180});
+                centred(c, 55, line, Theme::Soft);
             }
             break;
         case 1:
             dayMonth(y.bestDayDate, a, sizeof(a));
             snprintf(b, sizeof(b), "Busiest day, %s", a);
-            centred(c, 15, b, Rgb{150, 160, 180});
+            centred(c, 14, b, Theme::Soft);
             withCommas(y.bestDay, big, sizeof(big));
             {
                 char line[24];
                 snprintf(line, sizeof(line), "%s moves", big);
-                centredL(c, 23, line, kTitle, Fonts::Medium);
+                centredL(c, 25, line, kTitle, Fonts::Medium);
             }
             if (y.tightest)
             {
                 dayMonth(y.tightDate, a, sizeof(a));
                 snprintf(b, sizeof(b), "Tightest %d:%02d, %s", y.tightest / 60, y.tightest % 60, a);
-                centred(c, 42, b, Rgb{150, 160, 180});
+                centred(c, 43, b, Theme::Soft);
             }
             snprintf(b, sizeof(b), "Busiest hour %02u:00", y.busiestHour);
             centred(c, 53, b, kDim);
@@ -758,14 +749,14 @@ void InfoScreens::renderYear(FrameCanvas &c, const Logbook::Year &y, int page, u
         case 2:
             snprintf(big, sizeof(big), "%u", (unsigned)lroundf(y.goArounds * k));
             c.print(Fonts::Huge, 10, 18, big, Rgb{255, 120, 90});
-            c.print(Fonts::Label, 10, 50, "go-arounds", Rgb{150, 160, 180});
+            c.print(Fonts::Label, 10, 50, "go-arounds", Theme::Soft);
             snprintf(big, sizeof(big), "%u", (unsigned)lroundf(y.rares * k));
             c.print(Fonts::Huge, 72, 18, big, kGold);
-            c.print(Fonts::Label, 72, 50, "rare spots", Rgb{150, 160, 180});
+            c.print(Fonts::Label, 72, 50, "rare spots", Theme::Soft);
             break;
         case 3:
         {
-            centred(c, 15, "New this year", Rgb{150, 160, 180});
+            centred(c, 15, "New this year", Theme::Soft);
             const struct { uint16_t n; const char *what; } rows[] = {
                 {y.newAirlines, "airlines"}, {y.newTypes, "aircraft types"}, {y.newAirports, "airports"}, {y.newAirframes, "aircraft"}};
             for (int i = 0; i < 4; ++i)
@@ -773,12 +764,12 @@ void InfoScreens::renderYear(FrameCanvas &c, const Logbook::Year &y, int page, u
                 withCommas((uint32_t)lroundf(rows[i].n * k), big, sizeof(big));
                 const int yy = 25 + i * 9;
                 c.print(Fonts::Label, 44 - FrameCanvas::width(Fonts::Label, big), yy, big, kTitle);
-                c.print(Fonts::Label, 50, yy, rows[i].what, Rgb{150, 160, 180});
+                c.print(Fonts::Label, 50, yy, rows[i].what, Theme::Soft);
             }
             break;
         }
         default:
-            centred(c, 16, "Seen most", Rgb{150, 160, 180});
+            centred(c, 16, "Seen most", Theme::Soft);
             if (y.topReg[0])
             {
                 centredL(c, 25, y.topReg, kTitle, Fonts::Large);
@@ -951,9 +942,8 @@ namespace
     }
 
     // The board's header: the title in yellow, the runway and the time right.
-    void boardHeader(FrameCanvas &c, const char *title, const char *runway)
+    void boardHeader(FrameCanvas &c, const char *title, const char *runway, Rgb tick)
     {
-        c.print(Fonts::Label, 1, 1, title, kFlapYellow);
         char right[24] = "";
         const time_t now = time(nullptr);
         if (now > 1600000000)
@@ -963,7 +953,7 @@ namespace
             snprintf(right, sizeof(right), "%s%s%02d:%02d", runway ? runway : "", runway && runway[0] ? "  " : "", lt.tm_hour, lt.tm_min);
         }
         else if (runway) snprintf(right, sizeof(right), "%s", runway);
-        c.print(Fonts::Label, 127 - FrameCanvas::width(Fonts::Label, right), 1, right, Rgb{150, 160, 180});
+        Theme::titleBand(c, title, right, tick);
     }
 
     // The middle column: the city when the setting is on and it fits on
@@ -987,7 +977,7 @@ void InfoScreens::renderArrivals(FrameCanvas &c, const Arrival *rows, int n, con
                                  const char *weather, unsigned long nowMs, uint32_t shownMs)
 {
     c.clear();
-    boardHeader(c, "Arrivals", runway);
+    boardHeader(c, "Arrivals", runway, kArr);
     if (n == 0)
     {
         const char *none = "Nothing inbound";
@@ -1096,7 +1086,7 @@ namespace
 void InfoScreens::renderDepartures(FrameCanvas &c, const Departure *rows, int n, const char *runways, uint32_t shownMs)
 {
     c.clear();
-    boardHeader(c, "Departed", runways);
+    boardHeader(c, "Departed", runways, kDep);
     if (n == 0)
     {
         const char *none = "None recently";
@@ -1201,7 +1191,7 @@ void InfoScreens::renderWeather(FrameCanvas &c, const Metar &m, const char *runw
     c.clear();
     if (!m.valid)
     {
-        centred(c, 2, "Weather", kTitle);
+        titleBand(c, "Weather", "");
         centred(c, 30, "No report yet", kDim);
         return;
     }
@@ -1599,7 +1589,7 @@ void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const cha
 
     // Title, pulsing once the new runway is in.
     const float k = flipped ? 0.6f + 0.4f * sinf(tMs / 160.0f) : 1.0f;
-    centred(c, 2, "Runway change", FrameCanvas::scale(kValue, k));
+    titleBand(c, "Runway change", "", FrameCanvas::scale(kValue, k));
 
     // The tiles: three characters, flipping one after another.
     const int tilesX = 6, tilesY = 16;
@@ -1649,7 +1639,7 @@ void InfoScreens::renderRunwayChange(FrameCanvas &c, const char *from, const cha
         float sockFrom = isnan(cOld) ? cNew : cOld, sockTo = cNew;
         float diff = fmodf(sockTo - sockFrom + 540, 360) - 180;
         const float sock = (sockFrom + diff * e) * (float)M_PI / 180;
-        const int sx = 116, sy = 10;
+        const int sx = 118, sy = 18;
         c.set(sx, sy, Rgb{200, 205, 215});
         for (int i = 1; i <= 6; ++i)
         {
@@ -1675,10 +1665,9 @@ void InfoScreens::renderHolding(FrameCanvas &c, const HoldTracker::Row *rows, in
     c.clear();
     int total = 0;
     for (int i = 0; i < n; ++i) total += rows[i].count;
-    char title[20];
-    snprintf(title, sizeof(title), "%d holding", total);
-    centred(c, 1, title, kTitle);
-    for (int x = 4; x < FrameCanvas::W - 4; ++x) c.set(x, 10, kDim);
+    char extra[20];
+    snprintf(extra, sizeof(extra), total == 1 ? "1 aircraft" : "%d aircraft", total);
+    titleBand(c, "Holding", extra);
 
     const int pitch = n > 4 ? 10 : 12;
     const int y0 = n > 4 ? 13 : 14;

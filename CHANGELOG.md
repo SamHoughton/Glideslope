@@ -7,6 +7,26 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.2.0 (3 Nov 2026)
+
+**Redesign**
+- The web page, redrawn as one system: a single set of colours and type,
+  cards with the same amber tick as the panel's title band, settings as
+  rows with the switch on the right, and the Today figures as a grid.
+- The tabs no longer wrap onto a second line. On a wide screen they are a
+  sidebar in three named groups (Settings, Logbook, Board); on a phone, one
+  strip that scrolls sideways and keeps the open tab in view.
+- The save bar sits at the foot of the settings card and says when there
+  are unsaved changes. Badges (Go-around) stay on one line.
+- The Wi-Fi setup pages match the rest of Glideslope (they were GitHub
+  green).
+- On the panel, every list screen opens with the same title band: the
+  arrivals and departures boards, holding stacks, runway change and the
+  year pages (with dots for which page is up). The colours the screens
+  share live in one place (display/Theme.h).
+- `tools/webui_preview.py` shows a rendered panel screen when there is no
+  recording, and finds Playwright's Chromium.
+
 ## 9.1.4 (28 Oct 2026)
 
 **Fixes**
