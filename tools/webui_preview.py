@@ -9,7 +9,8 @@ screenshots and for working on the page without a board.
 The page is firmware/web/index.html with the brand mark filled in, exactly as
 the board serves it. The API answers with
 sample settings (Heathrow, no keys), a sample flight and log, and a panel
-frame from the last tools/record_demo.py recording (else a blank panel).
+frame from the last tools/record_demo.py recording (else the host-rendered
+approach card from firmware/test/golden).
 Screenshots use Chrome or Edge in headless mode.
 """
 import argparse
@@ -122,6 +123,13 @@ def sample_frame():
         px = min(samples, key=lambda s: abs(s[0] - 6000))[1]
         import struct
         return struct.pack('<8192H', *px)
+    # No recording: the approach card as the host render draws it.
+    golden = ROOT / 'firmware' / 'test' / 'golden' / 'card_approach.png'
+    if golden.exists():
+        import struct
+        from PIL import Image
+        im = Image.open(golden).convert('RGB')
+        return struct.pack('<8192H', *[((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3) for r, g, b in zip(*[iter(im.tobytes())] * 3)])
     return bytes(16384)
 
 # A phone-width view: the page in a 390 px frame (headless Chrome won't make a
@@ -298,7 +306,7 @@ type,B744,2026-07-03,2026-10-11,6,6
 def browser():
     for c in (r'C:\Program Files\Google\Chrome\Application\chrome.exe',
               r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
-              'google-chrome', 'chromium', 'chrome'):
+              'google-chrome', 'chromium', 'chrome', '/opt/pw-browsers/chromium'):
         if Path(c).exists() or shutil.which(c):
             return c
     raise SystemExit('Chrome or Edge not found')
@@ -339,7 +347,7 @@ def main():
     today = ROOT / 'docs' / 'webui-today.png'
     shoot(url, str(today), 1280, 1240, 1)
     from PIL import Image
-    Image.open(today).crop((16, 576, 624, 1032)).save(today)
+    Image.open(today).crop((16, 548, 552, 1110)).save(today)
     phone = ROOT / 'docs' / 'webui-phone.png'
     shoot(url + 'phone', str(phone), 600, 1100, 2)
     from PIL import Image
