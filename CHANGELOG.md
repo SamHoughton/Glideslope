@@ -7,6 +7,15 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## Unreleased
+
+**Fixes**
+- The Alerts tab warns when the ntfy topic is one anyone could guess
+  (short, no digits, or the example that used to be shown in the box): a
+  public topic belongs to no one, so others using the same name saw your
+  alerts and theirs reached your phone. The box no longer shows an example
+  topic to copy; Random topic makes one nobody else will land on.
+
 ## 9.2.0 (3 Nov 2026)
 
 **Redesign**
