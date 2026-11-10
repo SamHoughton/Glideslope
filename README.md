@@ -486,8 +486,12 @@ tools in `tools/` read the code from `GLIDESLOPE_TOKEN`).
 If the board ever restarts unexpectedly, the **Health** tab lists its starts
 and why, `http://glideslope.local/api/status` says what each task was doing, and `/api/coredump` gives the
 crash's backtrace, to decode with `xtensa-esp32s3-elf-addr2line -pfiaC -e
-firmware.elf <addresses>` against that release's build; please include both
-in a bug report.
+firmware.elf <addresses>` against that release's build (each release from
+9.2.1 carries its `firmware.elf.gz`); please include both in a bug report.
+After two crashes in a row soon after starting, the board starts in **safe
+mode**: for 30 minutes it writes nothing to its flash in the background (the
+collection, the logbook, the route book), so a fault there can't keep it
+restarting, and the Health tab says so.
 
 Releases are built by GitHub Actions: pushing a tag such as `v1.0.0` builds
 the firmware and attaches `firmware.bin` and the full image to a release.
