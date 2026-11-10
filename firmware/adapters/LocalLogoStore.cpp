@@ -11,6 +11,7 @@ Responsibilities:
 #include "models/FlightInfo.h"
 #include <LittleFS.h>
 #include "utils/TelnetLogger.h"
+#include "utils/Storage.h"
 #include <algorithm>
 
 bool LocalLogoStore::initialize()
@@ -36,9 +37,12 @@ bool LocalLogoStore::initialize()
 bool LocalLogoStore::hasAirlineLogo(const String &airlineIcao)
 {
     if (!_mounted || airlineIcao.length() == 0) return false;
-    String icao = airlineIcao;
-    icao.toUpperCase();
-    return LittleFS.exists(String("/logos/") + icao + ".bin");
+    // Asked for every flight in every fetch: by stat(), not LittleFS.exists(),
+    // which takes a 4 KB buffer from the heap each time (9.2.1).
+    char path[20];
+    snprintf(path, sizeof(path), "/logos/%s.bin", airlineIcao.c_str());
+    for (char *p = path + 7; *p && *p != '.'; ++p) *p = (char)toupper((unsigned char)*p);
+    return Storage::exists(path);
 }
 
 bool LocalLogoStore::accentOf(const char *icao3, Rgb &out)
@@ -198,9 +202,14 @@ void saveMissingIfChanged()
     s_missingDirty = false;
     portEXIT_CRITICAL(&s_mux);
     // Drop the ones that have a logo now, so they don't hold places.
+    char path[20];
     for (Missing &m : copy)
-        if (m.code[0] && LittleFS.exists(String("/logos/") + m.code + ".bin")) m = Missing{};
-    if (!LittleFS.exists("/logos")) LittleFS.mkdir("/logos");
+    {
+        snprintf(path, sizeof(path), "/logos/%.4s.bin", m.code);
+        if (m.code[0] && Storage::exists(path)) m = Missing{};
+    }
+    if (!Storage::mayWrite(sizeof(copy), "the list of logos missing")) { s_missingDirty = true; return; }
+    if (!Storage::exists("/logos")) LittleFS.mkdir("/logos");
     File f = LittleFS.open("/logos/missing.bin", "w");
     if (!f) return;
     f.write((const uint8_t *)copy, sizeof(copy));
@@ -218,7 +227,9 @@ String missingJson()
     for (const Missing &m : copy)
     {
         if (!m.seen || !m.code[0]) continue;
-        if (LittleFS.exists(String("/logos/") + m.code + ".bin")) continue;   // added since
+        char path[20];
+        snprintf(path, sizeof(path), "/logos/%.4s.bin", m.code);
+        if (Storage::exists(path)) continue;   // added since
         if (out.length() > 1) out += ",";
         out += String("{\"code\":\"") + m.code + "\",\"seen\":" + String(m.seen) + "}";
     }
@@ -229,7 +240,7 @@ bool save(const String &code, const uint8_t *data, size_t len)
 {
     if (!validCode(code) || len != kBytes) return false;
     const String path = String("/logos/") + code + ".bin", tmp = "/logos/upload.tmp";
-    if (!LittleFS.exists("/logos")) LittleFS.mkdir("/logos");
+    if (!Storage::exists("/logos")) LittleFS.mkdir("/logos");
     File f = LittleFS.open(tmp, "w");
     if (!f) return false;
     const bool ok = f.write(data, len) == len;

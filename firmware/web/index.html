@@ -509,10 +509,11 @@ h3+.sw,p+.sw,.tab>.sw:first-child{border-top:none;padding-top:4px}
 
     <section class="tab" id="t-health">
       <p class="hint">How the board is keeping: its memory over the last day (the largest free block is what the feed's secure connection needs), how the feed and the weather are doing, and why it last restarted.</p>
+      <p class="weak" id="hlwarn" role="alert" hidden></p>
       <div class="recs" id="hlcards"></div>
       <h3>Memory, last 24 hours</h3>
       <svg class="chart" id="hlchart" viewBox="0 0 400 130" preserveAspectRatio="none"></svg>
-      <div class="chartkey"><span><i style="background:var(--amber)"></i>free</span><span><i style="background:var(--blue)"></i>largest block</span><span><i style="background:var(--red)"></i>8 KB: a secure connection needs this</span></div>
+      <div class="chartkey"><span><i style="background:var(--amber)"></i>free</span><span><i style="background:var(--blue)"></i>largest block</span><span><i style="background:var(--red)"></i>4 KB: a secure connection needs this</span></div>
       <h3>Starts</h3>
       <ul class="boots" id="hlboots"></ul>
       <p class="hint">After a self-heal restart: <a href="/api/blackbox" target="_blank">the black box</a> (the memory and the log just before it).</p>
@@ -662,14 +663,20 @@ window.loadHealth=function(){fetch('/api/health').then(function(r){return r.json
   var tiles=[[fmtUp(h.uptime_s),'up since: '+h.boot],[Math.round(h.heap.free/1024)+' KB','free now; largest block '+Math.round(h.heap.block/1024)+' KB'],
     [Math.round(h.heap.min_free/1024)+' KB','free at the lowest since the start'],[ago(h.feed.last_ok_s),'since the last positions'+(f?' ('+Math.round(h.feed.ok*100/f)+'% of fetches answered)':'')],
     [ago(h.weather.last_ok_s),'since the last weather report'],[h.wifi.rssi+' dBm','Wi-Fi signal, '+q],
-    [Math.round(h.storage.used/1024)+' KB','of '+Math.round(h.storage.total/1024)+' KB stored (logbook '+Math.round(h.storage.logbook/1024)+' KB)'],
+    [Math.round((h.storage.free!=null?h.storage.free:h.storage.total-h.storage.used)/1024)+' KB','storage free of '+Math.round(h.storage.total/1024)+' KB (logbook '+Math.round(h.storage.logbook/1024)+' KB)'],
     [Math.round(h.temp_c)+'\u00b0C','the chip\u2019s temperature'],[h.boot_count,'starts logged']];
   $('hlcards').innerHTML=tiles.map(function(t){return '<div><b>'+esc(t[0])+'</b><span>'+esc(t[1])+'</span></div>';}).join('');
+  // 9.2.1: safe mode, and storage running out (the board stops writing with 96 KB left).
+  var warn=[];
+  if(h.safe_mode)warn.push('<b>Safe mode.</b> The board crashed twice soon after starting, so it is not writing its collection, logbook or route book for 30 minutes. If this keeps happening, install the newest release from the System tab.');
+  if(h.storage.low)warn.push('<b>Storage nearly full.</b> '+Math.round(h.storage.free/1024)+' KB left; the board keeps '+Math.round(h.storage.spare/1024)+' KB spare and stops saving its collection and logbook before it reaches that. Airline logos take the most room (4 KB each on the board).');
+  if(h.storage.refused&&!h.storage.low&&!h.safe_mode)warn.push(h.storage.refused+' writes were skipped for want of room since the start.');
+  $('hlwarn').innerHTML=warn.join('<br>');$('hlwarn').hidden=!warn.length;
   // The chart: free (amber) and the largest block (blue), KB, oldest on the left.
   var fr=h.heap.free_kb,bk=h.heap.block_kb,n=fr.length,top=Math.max(48,Math.max.apply(null,fr)+4),W=400,H=130;
   function px(i){return n<2?W:i*W/(n-1);}function py(v){return H-6-(v/top)*(H-12);}
   function line(v,c){return '<polyline fill="none" stroke="'+c+'" stroke-width="2" vector-effect="non-scaling-stroke" points="'+v.map(function(x,i){return px(i).toFixed(1)+','+py(x).toFixed(1);}).join(' ')+'"/>';}
-  $('hlchart').innerHTML='<line x1="0" x2="'+W+'" y1="'+py(8)+'" y2="'+py(8)+'" stroke="#ff5f50" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke"/>'+line(fr,'#ffb93c')+line(bk,'#78b4ff');
+  $('hlchart').innerHTML='<line x1="0" x2="'+W+'" y1="'+py(4)+'" y2="'+py(4)+'" stroke="#ff5f50" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke"/>'+line(fr,'#ffb93c')+line(bk,'#78b4ff');
   $('hlboots').innerHTML=h.boots.map(function(b){var d=new Date(b.at*1000);
     return '<li><span class="t">'+d.toLocaleDateString(undefined,{day:'numeric',month:'short'})+' '+d.toTimeString().slice(0,5)+'</span><span>'+esc(b.why)+'</span></li>';}).join('')||'<li>None logged yet (the board logs a start once it knows the time).</li>';
 }).catch(function(){}).finally(function(){clearTimeout(HT);HT=setTimeout(function(){if($('t-health').classList.contains('on')&&!document.hidden)loadHealth();},30000);});};

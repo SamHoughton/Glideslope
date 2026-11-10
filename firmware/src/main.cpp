@@ -56,6 +56,7 @@ Configuration: UserConfiguration (location/filters/colors), TimingConfiguration 
 #include "config/Countries.h"
 #include "config/AirlineNames.h"
 #include "utils/TlsArena.h"
+#include "utils/Storage.h"
 #include "utils/SeenLog.h"
 #include "display/OverheadScene.h"
 #include "display/FlyAcross.h"
@@ -467,6 +468,7 @@ static void refreshYear()
 static void saveStats()
 {
     StageTrace::mark(StageTrace::Main, StageTrace::MainStats);
+    if (Storage::paused()) return;   // safe mode: the tally stays in memory
     const size_t need = g_display.statsSize();
     if (!need) return;
     if (ESP.getMaxAllocHeap() < need + 4096)
@@ -773,6 +775,18 @@ void setup()
     g_display.setLogoStore(&g_logoStore);
     RareSpotter::begin();   // type log for "first sighting" (on the same LittleFS)
     Logbook::begin();       // the days, events and collection kept for good (8.1)
+    if (Health::safeMode())
+    {
+        g_display.displayMessage("Safe mode");
+        delay(1500);
+    }
+    // 9.2.1: the airframe collection from one 192 KB file into block-sized
+    // ones (a few seconds, once). Not in safe mode: it waits for the loop.
+    if (Airframes::needsMove() && !Storage::paused())
+    {
+        g_display.displayMessage("Tidying storage");
+        Airframes::migrate();
+    }
     LogoBook::loadMissing(); // airlines seen without a logo, kept across restarts (8.1)
     // 9.0: the route book of 8.3-8.4 could have learned routes adsb.im
     // marked implausible; it was two days old, so start it again once.
@@ -1283,8 +1297,17 @@ void loop()
     // The logbook (8.1): sightings worth keeping as they happen, the day
     // after midnight; written here, outside the display lock.
     {
-        static unsigned long lastLogbookMs = 0;
-        if (millis() - lastLogbookMs > 15000)
+        static unsigned long lastLogbookMs = 0, lastMoveMs = 0;
+        // The airframe collection's move (9.2.1), if it couldn't finish at
+        // the start (no room then, or safe mode): tried again every 10 minutes.
+        if (!Airframes::ready() && !Storage::paused() && millis() - lastMoveMs > 600000UL)
+        {
+            lastMoveMs = millis();
+            Airframes::migrate();
+        }
+        // Safe mode: the finished day and the sightings wait in the tally
+        // rather than being taken and then not written.
+        if (millis() - lastLogbookMs > 15000 && !Storage::paused())
         {
             lastLogbookMs = millis();
             LogoBook::saveMissingIfChanged();

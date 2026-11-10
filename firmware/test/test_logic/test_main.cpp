@@ -27,6 +27,7 @@ unsigned long g_fakeMillis = 1000;
 #include <algorithm>
 #include "utils/Weather.h"
 #include "utils/Airframes.h"
+#include "utils/Storage.h"
 #include "adapters/ReadsbParser.h"
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -207,6 +208,176 @@ void test_airframes()
     TEST_ASSERT_EQUAL(1, found);
     // A seven-letter registration fills the field with no terminator.
     TEST_ASSERT_EQUAL(Airframes::New, Airframes::visit(m, 0x780A3B, 2492, "B-18901", "A359", "CAL"));
+}
+
+// The storage floor (9.2.1): a write that would leave less than 96 KB free is
+// refused, and the logbook skips it rather than writing.
+void test_storage_floor()
+{
+    LittleFS.wipe();
+    Storage::recount();
+    const uint32_t total = Storage::totalBlocks();
+    TEST_ASSERT_EQUAL(384, total);
+    TEST_ASSERT_TRUE(Storage::allowed(Storage::kFloorBlocks + 2, 4096));
+    TEST_ASSERT_FALSE(Storage::allowed(Storage::kFloorBlocks + 1, 4096));
+    TEST_ASSERT_TRUE(Storage::mayWrite(24, "a test"));
+
+    // Nearly full: only the floor and a block left.
+    LittleFS.extraUsed = (total - Storage::kFloorBlocks - 1) * Storage::kBlock;
+    Storage::recount();
+    TEST_ASSERT_TRUE(Storage::low());
+    const uint32_t refusedBefore = Storage::refused();
+    TEST_ASSERT_FALSE(Storage::mayWrite(24, "a test"));
+    TEST_ASSERT_EQUAL(refusedBefore + 1, Storage::refused());
+    Logbook::Event e{};
+    e.at = 1792800000;
+    e.kind = 4;
+    strlcpy(e.ident, "BAW1", sizeof(e.ident));
+    Logbook::addEvent(e);
+    TEST_ASSERT_FALSE(LittleFS.exists("/log/events.bin"));
+
+    // Safe mode pauses background writes, not the ones the web page asks for.
+    LittleFS.extraUsed = 0;
+    Storage::recount();
+    Storage::pause(true);
+    TEST_ASSERT_FALSE(Storage::mayWrite(24, "a test"));
+    TEST_ASSERT_TRUE(Storage::mayWrite(2048, "a logo", Storage::Asked));
+    Storage::pause(false);
+    TEST_ASSERT_TRUE(Storage::mayWrite(24, "a test"));
+}
+
+// The table in block-sized files (9.2.1): slot i sits in file i / 170, and a
+// file appears only when one of its slots is written.
+void test_airframes_files()
+{
+    TEST_ASSERT_EQUAL(170, Airframes::kSlotsPerFile);
+    TEST_ASSERT_EQUAL(49, Airframes::kFiles);
+    TEST_ASSERT_EQUAL(32, Airframes::slotsIn(48));
+    TEST_ASSERT_EQUAL(1, Airframes::fileOf(170));
+    TEST_ASSERT_EQUAL(0, Airframes::offsetOf(170));
+    TEST_ASSERT_EQUAL(8191 - 48 * 170, Airframes::offsetOf(8191) / sizeof(Airframes::Slot));
+    char path[16];
+    Airframes::pathOf(7, path, sizeof(path));
+    TEST_ASSERT_EQUAL_STRING("/af/07.bin", path);
+
+    LittleFS.wipe();
+    Storage::recount();
+    TEST_ASSERT_TRUE(Airframes::migrate());   // nothing to move
+    TEST_ASSERT_TRUE(Airframes::ready());
+    TEST_ASSERT_EQUAL(0, Airframes::count());
+    Airframes::Store &st = Airframes::fileStore();
+    TEST_ASSERT_EQUAL(Airframes::New, Airframes::visit(st, 0x406B62, 2490, "G-XWBA", "A35K", "BAW"));
+    TEST_ASSERT_EQUAL(Airframes::AgainToday, Airframes::visit(st, 0x406B62, 2490, "G-XWBA", "A35K", "BAW"));
+    TEST_ASSERT_EQUAL(Airframes::Known, Airframes::visit(st, 0x406B62, 2491, "G-XWBA", "A35K", "BAW"));
+    TEST_ASSERT_EQUAL(1, Airframes::count());
+    int files = 0;
+    for (uint32_t f = 0; f < Airframes::kFiles; ++f)
+    {
+        Airframes::pathOf(f, path, sizeof(path));
+        if (!LittleFS.exists(path)) continue;
+        ++files;
+        TEST_ASSERT_EQUAL(Airframes::slotsIn(f) * sizeof(Airframes::Slot), LittleFS.open(path).size());
+    }
+    TEST_ASSERT_EQUAL(1, files);
+
+    // No room: nothing written, and the visit says so.
+    LittleFS.extraUsed = (Storage::totalBlocks() - Storage::kFloorBlocks) * Storage::kBlock;
+    Storage::recount();
+    TEST_ASSERT_EQUAL(Airframes::Failed, Airframes::visit(st, 0x780A3B, 2491, "B-18901", "A359", "CAL"));
+    LittleFS.extraUsed = 0;
+    Storage::recount();
+    TEST_ASSERT_EQUAL(1, Airframes::count());
+}
+
+// Moving 9.1's single file into the block-sized ones: every slot keeps its
+// place, the move survives being stopped part-way, and with no room it waits
+// (the old file is still read in the meantime).
+void test_airframes_move()
+{
+    auto oldFile = []() {
+        std::vector<uint8_t> bytes(Airframes::kSlots * sizeof(Airframes::Slot), 0);
+        auto put = [&](uint32_t i, uint32_t key, const char *reg) {
+            Airframes::Slot s;
+            s.key = key;
+            s.firstDay = 2400;
+            s.lastDay = 2490;
+            s.days = 9;
+            memcpy(s.reg, reg, strlen(reg) < 7 ? strlen(reg) : 7);
+            memcpy(&bytes[i * sizeof(s)], &s, sizeof(s));
+        };
+        put(5, 0x111, "G-AAAA");
+        put(169, 0x222, "G-BBBB");   // the last slot of the first file
+        put(170, 0x333, "G-CCCC");   // the first of the second
+        put(8191, 0x444, "G-DDDD");  // the very last
+        memFiles().files[Airframes::kOldPath] = bytes;
+    };
+    auto slotsFound = []() {
+        Airframes::Scan scan;
+        Airframes::Slot buf[16];
+        std::vector<uint32_t> at;
+        uint32_t i = 0;
+        for (size_t got; (got = scan.next(buf, 16)) > 0; i += got)
+            for (size_t k = 0; k < got; ++k)
+                if (buf[k].key) at.push_back((i + k) * 0x10000 + buf[k].key);
+        return at;
+    };
+    const std::vector<uint32_t> want = {5 * 0x10000 + 0x111, 169 * 0x10000 + 0x222, 170 * 0x10000 + 0x333,
+                                        8191 * 0x10000 + 0x444};
+
+    LittleFS.wipe();
+    Storage::recount();
+    oldFile();
+    TEST_ASSERT_TRUE(Airframes::needsMove());
+    TEST_ASSERT_TRUE(slotsFound() == want);   // read from the old file before the move
+    TEST_ASSERT_TRUE(Airframes::migrate());
+    TEST_ASSERT_FALSE(LittleFS.exists(Airframes::kOldPath));
+    TEST_ASSERT_TRUE(Airframes::ready());
+    TEST_ASSERT_TRUE(slotsFound() == want);
+    TEST_ASSERT_EQUAL(4, Airframes::count());
+    char path[16];
+    for (uint32_t f = 0; f < Airframes::kFiles; ++f)
+    {
+        Airframes::pathOf(f, path, sizeof(path));
+        TEST_ASSERT_EQUAL(Airframes::slotsIn(f) * sizeof(Airframes::Slot), LittleFS.open(path).size());
+    }
+
+    // Stopped part-way: the last ten files made and cut off the old one.
+    LittleFS.wipe();
+    oldFile();
+    const uint32_t cut = 39 * Airframes::kSlotsPerFile * sizeof(Airframes::Slot);
+    {
+        const std::vector<uint8_t> &old = memFiles().files[Airframes::kOldPath];
+        for (uint32_t f = 39; f < Airframes::kFiles; ++f)
+        {
+            Airframes::pathOf(f, path, sizeof(path));
+            const uint32_t from = f * Airframes::kSlotsPerFile * sizeof(Airframes::Slot);
+            memFiles().files[path] = std::vector<uint8_t>(old.begin() + from,
+                                                          old.begin() + from + Airframes::slotsIn(f) * sizeof(Airframes::Slot));
+        }
+    }
+    LittleFS.truncate(Airframes::kOldPath, cut);
+    Storage::recount();
+    TEST_ASSERT_TRUE(slotsFound() == want);   // half in each, read as one
+    TEST_ASSERT_TRUE(Airframes::migrate());
+    TEST_ASSERT_TRUE(slotsFound() == want);
+
+    // No room for even one file: it waits, the collection with it.
+    LittleFS.wipe();
+    oldFile();
+    LittleFS.extraUsed = (Storage::totalBlocks() - Storage::kFloorBlocks - 50) * Storage::kBlock;
+    Storage::recount();
+    TEST_ASSERT_FALSE(Airframes::migrate());
+    TEST_ASSERT_FALSE(Airframes::ready());
+    TEST_ASSERT_TRUE(LittleFS.exists(Airframes::kOldPath));
+    TEST_ASSERT_TRUE(slotsFound() == want);
+    TEST_ASSERT_EQUAL(Airframes::Failed, Airframes::visit(Airframes::fileStore(), 0x555, 2491, "G-EEEE", "A320", "BAW"));
+    LittleFS.extraUsed = 0;
+    Storage::recount();
+    TEST_ASSERT_TRUE(Airframes::migrate());
+    TEST_ASSERT_TRUE(slotsFound() == want);
+    LittleFS.wipe();
+    Storage::recount();
+    Airframes::migrate();
 }
 
 void test_taf_and_runway_outlook()
@@ -933,5 +1104,8 @@ int main(int, char **)
     RUN_TEST(test_taf_and_runway_outlook);
     RUN_TEST(test_qnh_heights);
     RUN_TEST(test_airframes);
+    RUN_TEST(test_storage_floor);
+    RUN_TEST(test_airframes_files);
+    RUN_TEST(test_airframes_move);
     return UNITY_END();
 }

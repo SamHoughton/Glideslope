@@ -72,8 +72,13 @@ RELEASE = {
 
 def health():
     import math
+    import os
     free = [max(14, round(27 + 4 * math.sin(i / 7) - (6 if 40 < i < 46 else 0))) for i in range(96)]
     block = [max(8, round(16 + 4 * math.sin(i / 5 + 1) - (5 if 40 < i < 46 else 0))) for i in range(96)]
+    # GLIDESLOPE_PREVIEW_WARN=1: a board in safe mode and short of storage (9.2.1).
+    warn = os.environ.get('GLIDESLOPE_PREVIEW_WARN') == '1'
+    storage = {'used': 1474560 if warn else 401408, 'total': 1572864, 'logbook': 234616,
+               'free': 98304 if warn else 1171456, 'spare': 98304, 'low': warn, 'refused': 37 if warn else 0}
     return {
         'version': 'v8.1.0', 'built': 'Oct 24 2026 10:00:00', 'uptime_s': 266400, 'boot': 'update to v8.1.0 (GitHub)',
         'last_reset': 'restart', 'boot_count': 41,
@@ -83,7 +88,8 @@ def health():
                   {'at': 1792444800, 'why': 'power on'}],
         'heap': {'free': 26400, 'block': 15860, 'min_free': 6060, 'every_min': 15, 'free_kb': free, 'block_kb': block},
         'feed': {'ok': 9874, 'failed': 112, 'last_ok_s': 4}, 'weather': {'ok': 444, 'failed': 3, 'last_ok_s': 312},
-        'wifi': {'rssi': -61, 'channel': 6}, 'storage': {'used': 401408, 'total': 1441792, 'logbook': 19456},
+        'wifi': {'rssi': -61, 'channel': 6}, 'storage': storage,
+        'safe_mode': warn, 'early_crashes': 2 if warn else 0,
         'temp_c': 47.5, 'tls': {'served': 1210, 'to_heap': 0},
     }
 DISPLAY = {
