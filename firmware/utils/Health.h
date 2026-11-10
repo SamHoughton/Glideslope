@@ -34,6 +34,16 @@ namespace Health
     // Each position fetch and weather report, ok or not.
     void noteFetch(bool ok);
     void noteWeather(bool ok);
+
+    // Safe mode (9.2.1): after two crashes running, each within five minutes
+    // of a start, the board starts with its background writes to flash
+    // paused (utils/Storage: the airframe collection, the logbook, the route
+    // book, the day's tally), so a fault there can't keep restarting it.
+    // The panel, the feed and the web page carry on, updates included.
+    // Thirty minutes without a crash and it carries on as normal.
+    bool safeMode();
+    // Crashes in a row so far, each soon after a start (0 once five minutes up).
+    uint8_t earlyCrashes();
     // The JSON for /api/health.
     void json(String &out);
 }

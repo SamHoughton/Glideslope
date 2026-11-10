@@ -79,6 +79,7 @@ uint16_t dayNumber(time_t t)
 
 #ifndef NATIVE_TEST
 #include <LittleFS.h>
+#include "utils/Storage.h"
 
 namespace SeenLog
 {
@@ -94,9 +95,10 @@ struct FileStore : Store
     bool open()
     {
         if (ready && f) return true;
-        if (!LittleFS.exists(kPath))
+        if (!Storage::exists(kPath))
         {
             // 16 KB of empty slots, written a block at a time.
+            if (!Storage::mayWrite(kSlots * sizeof(Slot), "the seen log")) return false;
             File n = LittleFS.open(kPath, "w");
             if (!n) return false;
             uint8_t zero[256] = {};
@@ -114,6 +116,8 @@ struct FileStore : Store
     }
     bool write(uint32_t i, const Slot &s) override
     {
+        // LittleFS copies the rest of the file after the slot to new blocks.
+        if (!Storage::mayWrite((kSlots - i) * sizeof(Slot), "the seen log")) return false;
         if (!open() || !f.seek(i * sizeof(Slot)) || f.write((const uint8_t *)&s, sizeof(Slot)) != sizeof(Slot))
             return false;
         return true;
@@ -127,10 +131,10 @@ struct FileStore : Store
 };
 }
 
-Store &fileStore()
+namespace
 {
-    static FileStore s;
-    return s;
+FileStore s_store;   // at file scope: no guard variable (8 bytes of RAM)
 }
+Store &fileStore() { return s_store; }
 }
 #endif

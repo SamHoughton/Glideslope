@@ -1,5 +1,6 @@
 #include "utils/RouteBook.h"
 #include "utils/TelnetLogger.h"
+#include "utils/Storage.h"
 #include <LittleFS.h>
 
 namespace
@@ -52,6 +53,7 @@ void RouteBook::remember(const char *callsign, const char *origin, const char *d
     if (!validIcao(origin) || !validIcao(dest)) return;
     char o[5], d[5];
     if (find(callsign, o, d) && !strcmp(o, origin) && !strcmp(d, dest)) return;   // known already
+    if (!Storage::mayWrite(32, "the route book")) return;
     {
         File f = LittleFS.open(kFile, "r");
         const size_t size = f ? f.size() : 0;

@@ -1,4 +1,5 @@
 #include "utils/Liveries.h"
+#include "utils/Storage.h"
 #include <LittleFS.h>
 
 namespace
@@ -68,6 +69,7 @@ void Liveries::read(String &out)
 bool Liveries::write(const String &text)
 {
     if (text.length() > kMaxBytes) return false;
+    if (!Storage::mayWrite(text.length(), "the liveries list", Storage::Asked)) return false;
     File f = LittleFS.open(kPath, "w");
     if (!f) return false;
     const size_t n = f.print(text);

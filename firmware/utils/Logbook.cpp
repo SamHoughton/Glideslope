@@ -1,6 +1,7 @@
 #include "utils/Logbook.h"
 #include "utils/Airframes.h"
 #include "utils/SeenLog.h"
+#include "utils/Storage.h"
 #include "config/Countries.h"
 #include "utils/TelnetLogger.h"
 #include <LittleFS.h>
@@ -51,6 +52,7 @@ namespace
 
     void saveRecords()
     {
+        if (!Storage::mayWrite(sizeof(s_rec), "the logbook's records")) return;
         File f = LittleFS.open(kRecords, "w");
         if (!f) return;
         f.write((const uint8_t *)&s_rec, sizeof(s_rec));
@@ -118,6 +120,7 @@ namespace
             if (repeat && !out)
             {
                 // The first repeat: copy what came before it, then go on.
+                if (!Storage::mayWrite(in.size(), "the logbook's tidy-up")) { in.close(); return; }
                 out = LittleFS.open("/log/events.tmp", "w");
                 if (!out) { in.close(); return; }
                 File again = LittleFS.open(kEvents, "r");
@@ -167,6 +170,7 @@ const Logbook::Records &Logbook::records() { return s_rec; }
 
 void Logbook::addEvent(const Event &e)
 {
+    if (!Storage::mayWrite(sizeof(e), "the logbook")) return;
     File f = LittleFS.open(kEvents, "a");
     if (!f) return;
     f.write((const uint8_t *)&e, sizeof(e));
@@ -181,8 +185,12 @@ void Logbook::addDay(const Day &d, const std::vector<Tally> &tallies, char *line
     // (a restart just after midnight); then the collection and records were
     // already counted, so they are left alone.
     bool again = false;
+    // The day, and the collection changed in place: LittleFS copies a
+    // changed file to new blocks, so room for all of it.
+    const long collection = Storage::size(kCollection);
+    if (!Storage::mayWrite(sizeof(Day) + (collection > 0 ? (size_t)collection : 0) + 4096, "the logbook's day")) return;
     {
-        File f = LittleFS.open(kDays, LittleFS.exists(kDays) ? "r+" : "w");
+        File f = LittleFS.open(kDays, Storage::exists(kDays) ? "r+" : "w");
         if (!f) return;
         size_t at = f.size() / sizeof(Day) * sizeof(Day);
         if (at >= sizeof(Day))
@@ -230,7 +238,7 @@ void Logbook::addDay(const Day &d, const std::vector<Tally> &tallies, char *line
     const uint16_t today = dayNumber(d.date);
     std::vector<bool> found(tallies.size(), false);
     {
-        File f = LittleFS.open(kCollection, LittleFS.exists(kCollection) ? "r+" : "w");
+        File f = LittleFS.open(kCollection, collection >= 0 ? "r+" : "w");
         if (f)
         {
             Item chunk[16];
@@ -361,9 +369,12 @@ void Logbook::writeCollectionCsv(WiFiClient &c)
 size_t Logbook::bytesUsed()
 {
     size_t n = 0;
-    for (const char *p : {kDays, kEvents, kCollection, kRecords, Airframes::kPath})
-        if (LittleFS.exists(p)) { File f = LittleFS.open(p, "r"); n += f.size(); f.close(); }
-    return n;
+    for (const char *p : {kDays, kEvents, kCollection, kRecords})
+    {
+        const long k = Storage::size(p);
+        if (k > 0) n += (size_t)k;
+    }
+    return n + Airframes::bytesUsed();
 }
 
 bool Logbook::stickerIsNew(uint8_t kind, const char *code)
@@ -401,7 +412,9 @@ int Logbook::noteOrigin(const char *icao, const char *ident)
     next = (next + 1) % 12;
 
     const uint16_t today = SeenLog::dayNumber(now);
-    File f = LittleFS.open(kCollection, LittleFS.exists(kCollection) ? "r+" : "w");
+    const long before = Storage::size(kCollection);
+    if (!Storage::mayWrite((before > 0 ? (size_t)before : 0) + sizeof(Item), "the collection")) return 0;
+    File f = LittleFS.open(kCollection, before >= 0 ? "r+" : "w");
     if (!f) return 0;
     Item it;
     size_t pos = 0;
@@ -446,13 +459,12 @@ void Logbook::writeAirframesCsv(WiFiClient &c)
     csvHeader(c, "airframes");
     Writer w(c);
     w.line("registration,type,airline,first_seen,last_seen,days\n");
-    File f = LittleFS.open(Airframes::kPath, "r");
-    if (!f) return;
+    Airframes::Scan scan;
     Airframes::Slot chunk[16];
     char line[80], reg[8], type[5], op[4], first[12], last[12];
     size_t got;
-    while (w.ok && (got = f.read((uint8_t *)chunk, sizeof(chunk))) >= sizeof(Airframes::Slot))
-        for (size_t i = 0; i < got / sizeof(Airframes::Slot) && w.ok; ++i)
+    while (w.ok && (got = scan.next(chunk, 16)) > 0)
+        for (size_t i = 0; i < got && w.ok; ++i)
         {
             const Airframes::Slot &s = chunk[i];
             if (!s.key) continue;
@@ -466,7 +478,6 @@ void Logbook::writeAirframesCsv(WiFiClient &c)
             snprintf(line, sizeof(line), "%s,%s,%s,%s,%s,%u\n", r2, t2, o2, first, last, s.days);
             w.line(line);
         }
-    f.close();
 }
 
 bool Logbook::year(uint16_t yr, Year &y)
@@ -519,11 +530,11 @@ bool Logbook::year(uint16_t yr, Year &y)
         if (f) f.close();
     }
     {
-        File f = LittleFS.open(Airframes::kPath, "r");
+        Airframes::Scan scan;
         Airframes::Slot chunk[16];
         size_t got;
-        while (f && (got = f.read((uint8_t *)chunk, sizeof(chunk))) >= sizeof(Airframes::Slot))
-            for (size_t i = 0; i < got / sizeof(Airframes::Slot); ++i)
+        while ((got = scan.next(chunk, 16)) > 0)
+            for (size_t i = 0; i < got; ++i)
             {
                 const Airframes::Slot &s = chunk[i];
                 if (!s.key || s.lastDay < from || s.firstDay > to) continue;
@@ -535,7 +546,6 @@ bool Logbook::year(uint16_t yr, Year &y)
                     memcpy(y.topType, s.type, 4); y.topType[4] = 0;
                 }
             }
-        if (f) f.close();
     }
     return y.days > 0;
 }

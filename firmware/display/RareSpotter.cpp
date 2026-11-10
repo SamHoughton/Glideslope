@@ -1,5 +1,6 @@
 #include "display/RareSpotter.h"
 #include "utils/TelnetLogger.h"
+#include "utils/Storage.h"
 #include <LittleFS.h>
 #include <set>
 
@@ -83,8 +84,11 @@ RareSpotter::Reason RareSpotter::check(const FlightInfo &f)
     if (type.length() && s_loaded && s_seen.find(type) == s_seen.end())
     {
         s_seen.insert(type);
-        File out = LittleFS.open(kLogPath, "a");
-        if (out) { out.println(type); out.close(); }
+        if (Storage::mayWrite(type.length() + 2, "the type log"))
+        {
+            File out = LittleFS.open(kLogPath, "a");
+            if (out) { out.println(type); out.close(); }
+        }
         if (r == None) r = FirstSeen;
         Log.printf("RareSpotter: first sighting of %s\n", type.c_str());
     }

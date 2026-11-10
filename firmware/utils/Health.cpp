@@ -1,6 +1,7 @@
 #include "utils/Health.h"
 #include "utils/StageTrace.h"
 #include "utils/TlsArena.h"
+#include "utils/Storage.h"
 #include "utils/Logbook.h"
 #include "utils/WebConfig.h"   // GLIDESLOPE_VERSION
 #include <LittleFS.h>
@@ -31,6 +32,15 @@ namespace
 
     char s_boot[40] = "unknown";   // why this boot happened, short
     bool s_bootPending = true;     // to be logged once the clock is set
+
+    // Safe mode (9.2.1): crashes in a row, each within five minutes of its
+    // start, kept in RTC memory (it survives a crash, not a power cut; the
+    // check word tells the two apart).
+    constexpr uint32_t kCrashMagic = 0x43524153;   // "CRAS"
+    constexpr unsigned long kStableMs = 5UL * 60 * 1000, kSafeMs = 30UL * 60 * 1000;
+    RTC_NOINIT_ATTR uint32_t s_crashCheck;
+    RTC_NOINIT_ATTR uint32_t s_crashes;
+    bool s_safe = false;
 
     // 24 hours in 15-minute slots: the lowest free heap and the smallest
     // largest-block in each (KB), oldest first from s_head.
@@ -82,7 +92,22 @@ void Health::begin()
                                               : "other (e.g. flashing)", sizeof(s_boot));
     s_whyMagic = 0;
     s_winStart = millis();
+
+    const bool crashed = r == ESP_RST_PANIC || r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT;
+    if (s_crashCheck != (kCrashMagic ^ s_crashes) || s_crashes > 99) s_crashes = 0;   // power on: noise
+    s_crashes = crashed ? s_crashes + 1 : 0;
+    s_crashCheck = kCrashMagic ^ s_crashes;
+    s_safe = s_crashes >= 2;
+    if (s_safe)
+    {
+        Storage::pause(true);
+        Log.printf("Safe mode: %u crashes in a row, each soon after a start; background writes to flash paused "
+                   "for 30 minutes\n", (unsigned)s_crashes);
+    }
 }
+
+bool Health::safeMode() { return s_safe; }
+uint8_t Health::earlyCrashes() { return (uint8_t)s_crashes; }
 
 void Health::noteRestart(const char *why)
 {
@@ -93,6 +118,7 @@ void Health::noteRestart(const char *why)
 
 void Health::saveBlackBox(const char *why)
 {
+    if (!Storage::mayWrite(4096, "the black box", Storage::Asked)) return;
     File f = LittleFS.open("/log/blackbox.txt", "w");
     if (!f) return;
     multi_heap_info_t hi;
@@ -145,6 +171,18 @@ void Health::noteWeather(bool ok)
 void Health::loop()
 {
     const unsigned long now = millis();
+    // Up five minutes: whatever the last crash was, this start got past it.
+    if (s_crashes && now > kStableMs)
+    {
+        s_crashes = 0;
+        s_crashCheck = kCrashMagic;
+    }
+    if (s_safe && now > kSafeMs)
+    {
+        s_safe = false;
+        Storage::pause(false);
+        Log.println("Safe mode: 30 minutes without a crash, carrying on as normal");
+    }
     if (now - s_lastSampleMs >= 60000UL || !s_lastSampleMs)
     {
         s_lastSampleMs = now;
@@ -184,7 +222,7 @@ void Health::loop()
 void Health::json(String &out)
 {
     out = "";
-    out.reserve(1800);
+    out.reserve(2048);
     char b[96];
     snprintf(b, sizeof(b), "{\"version\":\"%s\",\"built\":\"%s\",\"uptime_s\":%lu,\"boot\":", GLIDESLOPE_VERSION,
              __DATE__ " " __TIME__, millis() / 1000);
@@ -243,8 +281,16 @@ void Health::json(String &out)
     out += b;
     snprintf(b, sizeof(b), ",\"wifi\":{\"rssi\":%d,\"channel\":%d}", (int)WiFi.RSSI(), (int)WiFi.channel());
     out += b;
-    snprintf(b, sizeof(b), ",\"storage\":{\"used\":%u,\"total\":%u,\"logbook\":%u}", (unsigned)LittleFS.usedBytes(),
+    snprintf(b, sizeof(b), ",\"storage\":{\"used\":%u,\"total\":%u,\"logbook\":%u,", (unsigned)LittleFS.usedBytes(),
              (unsigned)LittleFS.totalBytes(), (unsigned)Logbook::bytesUsed());
+    out += b;
+    // 9.2.1: free space as the writes see it, the part never written into,
+    // and how many writes were skipped for want of room.
+    snprintf(b, sizeof(b), "\"free\":%u,\"spare\":%u,\"low\":%s,\"refused\":%u}",
+             (unsigned)(Storage::freeBlocks() * Storage::kBlock), (unsigned)(Storage::kFloorBlocks * Storage::kBlock),
+             Storage::low() ? "true" : "false", (unsigned)Storage::refused());
+    out += b;
+    snprintf(b, sizeof(b), ",\"safe_mode\":%s,\"early_crashes\":%u", s_safe ? "true" : "false", (unsigned)s_crashes);
     out += b;
     snprintf(b, sizeof(b), ",\"temp_c\":%.1f,\"tls\":{\"served\":%u,\"to_heap\":%u,\"largest_small\":%u}}", temperatureRead(),
              (unsigned)TlsArena::served(), (unsigned)TlsArena::overflowed(), (unsigned)TlsArena::largestSmall());

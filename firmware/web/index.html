@@ -139,6 +139,8 @@ input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.7)}
 .kv{display:grid;grid-template-columns:max-content 1fr;gap:8px 18px;font-size:13px;margin-bottom:4px}
 .kv dt{color:var(--muted)}.kv dd{color:var(--text)}
 .msg{font-size:13px;color:var(--muted);align-self:center}
+.weak{margin-top:8px;padding:8px 12px;border-radius:var(--r2);background:rgba(255,95,80,.1);color:#ffa59a;font-size:12.5px;line-height:1.45}.weak b{color:#ffd0ca}
+.weak[hidden]{display:none}
 
 /* Switches: a list of rows, the switch on the right */
 .sw{display:flex;gap:16px;align-items:center;justify-content:space-between;cursor:pointer;font-size:14px;font-weight:500;
@@ -440,8 +442,9 @@ h3+.sw,p+.sw,.tab>.sw:first-child{border-top:none;padding-top:4px}
     </section>
 
     <section class="tab" id="t-alerts">
-      <p class="hint">Alerts on your phone through <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>: free, no account. Install the ntfy app and subscribe to the topic below. Anyone who knows a topic can read it, so keep it long and random.</p>
-      <div class="f"><label for="ntfy_topic">ntfy topic <small>(or a full URL for your own server; blank = off)</small></label><input id="ntfy_topic" autocomplete="off" spellcheck="false" placeholder="e.g. glideslope-k3x9q2m7w1"></div>
+      <p class="hint">Alerts on your phone through <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>: free, no account. Install the ntfy app and subscribe to the topic below. Anyone who knows a topic can read it and send to it, so keep it long and random.</p>
+      <div class="f"><label for="ntfy_topic">ntfy topic <small>(or a full URL for your own server; blank = off)</small></label><input id="ntfy_topic" autocomplete="off" spellcheck="false" placeholder="Press Random topic">
+        <p class="weak" id="ntweak" role="alert" hidden>Anyone could guess this topic: they would see your alerts, and theirs would reach your phone. Press <b>Random topic</b>, save, and subscribe to the new one in the ntfy app.</p></div>
       <div class="f"><label for="ntfy_token">Access token <small>(optional, for a protected topic on your own server; sent over https only)</small></label><input type="password" id="ntfy_token" autocomplete="new-password"></div>
       <div class="btns"><button id="ntr">Random topic</button><button id="ntt">Save and send a test</button><span class="msg" id="ntst"></span></div>
       <div class="f"><label>Tell me about</label>
@@ -506,10 +509,11 @@ h3+.sw,p+.sw,.tab>.sw:first-child{border-top:none;padding-top:4px}
 
     <section class="tab" id="t-health">
       <p class="hint">How the board is keeping: its memory over the last day (the largest free block is what the feed's secure connection needs), how the feed and the weather are doing, and why it last restarted.</p>
+      <p class="weak" id="hlwarn" role="alert" hidden></p>
       <div class="recs" id="hlcards"></div>
       <h3>Memory, last 24 hours</h3>
       <svg class="chart" id="hlchart" viewBox="0 0 400 130" preserveAspectRatio="none"></svg>
-      <div class="chartkey"><span><i style="background:var(--amber)"></i>free</span><span><i style="background:var(--blue)"></i>largest block</span><span><i style="background:var(--red)"></i>8 KB: a secure connection needs this</span></div>
+      <div class="chartkey"><span><i style="background:var(--amber)"></i>free</span><span><i style="background:var(--blue)"></i>largest block</span><span><i style="background:var(--red)"></i>4 KB: a secure connection needs this</span></div>
       <h3>Starts</h3>
       <ul class="boots" id="hlboots"></ul>
       <p class="hint">After a self-heal restart: <a href="/api/blackbox" target="_blank">the black box</a> (the memory and the log just before it).</p>
@@ -569,7 +573,7 @@ function load(){fetch('/api/config').then(function(r){return r.json();}).then(fu
   ['opensky_client_secret','aeroapi_key','ntfy_token'].forEach(function(k){var e=$(k);e.value='';e.placeholder=d[k]==='***'?'set (leave blank to keep)':'not set';});
   document.querySelectorAll('[data-scr]').forEach(function(e){e.checked=!!(d.screens&parseInt(e.dataset.scr));});
   document.querySelectorAll('[data-ntf]').forEach(function(e){e.checked=!!(d.notify_mask&parseInt(e.dataset.ntf));});
-  $('bv').textContent=d.display_brightness;});
+  $('bv').textContent=d.display_brightness;checkTopic();});
   fetch('/api/liveries').then(function(r){return r.text();}).then(function(t){window.liveriesLoaded=t;$('liveries').value=t;}).catch(function(){});}
 function save(){var d={};
   ['center_lat','center_lon','radius_km','home_lat','home_lon','overhead_km'].forEach(function(k){d[k]=parseFloat($(k).value)||0;});
@@ -591,7 +595,13 @@ $('save').addEventListener('click',save);
 function ntfMask(){var m=0;document.querySelectorAll('[data-ntf]').forEach(function(e){if(e.checked)m|=parseInt(e.dataset.ntf);});return m;}
 function randomTopic(){var a=new Uint8Array(10),s='';crypto.getRandomValues(a);
   a.forEach(function(b){s+='abcdefghijkmnpqrstuvwxyz23456789'[b%32];});return 'glideslope-'+s;}
-$('ntr').addEventListener('click',function(){$('ntfy_topic').value=randomTopic();});
+$('ntr').addEventListener('click',function(){$('ntfy_topic').value=randomTopic();checkTopic();});
+// A topic on the public ntfy server belongs to no one: a short or guessable one
+// is shared with whoever else picked it (a full URL is the user's own server).
+function weakTopic(t){t=(t||'').trim();if(!t||/^https?:\/\//i.test(t))return false;
+  return t.length<16||!/[0-9]/.test(t)||t==='glideslope-k3x9q2m7w1';}
+function checkTopic(){$('ntweak').hidden=!weakTopic($('ntfy_topic').value);}
+$('ntfy_topic').addEventListener('input',checkTopic);
 // No topic yet: a long random one (public ntfy topics are readable by anyone who guesses the name).
 $('ntt').addEventListener('click',function(){var t=$('ntfy_topic').value.trim();if(!t){t=randomTopic();$('ntfy_topic').value=t;}
   $('ntst').textContent='Sending…';post('/api/config',{ntfy_topic:t,notify_mask:ntfMask()})
@@ -653,14 +663,20 @@ window.loadHealth=function(){fetch('/api/health').then(function(r){return r.json
   var tiles=[[fmtUp(h.uptime_s),'up since: '+h.boot],[Math.round(h.heap.free/1024)+' KB','free now; largest block '+Math.round(h.heap.block/1024)+' KB'],
     [Math.round(h.heap.min_free/1024)+' KB','free at the lowest since the start'],[ago(h.feed.last_ok_s),'since the last positions'+(f?' ('+Math.round(h.feed.ok*100/f)+'% of fetches answered)':'')],
     [ago(h.weather.last_ok_s),'since the last weather report'],[h.wifi.rssi+' dBm','Wi-Fi signal, '+q],
-    [Math.round(h.storage.used/1024)+' KB','of '+Math.round(h.storage.total/1024)+' KB stored (logbook '+Math.round(h.storage.logbook/1024)+' KB)'],
+    [Math.round((h.storage.free!=null?h.storage.free:h.storage.total-h.storage.used)/1024)+' KB','storage free of '+Math.round(h.storage.total/1024)+' KB (logbook '+Math.round(h.storage.logbook/1024)+' KB)'],
     [Math.round(h.temp_c)+'\u00b0C','the chip\u2019s temperature'],[h.boot_count,'starts logged']];
   $('hlcards').innerHTML=tiles.map(function(t){return '<div><b>'+esc(t[0])+'</b><span>'+esc(t[1])+'</span></div>';}).join('');
+  // 9.2.1: safe mode, and storage running out (the board stops writing with 96 KB left).
+  var warn=[];
+  if(h.safe_mode)warn.push('<b>Safe mode.</b> The board crashed twice soon after starting, so it is not writing its collection, logbook or route book for 30 minutes. If this keeps happening, install the newest release from the System tab.');
+  if(h.storage.low)warn.push('<b>Storage nearly full.</b> '+Math.round(h.storage.free/1024)+' KB left; the board keeps '+Math.round(h.storage.spare/1024)+' KB spare and stops saving its collection and logbook before it reaches that. Airline logos take the most room (4 KB each on the board).');
+  if(h.storage.refused&&!h.storage.low&&!h.safe_mode)warn.push(h.storage.refused+' writes were skipped for want of room since the start.');
+  $('hlwarn').innerHTML=warn.join('<br>');$('hlwarn').hidden=!warn.length;
   // The chart: free (amber) and the largest block (blue), KB, oldest on the left.
   var fr=h.heap.free_kb,bk=h.heap.block_kb,n=fr.length,top=Math.max(48,Math.max.apply(null,fr)+4),W=400,H=130;
   function px(i){return n<2?W:i*W/(n-1);}function py(v){return H-6-(v/top)*(H-12);}
   function line(v,c){return '<polyline fill="none" stroke="'+c+'" stroke-width="2" vector-effect="non-scaling-stroke" points="'+v.map(function(x,i){return px(i).toFixed(1)+','+py(x).toFixed(1);}).join(' ')+'"/>';}
-  $('hlchart').innerHTML='<line x1="0" x2="'+W+'" y1="'+py(8)+'" y2="'+py(8)+'" stroke="#ff5f50" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke"/>'+line(fr,'#ffb93c')+line(bk,'#78b4ff');
+  $('hlchart').innerHTML='<line x1="0" x2="'+W+'" y1="'+py(4)+'" y2="'+py(4)+'" stroke="#ff5f50" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke"/>'+line(fr,'#ffb93c')+line(bk,'#78b4ff');
   $('hlboots').innerHTML=h.boots.map(function(b){var d=new Date(b.at*1000);
     return '<li><span class="t">'+d.toLocaleDateString(undefined,{day:'numeric',month:'short'})+' '+d.toTimeString().slice(0,5)+'</span><span>'+esc(b.why)+'</span></li>';}).join('')||'<li>None logged yet (the board logs a start once it knows the time).</li>';
 }).catch(function(){}).finally(function(){clearTimeout(HT);HT=setTimeout(function(){if($('t-health').classList.contains('on')&&!document.hidden)loadHealth();},30000);});};

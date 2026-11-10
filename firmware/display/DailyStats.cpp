@@ -3,6 +3,7 @@
 #include "config/AirlineCodes.h"
 #include "utils/TelnetLogger.h"
 #include "utils/Logbook.h"
+#include "utils/Storage.h"
 #include <LittleFS.h>
 #include <time.h>
 
@@ -434,6 +435,7 @@ void DailyStats::serialise(std::vector<uint8_t> &v)
 
 bool DailyStats::writeFile(const std::vector<uint8_t> &data)
 {
+    if (!Storage::mayWrite(data.size(), "today's tally")) return false;
     File f = LittleFS.open("/stats.tmp", "w");
     if (!f) return false;
     const bool ok = f.write(data.data(), data.size()) == data.size();

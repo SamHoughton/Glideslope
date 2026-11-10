@@ -8,7 +8,8 @@ Purpose: The logbook (8.1): what the board has seen, kept in flash for good.
   /log/collection.bin  every airline and type ever seen, and (9.0) every
                        airport arrivals came from: first and last day, days
                        seen, how many (20 bytes each)
-  /log/airframes.bin   every airframe (utils/Airframes.h)
+  /af/NN.bin           every airframe (utils/Airframes.h; /log/airframes.bin
+                       until 9.2.1)
   /log/records.bin     the bests: busiest day, most go-arounds, tightest gap
 
 Written from the main loop (never the display task): a day at midnight, an

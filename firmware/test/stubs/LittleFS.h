@@ -92,6 +92,23 @@ struct LittleFSStub
         return true;
     }
     bool mkdir(const char *) { return true; }
-    void wipe() { memFiles().files.clear(); }
+    bool truncate(const char *path, size_t len)
+    {
+        auto &f = memFiles().files;
+        if (!f.count(path) || f[path].size() < len) return false;
+        f[path].resize(len);
+        return true;
+    }
+    // Space as LittleFS counts it: whole 4 KB blocks a file, on the board's
+    // 1.5 MB partition; extraUsed stands in for everything else on it.
+    size_t total = 1572864, extraUsed = 0;
+    size_t totalBytes() { return total; }
+    size_t usedBytes()
+    {
+        size_t n = extraUsed;
+        for (const auto &kv : memFiles().files) n += (kv.second.size() + 4095) / 4096 * 4096;
+        return n;
+    }
+    void wipe() { memFiles().files.clear(); extraUsed = 0; }
 };
 inline LittleFSStub LittleFS;

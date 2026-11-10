@@ -20,3 +20,6 @@ tools/.cache/
 
 # Generated from firmware/web/index.html at build time
 firmware/utils/WebPage.h
+
+# Python bytecode
+__pycache__/

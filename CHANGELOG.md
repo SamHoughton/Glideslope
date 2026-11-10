@@ -7,6 +7,47 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## 9.2.1 (unreleased)
+
+9.2.0 was not released on its own: its redesign comes with this release.
+
+**Fixes**
+- A crash every minute or so, over and over: the airframe collection kept
+  every aircraft in one 192 KB file, and LittleFS copies everything after a
+  change in a file before it lets the old copy go. A batch of new aircraft
+  near the start of the file needed close to 100 free blocks; with the
+  flash three-quarters full there weren't, and the framework's LittleFS
+  crashes when it runs out (its "no more free space" message divides by
+  zero). The same aircraft were still in range after the restart, so it
+  crashed again. The collection is now 49 files of one block each: a change
+  copies its own block and no more. The board moves the old file into them
+  once, at the first start, in a few seconds, a piece at a time so it needs
+  hardly any free space and carries on after a power cut.
+- No write to the flash can run it out any more: the collection, logbook,
+  route book, day's tally and the rest each check first and are skipped
+  rather than leave less than 96 KB free. A logo, airport pack or liveries
+  list sent from the web page is refused with "the board's storage is
+  full".
+- Checking whether a logo exists (every flight, every fetch) no longer takes
+  a 4 KB buffer from the memory each time.
+
+**New**
+- Safe mode: after two crashes in a row, each within five minutes of
+  starting, the board starts without its background writes to flash (the
+  collection, the logbook, the route book, the day's tally) for 30 minutes,
+  so a fault there can't keep it restarting. The panel, the feed and the web
+  page carry on, updates included; the panel says "Safe mode" as it starts.
+- The Health tab shows the storage free, and warns in safe mode or when
+  storage runs low. `/api/status` and `/api/health` say so too.
+- Each release carries `firmware.elf.gz`, the build's symbols, so a crash
+  report's addresses (`/api/coredump`) can be turned into functions and
+  lines.
+- The Alerts tab warns when the ntfy topic is one anyone could guess
+  (short, no digits, or the example that used to be shown in the box): a
+  public topic belongs to no one, so others using the same name saw your
+  alerts and theirs reached your phone. The box no longer shows an example
+  topic to copy; Random topic makes one nobody else will land on.
+
 ## 9.2.0 (3 Nov 2026)
 
 **Redesign**

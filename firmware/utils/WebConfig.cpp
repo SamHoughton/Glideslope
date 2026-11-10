@@ -26,6 +26,7 @@ WebServer library to avoid framework include-path issues.
 #include "utils/HeapWatch.h"
 #include "utils/HttpRequest.h"
 #include "utils/TlsArena.h"
+#include "utils/Storage.h"
 #include "adapters/LocalLogoStore.h"
 #include <vector>
 
@@ -296,7 +297,9 @@ void WebConfig::loop()
     else if (r.path == "/api/liveries"           && r.method == "POST")
     {
         const bool ok = Liveries::write(r.body);
-        sendHttp(client, ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"too long (4 KB at most)\"}");
+        sendHttp(client, ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}"
+                 : r.body.length() > Liveries::kMaxBytes ? "{\"ok\":false,\"error\":\"too long (4 KB at most)\"}"
+                                                         : "{\"ok\":false,\"error\":\"the board's storage is full\"}");
     }
     else if (r.path == "/api/logo"               && r.method == "GET") handleGetLogo(client, r);
     else if (r.path == "/api/history/records"    && r.method == "GET")
@@ -708,6 +711,9 @@ void WebConfig::handleGetStatus(WiFiClient &c)
     doc["tls_arena"] = String(TlsArena::served()) + " served, " + TlsArena::overflowed() + " to the heap" + (TlsArena::slotsFree() ? "" : ", in use");
     doc["display_frames"] = displayFramesDrawn();
     doc["web_requests"]   = (uint32_t)_requests;
+    doc["safe_mode"]      = Health::safeMode();
+    doc["storage_free_kb"] = Storage::freeBlocks() * Storage::kBlock / 1024;
+    doc["storage_low"]    = Storage::low();
     if (_displayMutex) xSemaphoreTake(_displayMutex, portMAX_DELAY);
     doc["metar"]          = _metar;
     doc["runways_arr"]    = _rwyArr;
@@ -844,10 +850,9 @@ void WebConfig::handleAirport(WiFiClient &c, int length)
                          : String("{\"ok\":false,\"error\":\"") + msg + "\"}";
         sendHttp(c, ok ? 200 : 400, "application/json", body);
     };
-    if (length <= (int)AirportPack::kMapBytes || length > 8192)
-    {
-        // Read the upload first: replying with unread data resets the
-        // connection and the browser never sees the reason.
+    // Read an upload that won't be kept all the same: replying with unread
+    // data resets the connection and the browser never sees the reason.
+    auto refuse = [&](const char *why) {
         uint8_t sink[256];
         int left = length;
         const unsigned long t0 = millis();
@@ -856,9 +861,11 @@ void WebConfig::handleAirport(WiFiClient &c, int length)
             const int n = c.read(sink, min((int)sizeof(sink), left));
             if (n > 0) left -= n; else delay(2);
         }
-        reply(false, "not an airport pack (wrong size)");
-        return;
-    }
+        reply(false, why);
+    };
+    if (length <= (int)AirportPack::kMapBytes || length > 8192) { refuse("not an airport pack (wrong size)"); return; }
+    // The new pack beside the old one until it is checked.
+    if (!Storage::mayWrite(length, "an airport pack", Storage::Asked)) { refuse("the board's storage is full"); return; }
 
     const char *tmp = "/airport.tmp";
     File f = LittleFS.open(tmp, "w");
@@ -1042,7 +1049,10 @@ void WebConfig::handleLogo(WiFiClient &c, const Req &r)
         const int n = c.read(buf + got, LogoBook::kBytes - got);
         if (n > 0) got += n; else delay(2);
     }
-    const bool ok = got == LogoBook::kBytes && LogoBook::save(code, buf, got);
+    const bool room = got == LogoBook::kBytes && Storage::mayWrite(got, "a logo", Storage::Asked);
+    const bool ok = room && LogoBook::save(code, buf, got);
     free(buf);
-    reply(ok, got < LogoBook::kBytes ? "upload interrupted" : "not saved (code must be 2-4 letters or digits)");
+    reply(ok, got < LogoBook::kBytes ? "upload interrupted"
+            : !room                  ? "the board's storage is full"
+                                     : "not saved (code must be 2-4 letters or digits)");
 }

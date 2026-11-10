@@ -102,12 +102,20 @@ jobs:
             0x10000 firmware.bin
           echo "FULL=$NAME" >> "$GITHUB_ENV"
 
+      # The build's symbols, to turn a crash report's addresses
+      # (/api/coredump) into functions and lines: they only match the
+      # firmware built with them, so each release carries its own.
+      - name: Symbols for crash reports
+        working-directory: firmware/.pio/build/hd_wf2
+        run: gzip -9 -c firmware.elf > firmware.elf.gz
+
       - uses: actions/upload-artifact@v7
         with:
           name: glideslope-firmware
           path: |
             firmware/.pio/build/hd_wf2/firmware.bin
             firmware/.pio/build/hd_wf2/${{ env.FULL }}
+            firmware/.pio/build/hd_wf2/firmware.elf.gz
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -117,6 +125,7 @@ jobs:
           files: |
             firmware/.pio/build/hd_wf2/firmware.bin
             firmware/.pio/build/hd_wf2/${{ env.FULL }}
+            firmware/.pio/build/hd_wf2/firmware.elf.gz
 
   # The browser installer (site/) on GitHub Pages, with this release's full
   # image beside it. Pages is free only for public repositories, so this runs
