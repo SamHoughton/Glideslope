@@ -7,7 +7,7 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
-## 9.2.1 (unreleased)
+## 9.2.1 (11 Nov 2026)
 
 9.2.0 was not released on its own: its redesign comes with this release.
 
