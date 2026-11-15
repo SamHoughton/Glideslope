@@ -9,8 +9,9 @@ class WiFiClient
 {
 public:
     std::string sent;
+    int writes = 0;   // how many separate sends it took
     bool connected() const { return true; }
-    size_t print(const char *s) { sent += s; return strlen(s); }
+    size_t print(const char *s) { sent += s; ++writes; return strlen(s); }
     size_t print(const String &s) { return print(s.c_str()); }
     int printf(const char *fmt, ...)
     {
@@ -20,7 +21,8 @@ public:
         const int n = vsnprintf(buf, sizeof(buf), fmt, ap);
         va_end(ap);
         sent += buf;
+        ++writes;
         return n;
     }
-    size_t write(const uint8_t *b, size_t n) { sent.append((const char *)b, n); return n; }
+    size_t write(const uint8_t *b, size_t n) { sent.append((const char *)b, n); ++writes; return n; }
 };

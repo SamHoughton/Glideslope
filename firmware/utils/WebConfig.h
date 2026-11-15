@@ -102,6 +102,7 @@ private:
     static bool hostAllowed(const String &host);
     static bool needsToken(const String &path);
     void handleGetLogo(WiFiClient &c, const Req &r);
+    void handleLogoBatch(WiFiClient &c, const Req &r);
     void handleLogo(WiFiClient &c, const Req &r);
 
     // Helpers

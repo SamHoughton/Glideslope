@@ -168,6 +168,10 @@ h3+.sw,p+.sw,.tab>.sw:first-child{border-top:none;padding-top:4px}
 .tdy b{font:650 22px/1.15 var(--num);color:var(--text);letter-spacing:-.01em}
 .tdy .ev b{color:var(--amber)}
 .tdy .idle{grid-column:1/-1}
+.sk{display:block;min-height:58px;background:linear-gradient(90deg,var(--panel2),var(--raise),var(--panel2));background-size:200% 100%;animation:sk 1.4s linear infinite}
+.tdy .sk{border-width:0 1px 1px 0;margin:0 -1px -1px 0}
+@keyframes sk{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}.tab.on{animation:none}}
 .airf{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin:0 0 14px}
 .rwb{display:grid;grid-template-columns:40px 1fr 40px;gap:10px;align-items:center;font-size:13px;margin:6px 0}
 .rwb span:first-child{font-weight:600}
@@ -267,7 +271,7 @@ h3+.sw,p+.sw,.tab>.sw:first-child{border-top:none;padding-top:4px}
   </div>
   <div class="card" id="today">
     <h2>Today</h2>
-    <div class="tdy" id="tdyhead"><span class="idle">&nbsp;</span></div>
+    <div class="tdy" id="tdyhead"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>
     <div class="airf" id="airf" style="display:none"></div>
     <div id="tdyrw"></div>
     <ul class="spots" id="spots"></ul>
@@ -529,6 +533,38 @@ h3+.sw,p+.sw,.tab>.sw:first-child{border-top:none;padding-top:4px}
 
 <script>
 var $=function(id){return document.getElementById(id);};
+// The board answers one request at a time, and every one left waiting holds
+// memory in its network stack (9.1.4). So the page asks for one thing at a
+// time: what the person did first, then what the tab on screen needs, then
+// what it polls in the background, then logos. Without this a page that
+// fires ten requests at once (and the sticker book fired ninety) was ten
+// sockets queued on the board, each waiting for the ones before it.
+(function(){
+  var native=window.fetch.bind(window),queue=[],busy=0;
+  var BG={'/api/status':2,'/api/display':2,'/api/today':2,'/api/log':2,'/api/frame':2,'/api/traffic':2,'/api/logo':3,'/api/logos':3,'/api/liveries':3},T0=Date.now();
+  var tab='display';try{tab=location.hash.slice(1)||localStorage.getItem('gs-tab')||'display';}catch(e){}
+  var FIRST={'/api/status':.5,'/api/today':.6,'/api/config':.65,'/api/display':.7,'/api/frame':1.5};   // the first load, opening on the cards and the form
+  function rank(u,o){if(o&&o.method&&o.method!=='GET')return 0;var p=u.split('?')[0],r=BG[p];
+    if(Date.now()-T0<6000&&tab==='display'&&FIRST[p])r=FIRST[p];   // opened on another tab: that tab's data goes first
+    return r===undefined?1:r;}
+  function run(j){var done=false,guard;
+    function rel(){if(done)return;done=true;clearTimeout(guard);busy--;pump();}
+    guard=setTimeout(rel,15000);   // never let one stuck request hold the rest
+    native(j.u,j.o).then(function(r){
+      var post=j.o&&j.o.method&&j.o.method!=='GET',len=+r.headers.get('content-length');
+      if(post||(len&&len<=16384))rel();   // small: the board has sent it all
+      else ['json','text','arrayBuffer','blob'].forEach(function(m){var f=r[m];
+        r[m]=function(){return f.call(r).then(function(x){rel();return x;},function(e){rel();throw e;});};});
+      j.res(r);},function(e){rel();j.rej(e);});}
+  function pump(){while(busy<1&&queue.length){busy++;run(queue.shift());}}
+  window.fetch=function(u,o){
+    if(typeof u!=='string'||u.indexOf('/api/')!==0)return native(u,o);   // GitHub, photos: not the board
+    return new Promise(function(res,rej){var j={u:u,o:o,r:rank(u,o),res:res,rej:rej},i=queue.length;
+      while(i>0&&queue[i-1].r>j.r)i--;queue.splice(i,0,j);pump();});};
+})();
+// What the page showed last time, painted at once while the board answers.
+function cget(k){try{return JSON.parse(localStorage.getItem('gs-'+k));}catch(e){return null;}}
+function cput(k,v){try{localStorage.setItem('gs-'+k,JSON.stringify(v));}catch(e){}}
 var st={},cur=0,lines=0,lb=$('lb'),PACKS='https://raw.githubusercontent.com/SamHoughton/Glideslope/main/packs/';
 function status(t,ms){$('st').textContent=t;if(ms)setTimeout(function(){$('st').textContent=dirty?'Unsaved changes':'';},ms);}
 // Unsaved changes: the save bar says so until they are saved (brightness saves itself).
@@ -727,8 +763,7 @@ $('apc').addEventListener('click',function(){if(!st.airport_lat)return;if(!confi
 
 // Status: header chip, live dot, system details.
 function fmtUp(s){var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return(d?d+'d ':'')+(d||h?h+'h ':'')+m+'m';}
-function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
-  fetch('/api/status').then(function(r){return r.json();}).then(function(s){st=s;
+function showStatus(s){st=s;
     $('apchip').innerHTML='<b>'+esc(s.airport_name||'HEATHROW')+'</b> · '+esc(s.airport||'EGLL');
     $('apt').textContent=(s.airport_name||'')+' ('+(s.airport||'')+')'+(s.airport_pack?' from an airport pack':', built in');
     $('sys').innerHTML='<dt>Firmware</dt><dd>'+esc(s.version)+' <small>'+esc(s.built)+'</small></dd>'+
@@ -737,7 +772,9 @@ function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
       '<dt>Up</dt><dd>'+fmtUp(s.uptime_s)+'</dd><dt>Memory</dt><dd>'+Math.round(s.heap_free/1024)+' KB free, low '+Math.round(s.heap_min_free/1024)+' KB</dd>'+
       (s.metar?'<dt>Weather</dt><dd class="mono" style="font-size:12px">'+esc(s.metar)+'</dd>':'');
     var a='';if(s.mood)a+='<span class="k'+(s.mood.indexOf('Thunder')===0?' storm':'')+'">'+esc(s.mood)+'</span>';
-    if(s.outlook)a+='<span>'+esc(s.outlook)+'</span>';$('airf').innerHTML=a;$('airf').style.display=a?'':'none';
+    if(s.outlook)a+='<span>'+esc(s.outlook)+'</span>';$('airf').innerHTML=a;$('airf').style.display=a?'':'none';}
+function pollStatus(){if(document.hidden){setTimeout(pollStatus,5000);return;}
+  fetch('/api/status').then(function(r){return r.json();}).then(function(s){cput('status',s);showStatus(s);
     $('livedot').className='dot on';$('livetxt').textContent='live';
   }).catch(function(){$('livedot').className='dot';$('livetxt').textContent='offline';})
   .finally(function(){setTimeout(pollStatus,10000);});}
@@ -813,7 +850,8 @@ function poll(){if(document.hidden||!$('t-log').classList.contains('on')){setTim
       cur=d.cursor;if(atEnd)lb.scrollTop=lb.scrollHeight;}
   }).catch(function(){}).finally(function(){setTimeout(poll,1500);});}
 
-load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one still (the loop ends unless Live is on)
+var cs=cget('status');if(cs)try{showStatus(cs);}catch(e){}
+pollStatus();pollNow();load();liveRunning=true;pollFrame();poll();   // one still (the loop ends unless Live is on)
 
 // Today (7.1): the runway rhythm and the spotter log.
 (function(){
@@ -821,8 +859,7 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
   function ms(s){return Math.floor(s/60)+':'+('0'+s%60).slice(-2);}
   function hm(m){return ('0'+Math.floor(m/60)).slice(-2)+':'+('0'+m%60).slice(-2);}
   function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-  function load(){
-    fetch('/api/today').then(function(r){return r.json();}).then(function(d){
+  function render(d){
       var h='<span><b>'+(d.arrivals+d.departures).toLocaleString()+'</b>movements</span>';
       if(d.every)h+='<span class="ev"><b>'+ms(d.every)+'</b>a landing every</span>';
       if(d.tightest)h+='<span><b>'+ms(d.tightest)+'</b>tightest ('+esc(d.tightest_ident)+', '+hm(d.tightest_at)+')</span>';
@@ -835,8 +872,12 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
       document.getElementById('spots').innerHTML=d.spots.length?d.spots.map(function(s){
         return '<li><span class="t">'+hm(s.at)+'</span><span class="k '+s.kind+'">'+(KIND[s.kind]||s.kind)+'</span><span>'+esc(s.ident)+'</span><span class="w">'+esc(s.what)+'</span></li>';}).join('')
         :'<li><span class="t"></span><span></span><span class="t">Nothing spotted yet today</span><span></span></li>';
+  }
+  function load(){
+    fetch('/api/today').then(function(r){return r.json();}).then(function(d){cput('today',d);render(d);
     }).catch(function(){});
   }
+  var c=cget('today');if(c)try{render(c);}catch(e){}
   load();setInterval(load,30000);
 })();
 
@@ -897,14 +938,32 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
   function e(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 
   // Logos, one at a time (each is a request to the board), drawn from their RGB565.
-  var queue=[],busy=false;
-  function nextLogo(){if(busy||!queue.length)return;busy=true;var cv=queue.shift();
-    fetch('/api/logo?code='+cv.dataset.code).then(function(r){if(!r.ok)throw 0;return r.arrayBuffer();}).then(function(b){
-      var v=new DataView(b),x=cv.getContext('2d'),img=x.createImageData(32,32);
-      for(var i=0;i<1024;i++){var p=v.getUint16(i*2,true),o=i*4;if(p===0xF81F){img.data[o+3]=0;continue;}
-        img.data[o]=(p>>11&31)*255/31;img.data[o+1]=(p>>5&63)*255/63;img.data[o+2]=(p&31)*255/31;img.data[o+3]=255;}
-      x.putImageData(img,0,0);cv.parentNode.classList.add('logo');
-    }).catch(function(){}).then(function(){busy=false;setTimeout(nextLogo,60);});}
+  var pend=[],tm=null;
+  // Wanted logos go to the board together (up to 24 a request) once the scrolling settles.
+  function flush(){var batch=pend.splice(0,24);if(!batch.length)return;
+    fetch('/api/logos/batch?codes='+batch.map(function(c){return c.dataset.code;}).join(',')).then(function(r){if(!r.ok)throw 0;return r.arrayBuffer();}).then(function(b){
+      var u=new Uint8Array(b),o=0;
+      for(var i=0;i<batch.length;i++){var cv=batch[i],have=u[o++]===1,len=have?2048:0;
+        if(o+len>b.byteLength)return;   // cut short: keep nothing, ask again another time
+        if(have){var buf=b.slice(o,o+len);o+=len;keep(cv.dataset.code,buf);draw(cv,buf);}else keep(cv.dataset.code,null);}
+    }).catch(function(){}).then(function(){if(pend.length)flush();});}
+  function draw(cv,b){var v=new DataView(b),x=cv.getContext('2d'),img=x.createImageData(32,32);
+    for(var i=0;i<1024;i++){var p=v.getUint16(i*2,true),o=i*4;if(p===0xF81F){img.data[o+3]=0;continue;}
+      img.data[o]=(p>>11&31)*255/31;img.data[o+1]=(p>>5&63)*255/63;img.data[o+2]=(p&31)*255/31;img.data[o+3]=255;}
+    x.putImageData(img,0,0);cv.parentNode.classList.add('logo');}
+  // A logo is 2 KB and rarely changes: kept in the browser for a week (a miss for a day),
+  // so the sticker book asks the board for a logo once, not on every visit.
+  function keep(code,b){var d='';if(b){var a=new Uint8Array(b),t='';for(var i=0;i<a.length;i++)t+=String.fromCharCode(a[i]);d=btoa(t);}
+    cput('logo-'+code,{t:Date.now(),d:d});}
+  function remembered(code){var o=cget('logo-'+code);if(!o||Date.now()-o.t>(o.d?6048e5:864e5))return null;
+    if(!o.d)return {miss:true};var t=atob(o.d),a=new Uint8Array(t.length);for(var i=0;i<t.length;i++)a[i]=t.charCodeAt(i);return {buf:a.buffer};}
+  function want(cv){var r=remembered(cv.dataset.code);if(r){if(r.buf)draw(cv,r.buf);return;}pend.push(cv);clearTimeout(tm);tm=setTimeout(flush,60);}
+  // Only the logos on screen are asked for (and the ones about to be).
+  function watch(){var cvs=[].slice.call(document.querySelectorAll('#stal canvas'));
+    if(!('IntersectionObserver' in window)){cvs.forEach(want);return;}
+    var io=new IntersectionObserver(function(es){es.forEach(function(e){if(!e.isIntersecting)return;io.unobserve(e.target);
+      want(e.target.querySelector('canvas'));});},{rootMargin:'1200px'});
+    cvs.forEach(function(cv){io.observe(cv.parentNode);});}
 
   function album(id,items,count){
     var got=items.filter(function(i){return i.first;}).length;
@@ -916,12 +975,13 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
   var loading=false;
   window.loadStickers=function(){if(loading)return;loading=true;
     Promise.all([fetch('/api/history/collection').then(function(r){return r.text();}).catch(function(){return '';}),
-                 fetch('/api/history/airframes').then(function(r){return r.text();}).catch(function(){return '';})])
+                 fetch('/api/history/airframe-counts').then(function(r){return r.text();}).catch(function(){return '';})])
     .then(function(res){
-      var col=csv(res[0]),frames=csv(res[1]),seen={airline:{},type:{},airport:{}};
+      var col=csv(res[0]),counts=csv(res[1]),seen={airline:{},type:{},airport:{}};
       col.forEach(function(r){if(seen[r[0]])seen[r[0]][r[1]]={first:r[2],days:+r[4],count:+r[5]};});
-      var perType={},perOp={};
-      frames.forEach(function(f){if(f[1])perType[f[1]]=(perType[f[1]]||0)+1;if(f[2])perOp[f[2]]=(perOp[f[2]]||0)+1;});
+      // Aircraft per type and per airline (the board counts them: /api/history/airframe-counts).
+      var perType={},perOp={},total=0;
+      counts.forEach(function(f){if(f[0]==='all')total=+f[2];else if(f[0]==='type')perType[f[1]]=+f[2];else if(f[0]==='airline')perOp[f[1]]=+f[2];});
       // Airlines: the list, then any others seen.
       var al=AIRLINES.slice(),known={};al.forEach(function(a){known[a[1]]=1;});
       Object.keys(seen.airline).sort().forEach(function(c){if(!known[c])al.push(['',c,c]);});
@@ -941,8 +1001,8 @@ load();pollStatus();pollNow();liveRunning=true;pollFrame();poll();   // one stil
       Object.keys(seen.type).sort().forEach(function(c){if(!kt[c])tl.push([c,c]);});
       album('stty',tl.map(function(t){var s=seen.type[t[0]]||{},n=perType[t[0]];
         return {name:t[1],title:t[1]+' ('+t[0]+')',first:s.first,note:n?n+(n==1?' aircraft':' aircraft'):'',art:'<span class="tc">'+t[0]+'</span>'};}),
-        frames.length+' aircraft in all');
-      queue=[].slice.call(document.querySelectorAll('#stal canvas'));nextLogo();
+        total+' aircraft in all');
+      watch();
     }).finally(function(){loading=false;});};
   if($('t-stickers').classList.contains('on'))loadStickers();
 })();

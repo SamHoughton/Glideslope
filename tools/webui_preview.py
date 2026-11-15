@@ -18,9 +18,12 @@ import json
 import pickle
 import re
 import shutil
+import struct
 import subprocess
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import time
+import zlib
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -121,6 +124,16 @@ def rle(frame):
     return bytes(out)
 
 
+def big_airframes(n=3500):
+    # A board that has been up for months: thousands of aircraft (the file holds up to 8,192).
+    types = ['A320', 'A20N', 'B789', 'A35K', 'B77W', 'A388', 'B38M', 'E190', 'A333', 'B788']
+    ops = ['BAW', 'VIR', 'EIN', 'DLH', 'AAL', 'UAE', 'QTR', 'SIA', 'KLM', 'THY', 'AFR', 'UAL', 'DAL', 'QFA']
+    rows = ['registration,type,airline,first_seen,last_seen,days']
+    for i in range(n):
+        rows.append('G-%s%s,%s,%s,2026-07-%02d,2026-10-%02d,%d' % (chr(65 + i % 26), chr(65 + i // 26 % 26) + 'AB', types[i % 10], ops[i % 14], 1 + i % 28, 1 + i % 28, 1 + i % 40))
+    return '\n'.join(rows) + '\n'
+
+
 def sample_frame():
     # The approach card from the last showcase recording: (showcase ms, frame) pairs.
     cache = ROOT / 'tools' / '.cache' / 'showcase_frames.pickle'
@@ -147,11 +160,16 @@ PHONE = b'''<!doctype html><html><body style="margin:0;background:#0b0e13">
 class Handler(BaseHTTPRequestHandler):
     html = b''
     frame = b''
+    delay = 0.0      # seconds each request takes (--board-like)
+    big = False      # board-sized collections (--board-like)
 
     def log_message(self, *a):
         pass
 
     def send(self, body, ctype='application/json'):
+        if self.delay:
+            # The board: one request at a time, its time in the radio and flash.
+            time.sleep(self.delay + len(body if isinstance(body, (bytes, str)) else b'') / 400000.0)
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
         self.send_response(200)
@@ -176,8 +194,31 @@ class Handler(BaseHTTPRequestHandler):
         elif p == '/api/history/days':       self.send(hist_days().encode(), 'text/csv')
         elif p == '/api/history/events':     self.send(HIST_EVENTS.encode(), 'text/csv')
         elif p == '/api/history/collection': self.send(HIST_COLLECTION.encode(), 'text/csv')
-        elif p == '/api/history/airframes':  self.send(HIST_AIRFRAMES.encode(), 'text/csv')
-        elif p == '/api/logo':       self.send_error(404)   # no airline logos in the docs (trademarks)
+        elif p == '/api/history/airframe-counts':
+            rows = [l.split(',') for l in (big_airframes() if self.big else HIST_AIRFRAMES).strip().split('\n')[1:]]
+            t, o = {}, {}
+            for r in rows:
+                t[r[1]] = t.get(r[1], 0) + 1
+                o[r[2]] = o.get(r[2], 0) + 1
+            self.send(('kind,code,aircraft\nall,,%d\n' % len(rows) + ''.join('type,%s,%d\n' % kv for kv in t.items())
+                       + ''.join('airline,%s,%d\n' % kv for kv in o.items())).encode(), 'text/csv')
+        elif p == '/api/history/airframes':  self.send((big_airframes() if self.big else HIST_AIRFRAMES).encode(), 'text/csv')
+        elif p == '/api/logos/batch':
+            codes = (self.path.split('codes=', 1) + [''])[1].split('&')[0].split(',')
+            out = b''
+            for code in codes:
+                c = zlib.crc32(code.encode()); col = (((c >> 3) & 31) << 11) | (((c >> 9) & 63) << 5) | ((c >> 17) & 31)
+                if self.big and code and c % 7:    # board-like: most have one (a plain tile, not a real logo)
+                    out += b'\x01' + struct.pack('<1024H', *[col if 4 <= x % 32 < 28 and 4 <= x // 32 < 28 else 0xF81F for x in range(1024)])
+                else:
+                    out += b'\x00'
+            self.send(out, 'application/octet-stream')
+        elif p == '/api/logo':
+            if not self.big:
+                self.send_error(404)   # no airline logos in the docs (trademarks)
+            else:                      # board-like: 2,048 bytes of RGB565, a plain tile (not a real logo)
+                c = zlib.crc32(self.path.encode()); col = (((c >> 3) & 31) << 11) | (((c >> 9) & 63) << 5) | ((c >> 17) & 31)
+                self.send(struct.pack('<1024H', *[col if 4 <= x % 32 < 28 and 4 <= x // 32 < 28 else 0xF81F for x in range(1024)]), 'application/octet-stream')
         elif p == '/api/traffic':    self.send(TRAFFIC)
         elif p == '/api/frame':      self.send(rle(self.frame) if 'z=1' in self.path else self.frame, 'application/octet-stream')
         elif p == '/api/log':        self.send({'cursor': len(LOG), 'lines': LOG if 'cursor=0' in self.path else []})
@@ -329,12 +370,18 @@ def shoot(url, out, w, h, scale):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--shots', action='store_true', help='write screenshots to docs/ and exit')
+    ap.add_argument('--board-like', type=int, nargs='?', const=150, default=0, metavar='MS',
+                    help='answer like the board: one request at a time, MS ms each (default 150), board-sized collections')
     a = ap.parse_args()
     Handler.html = page_html().replace('https://api.github.com/repos/SamHoughton/Glideslope/releases/latest',
                                        '/mock/release').replace(
         'https://api.planespotters.net/pub/photos/reg/', '/mock/photo/').encode('utf-8')   # no real photos in the docs
     Handler.frame = sample_frame()
-    srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
+    if a.board_like:
+        Handler.delay, Handler.big = a.board_like / 1000.0, True
+    srv = (HTTPServer if a.board_like else ThreadingHTTPServer)(('127.0.0.1', PORT), Handler)
+    if a.board_like:
+        srv.request_queue_size = 16
     url = f'http://127.0.0.1:{PORT}/'
     if not a.shots:
         print('serving', url)
