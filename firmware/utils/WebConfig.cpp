@@ -293,6 +293,7 @@ void WebConfig::loop()
     else if (r.path == "/api/history/events"     && r.method == "GET") Logbook::writeEventsCsv(client);
     else if (r.path == "/api/history/collection" && r.method == "GET") Logbook::writeCollectionCsv(client);
     else if (r.path == "/api/history/airframes"  && r.method == "GET") Logbook::writeAirframesCsv(client);
+    else if (r.path == "/api/history/airframe-counts" && r.method == "GET") Logbook::writeAirframeCountsCsv(client);
     else if (r.path == "/api/liveries"           && r.method == "GET") { String t; Liveries::read(t); sendHttp(client, 200, "text/plain; charset=utf-8", t); }
     else if (r.path == "/api/liveries"           && r.method == "POST")
     {
@@ -302,6 +303,7 @@ void WebConfig::loop()
                                                          : "{\"ok\":false,\"error\":\"the board's storage is full\"}");
     }
     else if (r.path == "/api/logo"               && r.method == "GET") handleGetLogo(client, r);
+    else if (r.path == "/api/logos/batch"        && r.method == "GET") handleLogoBatch(client, r);
     else if (r.path == "/api/history/records"    && r.method == "GET")
     {
         String body;
@@ -1009,6 +1011,63 @@ void WebConfig::handleGetLog(WiFiClient &c, const Req &r)
 // removes one.
 // A logo's 2 KB of RGB565 (9.0: the sticker book draws them), streamed
 // from its file; 404 if the board has none.
+// Several logos in one reply (9.2.2): ?codes=BAW,VIR,... (up to 24). For each
+// code in order, one byte (1 if the board has that logo, else 0), then the
+// logo's 2,048 bytes if it does. The sticker book used to ask for them one
+// request at a time, ninety of them, and the board answers one at a time.
+void WebConfig::handleLogoBatch(WiFiClient &c, const Req &r)
+{
+    String codes = qparam(r.query, "codes");
+    codes.toUpperCase();
+    struct One { char code[5]; bool have; };
+    One list[24];
+    size_t n = 0;
+    for (int start = 0; start <= (int)codes.length() && n < 24; )
+    {
+        const int comma = codes.indexOf(',', start);
+        const String one = codes.substring(start, comma < 0 ? codes.length() : comma);
+        start = comma < 0 ? codes.length() + 1 : comma + 1;
+        bool ok = one.length() >= 2 && one.length() <= 4;
+        for (size_t i = 0; ok && i < one.length(); ++i) ok = isalnum((unsigned char)one[i]);
+        strlcpy(list[n].code, ok ? one.c_str() : "", sizeof(list[n].code));
+        char path[24];
+        snprintf(path, sizeof(path), "/logos/%s.bin", list[n].code);
+        list[n].have = ok && Storage::size(path) == (long)LogoBook::kBytes;
+        ++n;
+    }
+    size_t len = n;
+    for (size_t i = 0; i < n; ++i) if (list[i].have) len += LogoBook::kBytes;
+    c.printf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %u\r\n"
+             "Cache-Control: no-store\r\nConnection: close\r\n\r\n", (unsigned)len);
+    const uint32_t startMs = millis();
+    uint8_t buf[256];
+    for (size_t i = 0; i < n && c.connected() && millis() - startMs < 8000; ++i)
+    {
+        const uint8_t flag = list[i].have ? 1 : 0;
+        c.write(&flag, 1);
+        if (!flag) continue;
+        char path[24];
+        snprintf(path, sizeof(path), "/logos/%s.bin", list[i].code);
+        File f = LittleFS.open(path, "r");
+        size_t sent = 0;
+        while (f && sent < LogoBook::kBytes)
+        {
+            const size_t got = f.read(buf, min(sizeof(buf), LogoBook::kBytes - sent));
+            if (got == 0) break;
+            c.write(buf, got);
+            sent += got;
+        }
+        if (f) f.close();
+        memset(buf, 0, sizeof(buf));
+        while (sent < LogoBook::kBytes)   // the file shrank under us: keep the reply's length true
+        {
+            const size_t pad = min(sizeof(buf), LogoBook::kBytes - sent);
+            c.write(buf, pad);
+            sent += pad;
+        }
+    }
+}
+
 void WebConfig::handleGetLogo(WiFiClient &c, const Req &r)
 {
     String code = qparam(r.query, "code");

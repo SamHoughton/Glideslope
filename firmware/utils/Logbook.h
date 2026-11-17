@@ -49,6 +49,7 @@ namespace Logbook
     void writeEventsCsv(WiFiClient &c);
     void writeCollectionCsv(WiFiClient &c);
     void writeAirframesCsv(WiFiClient &c);
+    void writeAirframeCountsCsv(WiFiClient &c);   // aircraft per type and per airline (the sticker book)
     void recordsJson(String &out);        // small
     // The year's summary (9.0): a pass over each file (a few hundred ms);
     // false if nothing was logged that year.

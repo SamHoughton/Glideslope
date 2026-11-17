@@ -60,17 +60,37 @@ namespace
     }
 
     // Writes to a client for at most 8 s (a phone that stops reading).
+    // Lines gathered into one write of up to 512 bytes. A write per line was one
+    // network packet per line: the aircraft file (a line each, thousands of
+    // them) took most of the 8 s allowed, held the web server the whole time,
+    // and was cut short when it ran out.
     struct Writer
     {
         WiFiClient &c;
         uint32_t start = millis();
         bool ok = true;
+        char buf[512];
+        size_t n = 0;
         explicit Writer(WiFiClient &cl) : c(cl) {}
+        ~Writer() { flush(); }
+        void flush()
+        {
+            if (ok && n)
+            {
+                if (!c.connected() || millis() - start > 8000) ok = false;
+                else c.write((const uint8_t *)buf, n);
+            }
+            n = 0;
+        }
         void line(const char *s)
         {
             if (!ok) return;
-            if (!c.connected() || millis() - start > 8000) { ok = false; return; }
-            c.print(s);
+            const size_t len = strlen(s);
+            if (len >= sizeof(buf)) { flush(); if (ok) c.print(s); return; }
+            if (n + len > sizeof(buf)) flush();
+            if (!ok) return;
+            memcpy(buf + n, s, len);
+            n += len;
         }
     };
 
@@ -478,6 +498,58 @@ void Logbook::writeAirframesCsv(WiFiClient &c)
             snprintf(line, sizeof(line), "%s,%s,%s,%s,%s,%u\n", r2, t2, o2, first, last, s.days);
             w.line(line);
         }
+}
+
+// How many different aircraft of each type and of each airline: what the
+// sticker book needs from the collection, in a few KB instead of the whole
+// of it (a line for every aircraft ever seen).
+void Logbook::writeAirframeCountsCsv(WiFiClient &c)
+{
+    struct Count { char code[5]; uint16_t n; };
+    constexpr size_t kTypes = 128, kOps = 192;
+    Count *types = (Count *)calloc(kTypes + kOps, sizeof(Count));
+    if (!types)
+    {
+        c.print("HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        return;
+    }
+    Count *ops = types + kTypes;
+    size_t nt = 0, no = 0;
+    uint32_t total = 0;
+    auto bump = [](Count *list, size_t &used, size_t cap, const char *code) {
+        if (!code[0]) return;
+        for (size_t i = 0; i < used; ++i)
+            if (!strcmp(list[i].code, code)) { if (list[i].n < 65535) ++list[i].n; return; }
+        if (used < cap) { strlcpy(list[used].code, code, sizeof(list[used].code)); list[used].n = 1; ++used; }
+    };
+    {
+        Airframes::Scan scan;
+        Airframes::Slot chunk[16];
+        size_t got;
+        while ((got = scan.next(chunk, 16)) > 0)
+            for (size_t i = 0; i < got; ++i)
+            {
+                const Airframes::Slot &s = chunk[i];
+                if (!s.key) continue;
+                ++total;
+                char type[5], op[4], t2[5], o2[4];
+                memcpy(type, s.type, 4); type[4] = 0;
+                memcpy(op, s.op, 3); op[3] = 0;
+                clean(type, t2, sizeof(t2)); clean(op, o2, sizeof(o2));
+                bump(types, nt, kTypes, t2);
+                bump(ops, no, kOps, o2);
+            }
+    }
+    csvHeader(c, "airframe-counts");
+    Writer w(c);
+    char line[40];
+    w.line("kind,code,aircraft\n");
+    snprintf(line, sizeof(line), "all,,%u\n", (unsigned)total);
+    w.line(line);
+    for (size_t i = 0; i < nt; ++i) { snprintf(line, sizeof(line), "type,%s,%u\n", types[i].code, types[i].n); w.line(line); }
+    for (size_t i = 0; i < no; ++i) { snprintf(line, sizeof(line), "airline,%s,%u\n", ops[i].code, ops[i].n); w.line(line); }
+    w.flush();
+    free(types);
 }
 
 bool Logbook::year(uint16_t yr, Year &y)

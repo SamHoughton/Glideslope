@@ -7,6 +7,33 @@ web page (`firmware.bin`) keep your settings. Release files are on the
 There is no 3.0: the features planned for it (living sky, holding stacks,
 phone alerts) were finished alongside 4.0's and shipped together as 4.0.0.
 
+## Unreleased
+
+**Faster web page**
+- The page asks the board for one thing at a time, and for what you are
+  looking at first. The board answers one request at a time, and a page
+  that fired ten at once (the sticker book fired ninety) left ten sockets
+  queued on it, each holding memory until its turn. Your own actions go
+  first, then the tab on screen, then the polling in the background, then
+  logos.
+- The sticker book no longer downloads the whole aircraft collection to
+  count it. A new `/api/history/airframe-counts` gives the aircraft per
+  type and per airline in a few lines, instead of a line for every aircraft
+  ever seen (up to 8,192).
+- Logos come in batches of up to 24 (`/api/logos/batch`) instead of one
+  request each, only for the ones on screen, and are kept in the browser
+  for a week, so a second visit asks the board for none.
+- The CSV downloads (days, moments, collection, aircraft) go out in
+  512-byte writes. They sent a packet per line, and the aircraft file,
+  with thousands of lines, took most of the 8 seconds the board allows
+  itself and was cut short when it ran out.
+- The page paints what it showed last time (status and today's figures)
+  at once, with grey placeholders where there is nothing yet, while the
+  board answers.
+- `tools/webui_preview.py --board-like` serves the page the way the board
+  does (one request at a time, 150 ms each by default, board-sized
+  collections), for measuring.
+
 ## 9.2.1 (11 Nov 2026)
 
 9.2.0 was not released on its own: its redesign comes with this release.

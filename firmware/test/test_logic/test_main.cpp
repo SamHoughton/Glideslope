@@ -289,6 +289,43 @@ void test_airframes_files()
     TEST_ASSERT_EQUAL(1, Airframes::count());
 }
 
+// What the sticker book needs from the collection: aircraft per type and per
+// airline in a few lines, not a line for every aircraft; and the CSVs go out
+// in few writes rather than one packet a line (9.2.2).
+void test_airframe_counts()
+{
+    LittleFS.wipe();
+    Storage::recount();
+    TEST_ASSERT_TRUE(Airframes::migrate());
+    Airframes::Store &st = Airframes::fileStore();
+    for (uint32_t i = 0; i < 300; ++i)
+    {
+        char reg[8];
+        snprintf(reg, sizeof(reg), "G-A%03u", (unsigned)i);
+        // 200 A320s of BAW, 100 B789s of VIR
+        TEST_ASSERT_NOT_EQUAL(Airframes::Failed,
+                              Airframes::visit(st, 0x400000 + i * 7919, 2490, reg, i < 200 ? "A320" : "B789", i < 200 ? "BAW" : "VIR"));
+    }
+    TEST_ASSERT_EQUAL(300, Airframes::count());
+
+    WiFiClient counts;
+    Logbook::writeAirframeCountsCsv(counts);
+    const std::string body = counts.sent.substr(counts.sent.find("\r\n\r\n") + 4);
+    TEST_ASSERT_TRUE(body.find("\nall,,300\n") != std::string::npos);
+    TEST_ASSERT_TRUE(body.find("\ntype,A320,200\n") != std::string::npos);
+    TEST_ASSERT_TRUE(body.find("\ntype,B789,100\n") != std::string::npos);
+    TEST_ASSERT_TRUE(body.find("\nairline,BAW,200\n") != std::string::npos);
+    TEST_ASSERT_TRUE(body.find("\nairline,VIR,100\n") != std::string::npos);
+    TEST_ASSERT_EQUAL(6, (int)std::count(body.begin(), body.end(), '\n'));   // header, all, 2 types, 2 airlines
+    TEST_ASSERT_TRUE(counts.sent.size() < 300);
+
+    WiFiClient all;
+    Logbook::writeAirframesCsv(all);
+    const std::string rows = all.sent.substr(all.sent.find("\r\n\r\n") + 4);
+    TEST_ASSERT_EQUAL(301, (int)std::count(rows.begin(), rows.end(), '\n'));   // the CSV header and every aircraft, none lost
+    TEST_ASSERT_TRUE(all.writes < 30);   // was 300 and more: one packet a line
+}
+
 // Moving 9.1's single file into the block-sized ones: every slot keeps its
 // place, the move survives being stopped part-way, and with no room it waits
 // (the old file is still read in the meantime).
@@ -1107,5 +1144,6 @@ int main(int, char **)
     RUN_TEST(test_storage_floor);
     RUN_TEST(test_airframes_files);
     RUN_TEST(test_airframes_move);
+    RUN_TEST(test_airframe_counts);
     return UNITY_END();
 }
